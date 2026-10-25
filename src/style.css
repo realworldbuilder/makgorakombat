@@ -865,6 +865,17 @@ code {
   color: var(--gold);
 }
 
+/* The select screen's one line of fine print, under its controls. */
+.select .fine {
+  flex: none;
+  margin: 0;
+  font-size: 0.66rem;
+  color: var(--dim);
+  opacity: 0.7;
+  letter-spacing: 0.03em;
+  text-align: center;
+}
+
 /* ---- versus and the fight ------------------------------------------------------------- */
 
 .ring,
