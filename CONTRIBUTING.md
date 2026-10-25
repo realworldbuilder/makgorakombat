@@ -17,8 +17,8 @@ If you already have a copy with changes in it, tell Claude: *"I have local chang
 |---|---|
 | "What's new?" | Pulls the latest from GitHub and tells you what the other person merged and has open. |
 | "Let's make the fatality camera shake harder." | Makes a branch off the latest `main`, does the work there. |
-| "Looks good, put it up." | Commits, pushes the branch, opens a pull request (PR) with a screenshot. The other person gets a notification. |
-| "Merge it." | Merges the PR into `main`. The live site updates in a minute or two. |
+| "Looks good, put it up." | Commits, pushes the branch, opens a pull request (PR) with a screenshot. Once the tests pass on GitHub it goes into `main` by itself and the live site updates a minute or two later. |
+| "Put it up as a draft." | The same, but it waits: a draft never goes live until you say "it's ready". |
 | "Review his PR" / "Try her PR" | Checks out the other person's PR so you can play it, reads the change, leaves a comment. |
 
 ## The three habits that stop us drifting apart
