@@ -190,6 +190,13 @@ export class Lobby {
   private retryTimer: ReturnType<typeof setTimeout> | undefined;
   private pingTimer: ReturnType<typeof setInterval> | undefined;
   private heard = 0;
+  /** Another tab of this browser took this page's place in the lobby: no trying again until this tab is looked at. */
+  private replaced = false;
+  private readonly onVisible = () => {
+    if (document.visibilityState !== 'visible' || !this.replaced || this.mode === 'off' || this.ws) return;
+    this.replaced = false;
+    this.connect();
+  };
   private readonly watchers = new Set<(state: LobbyState) => void>();
   private readonly matches = new Set<(match: Match) => void>();
 
@@ -278,6 +285,7 @@ export class Lobby {
 
   close(): void {
     this.setMode('off');
+    if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', this.onVisible);
     this.watchers.clear();
     this.matches.clear();
   }
@@ -285,6 +293,7 @@ export class Lobby {
   private connect(): void {
     clearTimeout(this.retryTimer);
     this.retryTimer = undefined;
+    this.replaced = false;
     const busy = this.mode === 'busy';
     const query = `name=${encodeURIComponent(this.name)}&id=${encodeURIComponent(this.id)}${busy ? '&busy=1' : this.wantQueue ? '&busy=0&requeue=1' : ''}`;
     let ws: WebSocket;
@@ -329,15 +338,23 @@ export class Lobby {
         for (const listener of [...this.matches]) listener({ code: message.code, role: message.role, with: message.with, queued: wasQueued });
       }
     });
-    const lost = () => {
+    const lost = (event?: CloseEvent) => {
       if (this.ws !== ws) return;
       this.ws = undefined;
       clearInterval(this.pingTimer);
+      // 4000: a newer socket of this browser (another tab) took the place. Trying again would take it
+      // back, and that tab would do the same a second later, for ever; this one waits to be looked at.
+      if (event?.code === 4000) {
+        this.replaced = true;
+        if (typeof document !== 'undefined') document.addEventListener('visibilitychange', this.onVisible);
+        this.set({ ...EMPTY, notice: 'The game is open online in another tab of this browser.' });
+        return;
+      }
       this.set({ ...EMPTY, notice: this.state.notice });
       this.again();
     };
-    ws.addEventListener('close', lost);
-    ws.addEventListener('error', lost);
+    ws.addEventListener('close', (event) => lost(event));
+    ws.addEventListener('error', () => lost());
   }
 
   /** Tries again after a wait that doubles each time, up to fifteen seconds. */

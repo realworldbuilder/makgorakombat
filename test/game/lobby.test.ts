@@ -63,21 +63,21 @@ class FakeSocket {
   readyState = 0;
   sent: string[] = [];
   closed = false;
-  private readonly listeners = new Map<string, ((event: { data?: unknown }) => void)[]>();
+  private readonly listeners = new Map<string, ((event: { data?: unknown; code?: number }) => void)[]>();
   constructor(readonly url: string) {
     FakeSocket.made.push(this);
   }
-  addEventListener(kind: string, listener: (event: { data?: unknown }) => void) {
+  addEventListener(kind: string, listener: (event: { data?: unknown; code?: number }) => void) {
     this.listeners.set(kind, [...(this.listeners.get(kind) ?? []), listener]);
   }
   send(data: string) {
     this.sent.push(data);
   }
-  close() {
+  close(code = 1000) {
     if (this.closed) return;
     this.closed = true;
     this.readyState = 3;
-    this.emit('close');
+    this.emit('close', { code });
   }
   open() {
     this.readyState = 1;
@@ -86,7 +86,7 @@ class FakeSocket {
   say(message: object) {
     this.emit('message', { data: JSON.stringify(message) });
   }
-  private emit(kind: string, event: { data?: unknown } = {}) {
+  private emit(kind: string, event: { data?: unknown; code?: number } = {}) {
     for (const listener of this.listeners.get(kind) ?? []) listener(event);
   }
 }
@@ -183,6 +183,22 @@ describe('the lobby socket', () => {
     lobby.setMode('off');
     vi.advanceTimersByTime(60_000);
     expect(FakeSocket.made).toHaveLength(3);
+  });
+
+  it('stops when another tab of the browser takes its place, instead of taking it back every second', () => {
+    const lobby = new Lobby('Chris', 'chris-0001', 'https://relay.test');
+    lobby.setMode('free');
+    FakeSocket.made[0]!.open();
+    // The relay closes the older socket with 4000 when the same browser id comes in again.
+    FakeSocket.made[0]!.close(4000);
+    vi.advanceTimersByTime(60_000);
+    expect(FakeSocket.made).toHaveLength(1);
+    expect(lobby.state.connected).toBe(false);
+    expect(lobby.state.notice).toContain('another tab');
+    // Coming back to the lobby another way (a mode change) opens it again.
+    lobby.setMode('busy');
+    expect(FakeSocket.made).toHaveLength(2);
+    lobby.close();
   });
 
   it('sends the challenge and its answers, and a name change comes in again under the new name', () => {
