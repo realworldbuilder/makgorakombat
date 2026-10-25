@@ -22,8 +22,10 @@ and tells each of them its code and whether they host. Nobody reads a code out.
   whenever somebody comes, goes, joins or leaves the queue or starts a match, and every 20
   seconds besides. `online` is the players here, `waiting` those in the queue, `fighting` the
   players in a room with their opponent (the pages leave the lobby for the fight itself, so the
-  rooms tell the lobby how many are in them).
-- `GET /lobby/stats` answers the same three numbers, `{"online","waiting","fighting"}`, for a
+  rooms tell the lobby how many are in them). With them comes `"fights":[{"code","names":[host,guest],"ids":[host,guest],"since"}]`,
+  the rooms the lobby made that have both players in, longest going first, for anyone who wants
+  to watch one. A room made with a code is not the lobby's and is not listed.
+- `GET /lobby/stats` answers the same, `{"online","waiting","fighting","fights"}`, for a
   page that is not in the lobby (the game's title) or a bot.
 - `{"t":"challenge","to":id}`: the other player hears `{"t":"challenged","from":{id,name},"ttl":30000}`
   and the challenger `{"t":"challenging","to":{id,name},"ttl":30000}`. One open challenge at a
@@ -54,6 +56,14 @@ and tells each of them its code and whether they host. Nobody reads a code out.
 - `ping` is answered `pong` by the room itself without waking it: a keep-alive, and a way to
   time the wire.
 - Every other message goes to the other player unchanged.
+- `GET /rooms/:code/ws?role=watch` comes in to watch, up to 50 at once (the 51st is 409). A
+  watcher sends nothing: whatever it says is dropped. It is sent `{"t":"seats","host","guest"}`
+  on arriving and whenever a player comes or goes; the host's `hello` and `rematch` and either
+  player's `back` as they were sent; and every frame of the fight from either player with one
+  byte in front, 0 for the host's and 1 for the guest's. The players stop sending an input once
+  the other has it, so the room keeps the current game's inputs, and a watcher who comes in
+  mid-fight is sent the hello, the last rematch and those inputs (as frames, 255 at most each)
+  before anything live. The players hear nothing of the watchers.
 
 Pages on `https://realworldbuilder.github.io`, `https://makgora.clawdioslave.com` and `http://localhost:*` (or `127.0.0.1`) may use
 it; other sites are refused. Node and other clients that send no `Origin` are let in.

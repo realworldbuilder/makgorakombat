@@ -17,6 +17,10 @@ import { type Env, openRoom } from './index';
  * open challenges, the queue and the rooms' head counts are in storage, so the lobby can sleep
  * between messages. The pages close their socket here for the fight itself, so who is fighting is
  * counted from the rooms, which tell the lobby whenever somebody comes in or goes.
+ *
+ * The rooms the lobby made are listed while both players are in them, with the two names and
+ * the code, so anyone here can pick one to watch (the room's role=watch). A room made with a code
+ * between two friends is not the lobby's, and is not listed.
  */
 
 /** How long a challenge waits for its answer. */
@@ -29,6 +33,8 @@ export const LOBBY = 'lobby';
 export const QUEUE_MS = 10 * 60 * 1000;
 /** A room that has said nothing for this long is no longer counted, whatever it last said. */
 export const ROOM_STALE_MS = 6 * 60 * 60 * 1000;
+/** A room the lobby made that nobody has come into this long is forgotten: the room itself has closed. */
+export const ROOM_UNUSED_MS = 10 * 60 * 1000;
 
 export type Status = 'free' | 'busy';
 export interface Player {
@@ -54,10 +60,24 @@ interface Waiting {
   id: string;
   at: number;
 }
-/** How many are in a room, as it last said, and when. */
+/** How many are in a room, as it last said, and when; and for a room the lobby made, who it was made for. */
 interface Heads {
   n: number;
   at: number;
+  /** The host's and the guest's names and ids, as they were when the lobby matched them. */
+  names?: [string, string];
+  ids?: [string, string];
+  /** When both were first in. */
+  since?: number;
+}
+/** A fight on now, for anyone who wants to watch it. */
+export interface FightNow {
+  code: string;
+  /** The host's name, then the guest's. */
+  names: [string, string];
+  ids: [string, string];
+  /** When both came in, by the relay's clock. */
+  since: number;
 }
 /** The lobby's numbers, with every list of who is here and at GET /lobby/stats. */
 export interface Counts {
@@ -67,6 +87,11 @@ export interface Counts {
   waiting: number;
   /** In a room with their opponent: picking, on the VS screen or fighting. */
   fighting: number;
+}
+/** The numbers and the fights on now, as every list of who is here and GET /lobby/stats give them. */
+export interface Stats extends Counts {
+  /** The lobby's rooms with both players in, longest going first. */
+  fights: FightNow[];
 }
 
 /** A display name as the lobby shows it: letters, digits and single spaces, 2 to 16 of them; undefined when it is not one. */
@@ -182,7 +207,7 @@ export class Lobby extends DurableObject<Env> {
   }
 
   /** The numbers alone, for GET /lobby/stats. */
-  async stats(): Promise<Counts> {
+  async stats(): Promise<Stats> {
     return this.counts(this.seats(this.live()));
   }
 
@@ -191,9 +216,12 @@ export class Lobby extends DurableObject<Env> {
     const rooms = await this.rooms();
     const before = this.fighting(rooms);
     const now = Date.now();
-    if (n > 0) rooms[code] = { n, at: now };
+    const prior = rooms[code];
+    if (n > 0) rooms[code] = { ...prior, n, at: now, since: prior?.since ?? (n >= 2 ? now : undefined) };
     else delete rooms[code];
-    for (const [other, room] of Object.entries(rooms)) if (now - room.at >= ROOM_STALE_MS) delete rooms[other];
+    for (const [other, room] of Object.entries(rooms)) {
+      if (now - room.at >= ROOM_STALE_MS || (room.n === 0 && now - room.at >= ROOM_UNUSED_MS)) delete rooms[other];
+    }
     await this.ctx.storage.put('rooms', rooms);
     if (this.fighting(rooms) !== before && this.live().length > 0) await this.beat();
   }
@@ -274,6 +302,10 @@ export class Lobby extends DurableObject<Env> {
     await this.withdraw((c) => pair.includes(c.from) || pair.includes(c.to), 'busy');
     await this.setQueue((await this.queue()).filter((w) => !pair.includes(w.id)));
     const seats = pair.map((id) => this.seatById(id)!);
+    // The room is listed under these two names once both are in it.
+    const rooms = await this.rooms();
+    rooms[code] = { ...rooms[code], n: rooms[code]?.n ?? 0, at: rooms[code]?.at ?? Date.now(), names: [seats[0]!.name, seats[1]!.name], ids: [host, guest] };
+    await this.ctx.storage.put('rooms', rooms);
     for (const ws of pair.flatMap((id) => this.socketsOf(id))) {
       const seat = ws.deserializeAttachment() as Seat;
       ws.serializeAttachment({ ...seat, busy: true });
@@ -331,10 +363,22 @@ export class Lobby extends DurableObject<Env> {
     return [...seen.values()].sort((a, b) => a.at - b.at);
   }
 
-  private async counts(seats: Seat[]): Promise<Counts> {
+  private async counts(seats: Seat[]): Promise<Stats> {
     const free = new Set(seats.filter((seat) => !seat.busy).map((seat) => seat.id));
     const waiting = (await this.queue()).filter((w) => free.has(w.id)).length;
-    return { online: seats.length, waiting, fighting: this.fighting(await this.rooms()) };
+    const rooms = await this.rooms();
+    return { online: seats.length, waiting, fighting: this.fighting(rooms), fights: this.fights(rooms) };
+  }
+
+  /** The lobby's rooms with both players in, longest going first. */
+  private fights(rooms: Record<string, Heads>): FightNow[] {
+    const now = Date.now();
+    const list: FightNow[] = [];
+    for (const [code, room] of Object.entries(rooms)) {
+      if (room.n < 2 || now - room.at >= ROOM_STALE_MS || !room.names || !room.ids) continue;
+      list.push({ code, names: room.names, ids: room.ids, since: room.since ?? room.at });
+    }
+    return list.sort((a, b) => a.since - b.since);
   }
 
   /** Players in rooms with both in them; a room silent for hours has lost its word and is left out. */

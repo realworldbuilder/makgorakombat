@@ -1,10 +1,10 @@
 import { env, runDurableObjectAlarm, runInDurableObject, SELF } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 import { isCode } from '../src/code';
-import { BEAT_MS, CHALLENGE_MS, cleanName, type Counts, type Lobby, type Player, QUEUE_MS } from '../src/lobby';
+import { BEAT_MS, CHALLENGE_MS, cleanName, type Counts, type Lobby, type Player, QUEUE_MS, type Stats } from '../src/lobby';
 import { Client } from './client';
 
-type Here = { players: Player[] } & Counts;
+type Here = { players: Player[] } & Stats;
 type Fight = { code: string; role: 'host' | 'guest'; with: { id: string; name: string } };
 
 let lobbies = 0;
@@ -249,7 +249,7 @@ describe('lobby', () => {
     send(third, { t: 'quick' });
     expect(await third.next('queued')).toMatchObject({ queued: true });
     await hereCounting(chris, { online: 3, waiting: 1, fighting: 0 });
-    expect(await stub.stats()).toEqual({ online: 3, waiting: 1, fighting: 0 });
+    expect(await stub.stats()).toEqual({ online: 3, waiting: 1, fighting: 0, fights: [] });
 
     // Chris and Will fight: once both are in their room the lobby counts them, socket here or not.
     send(chris, { t: 'challenge', to: ids.will });
@@ -261,12 +261,15 @@ describe('lobby', () => {
     await hereCounting(third, { online: 2, waiting: 1, fighting: 0 });
     const guest = await intoRoom(code, 'guest');
     will.ws.close(1000, 'fight');
-    await hereCounting(third, { online: 1, waiting: 1, fighting: 2 });
-    expect(await stub.stats()).toEqual({ online: 1, waiting: 1, fighting: 2 });
+    const listed = await hereCounting(third, { online: 1, waiting: 1, fighting: 2 });
+    // The fight is listed for watching, under both names and its code.
+    const fight = { code, names: ['Chris', 'Will'], ids: [ids.chris, ids.will], since: expect.any(Number) };
+    expect(listed.fights).toEqual([fight]);
+    expect(await stub.stats()).toEqual({ online: 1, waiting: 1, fighting: 2, fights: [fight] });
 
     // One goes: the room is no longer a fight.
     host.ws.close(1000, 'bye');
-    await hereCounting(third, { online: 1, waiting: 1, fighting: 0 });
+    expect((await hereCounting(third, { online: 1, waiting: 1, fighting: 0 })).fights).toEqual([]);
     guest.ws.close(1000, 'bye');
     third.ws.close(1000, 'bye');
 
@@ -274,7 +277,7 @@ describe('lobby', () => {
     const stats = await SELF.fetch('https://relay.test/lobby/stats', { headers: { Origin: 'https://makgora.clawdioslave.com' } });
     expect(stats.status).toBe(200);
     expect(stats.headers.get('Access-Control-Allow-Origin')).toBe('https://makgora.clawdioslave.com');
-    expect(Object.keys((await stats.json()) as Counts).sort()).toEqual(['fighting', 'online', 'waiting']);
+    expect(Object.keys((await stats.json()) as Counts).sort()).toEqual(['fighting', 'fights', 'online', 'waiting']);
   });
 
   it('puts a page back from a match straight into the queue when it asks for the next opponent', async () => {
@@ -337,7 +340,7 @@ describe('lobby', () => {
     expect(await runDurableObjectAlarm(stub)).toBe(true);
     expect(await chris.next('unqueued', seen)).toMatchObject({ queued: false, reason: 'idle' });
     await hereCounting(chris, { online: 1, waiting: 0, fighting: 0 }, seen);
-    expect(await stub.stats()).toEqual({ online: 1, waiting: 0, fighting: 0 });
+    expect(await stub.stats()).toEqual({ online: 1, waiting: 0, fighting: 0, fights: [] });
     chris.ws.close(1000, 'bye');
   });
 });
