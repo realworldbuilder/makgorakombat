@@ -19,6 +19,7 @@ import type { Ground } from './stages';
 import type { Hello } from './net/handshake';
 import { Lockstep, WAIT_SHOWN_MS } from './net/lockstep';
 import type { Link } from './net/relay';
+import type { Spectator } from './net/watch';
 
 /*
  * The fight. The engine steps sixty times a second whatever the screen does; each frame the
@@ -32,6 +33,14 @@ interface FightProps {
   onBack: () => void;
   /** Online: the fight runs in lockstep with the other machine. */
   net?: NetFight;
+  /** Watching somebody else's fight: no keys, no lockstep, the match played from what the room relays. */
+  watch?: WatchFight;
+}
+
+/** A fight being watched: the match the spectator plays, and the two players' names for the banner. */
+export interface WatchFight {
+  spectator: Spectator;
+  players: [string, string];
 }
 
 /** An online fight: the wire, which fighter this machine plays, and what the host's hello fixed. */
@@ -161,7 +170,7 @@ function headHeight(fighter: BuiltFighter): number {
   return head ? head[2] : (bounds.max[2] - bounds.min[2]) * 0.88;
 }
 
-export function Fight({ fighters, stage, p2, onBack, net }: FightProps) {
+export function Fight({ fighters, stage, p2, onBack, net, watch }: FightProps) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const arena = useRef<Arena>(null);
   const overlay = useRef<HTMLCanvasElement>(null);
@@ -191,13 +200,15 @@ export function Fight({ fighters, stage, p2, onBack, net }: FightProps) {
     });
     ring.setGround(stage);
     // Online the names, the seed, the tables and the rules are the host's, the same on both machines; the poses are this install's.
-    const names: [string, string] = net ? [net.hello.fighters[0].name, net.hello.fighters[1].name] : [fighters[0].champion.name, fighters[1].champion.name];
-    let seed = net ? net.hello.seed : seedOf(fighters[0].champion.key + fighters[1].champion.key) + rematch.current;
+    // Watching, they are the host's too, from the hello the room kept.
+    const hello = net?.hello ?? watch?.spectator.hello;
+    const names: [string, string] = hello ? [hello.fighters[0].name, hello.fighters[1].name] : [fighters[0].champion.name, fighters[1].champion.name];
+    let seed = hello ? hello.seed : seedOf(fighters[0].champion.key + fighters[1].champion.key) + rematch.current;
     const own: [MoveTable, MoveTable] = [tableOf(fighters[0]), tableOf(fighters[1])];
-    const tables: [MoveTable, MoveTable] = net ? net.hello.tables : own;
+    const tables: [MoveTable, MoveTable] = hello ? hello.tables : own;
     const drawn: [MoveTable, MoveTable] = net?.host ? tables : own;
-    const rules: RulesName = net && isRulesName(net.hello.rules) ? net.hello.rules : chosenRules();
-    match.current = newMatch(tables, seed, names, rules);
+    const rules: RulesName = hello && isRulesName(hello.rules) ? hello.rules : chosenRules();
+    match.current = watch?.spectator.match ?? newMatch(tables, seed, names, rules);
     let game = net?.hello.game ?? 0;
     let lockstep = net ? new Lockstep(net.link.channel(), net.me, { game }) : undefined;
     let shown: NetState;
@@ -231,7 +242,7 @@ export function Fight({ fighters, stage, p2, onBack, net }: FightProps) {
     // else must not leave the keyboard dead. The stage still takes focus so the arrows do not scroll.
     input.attach(window);
     // Online this keyboard plays as player 1 whichever side it is, and the other side comes over the wire.
-    input.setSource(1, net ? 'remote' : p2);
+    input.setSource(1, net || watch ? 'remote' : p2);
     stageElement.current!.focus();
 
     let frame = 0;
@@ -245,13 +256,21 @@ export function Fight({ fighters, stage, p2, onBack, net }: FightProps) {
     let hitsSeen = 0;
     const loop = (now: number) => {
       frame = requestAnimationFrame(loop);
+      // Watching, a rematch is a new match the spectator made.
+      if (watch?.spectator.match) match.current = watch.spectator.match;
       const current = match.current!;
       // Held by a script, or standing still while a report is written; never online, where holding here would stall the other player.
       owed = (held || isReporting()) && !net ? 0 : owed + Math.min(now - last, 250);
       last = now;
       let steps = 0;
       const t0 = performance.now();
-      while (owed >= TICK_MS && steps < MAX_STEPS) {
+      if (watch) {
+        // The ticks the clock owes, or more to catch up; a fight held for the players' inputs runs up no debt.
+        const due = Math.floor(owed / TICK_MS);
+        steps = watch.spectator.play(due);
+        owed = steps < due ? Math.min(owed, TICK_MS) : owed - due * TICK_MS;
+      }
+      while (!watch && owed >= TICK_MS && steps < MAX_STEPS) {
         if (lockstep) {
           // A tick runs once both players' inputs for it are here; until then the fight holds, with no debt run up.
           if (!lockstep.step(current, () => input.read(current)[0])) {
@@ -266,10 +285,14 @@ export function Fight({ fighters, stage, p2, onBack, net }: FightProps) {
         owed -= TICK_MS;
         steps++;
       }
-      if (steps === MAX_STEPS) owed = 0;
+      if (steps === MAX_STEPS && !watch) owed = 0;
       if (lockstep) {
         const status = lockstep.status();
         const state: NetState = status.desync ? 'desync' : status.waiting > WAIT_SHOWN_MS ? 'waiting' : undefined;
+        if (state !== shown) setNetState((shown = state));
+      } else if (watch) {
+        const status = watch.spectator.status();
+        const state: NetState = status === 'desync' ? 'desync' : status === 'buffering' ? 'waiting' : undefined;
         if (state !== shown) setNetState((shown = state));
       }
       if (steps > 0) {
@@ -327,10 +350,10 @@ export function Fight({ fighters, stage, p2, onBack, net }: FightProps) {
         ? `engine ${times.engine.toFixed(2)} ms · pose+draw ${times.pose.toFixed(2)} ms · hud ${times.draw.toFixed(2)} ms · sounds ${mixer.played}`
         : mutedRef.current ? 'MUTED · M' : undefined;
       drawHud(ctx, hud.width, hud.height, current, names, (point) => ring.project(camera, point), {
-        human: [true, net !== undefined || p2 !== 'cpu'],
+        human: [true, net !== undefined || watch !== undefined || p2 !== 'cpu'],
         debug: note,
         sources: [input.source(0), input.source(1)],
-        keys: net ? [0, 0] : undefined,
+        keys: net || watch ? [0, 0] : undefined,
         anchor: ring.anchor,
         heads,
       });
@@ -346,10 +369,10 @@ export function Fight({ fighters, stage, p2, onBack, net }: FightProps) {
       } else if (event.code === 'KeyM') {
         setMuted(toggleMute());
       } else if (event.code === 'Escape') {
-        // Online both go back to the roster together.
+        // Online both go back to the roster together; a watcher just stops watching.
         net?.link.send({ t: 'back' });
         onBack();
-      } else if (event.code === 'Enter' && match.current?.phase === 'matchEnd') {
+      } else if (event.code === 'Enter' && match.current?.phase === 'matchEnd' && !watch) {
         if (!net) {
           rematch.current++;
           match.current = newMatch(tables, seed + rematch.current, names, rules);
@@ -388,7 +411,7 @@ export function Fight({ fighters, stage, p2, onBack, net }: FightProps) {
       const page = window as unknown as { mk?: unknown };
       if (page.mk === handle) delete page.mk;
     };
-  }, [fighters, stage, p2, onBack, net]);
+  }, [fighters, stage, p2, onBack, net, watch]);
 
   // The ring's context goes with the screen, so the next fight's does not push the browser past its few.
   useEffect(
@@ -410,11 +433,21 @@ export function Fight({ fighters, stage, p2, onBack, net }: FightProps) {
     <div class="screen fight" ref={stageElement} tabIndex={0}>
       <canvas class="ring" ref={canvas} />
       <canvas class="hud" ref={overlay} />
-      {netState === 'waiting' && <div class="net-banner">WAITING FOR OPPONENT</div>}
+      {watch && (
+        <div class="watch-banner">
+          WATCHING <b>{watch.players[0]}</b> vs <b>{watch.players[1]}</b>
+          <span>Esc back to the lobby</span>
+        </div>
+      )}
+      {netState === 'waiting' && <div class="net-banner">{watch ? 'WAITING FOR THE PLAYERS' : 'WAITING FOR OPPONENT'}</div>}
       {netState === 'desync' && (
         <div class="net-banner bad">
           DESYNC
-          <span>The two games no longer agree, so the match is stopped. Esc goes back to the roster.</span>
+          <span>
+            {watch
+              ? "This page's game no longer agrees with the players', so watching is stopped. Esc goes back to the lobby."
+              : 'The two games no longer agree, so the match is stopped. Esc goes back to the roster.'}
+          </span>
         </div>
       )}
       {notes.length > 0 && (
