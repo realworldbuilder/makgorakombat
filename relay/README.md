@@ -97,13 +97,39 @@ and tells each of them its code and whether they host. Nobody reads a code out.
   returning page's when it is back.
 
 Pages on `https://realworldbuilder.github.io`, `https://makgora.clawdioslave.com` and `http://localhost:*` (or `127.0.0.1`) may use
-it; other sites are refused. Node and other clients that send no `Origin` are let in.
+it, and those listed in the `ORIGINS` variable (comma separated, given at deploy as
+`--var ORIGINS:https://a,https://b`); other sites are refused. Node and other clients that send no
+`Origin` are let in.
+
+## Deployed from GitHub
+
+The **Relay** workflow (`.github/workflows/relay.yml`) tests the relay and deploys it with wrangler
+whenever main changes `relay/` (Ship starts it after merging such a pull request), or when it is
+run by hand from the Actions tab. The game is built for whichever relay the repository's
+`RELAY_URL` variable names, and Chris's deploy until one is set. Once, by whoever's Cloudflare
+account will host it (the free plan is enough):
+
+1. In the Cloudflare dashboard open **Workers & Pages** once, so the account has its
+   `<name>.workers.dev` subdomain.
+2. **My Profile → API Tokens → Create Token → Edit Cloudflare Workers**, all of this account,
+   and copy the token. The account id is on the Workers & Pages overview, right column.
+3. In the GitHub repository, as two secrets (Settings → Secrets and variables → Actions, or
+   `gh secret set CLOUDFLARE_API_TOKEN` and `gh secret set CLOUDFLARE_ACCOUNT_ID`, which ask for
+   the value).
+4. Run **Relay** (`gh workflow run relay.yml`). Its summary gives the address,
+   `https://makgora-relay.<name>.workers.dev`; set it as the variable `RELAY_URL`
+   (`gh variable set RELAY_URL -b <address>`) and run **Deploy** (`gh workflow run deploy.yml`).
+   Every page loaded after that uses it; one that saved a relay in SETTINGS keeps that one.
+
+A relay on a new account starts with an empty board. A domain of the game's own goes in the
+variable `SITE_DOMAIN` (`makgora.gg`, no `https://`): Deploy then builds the game for the root of
+that domain, and Relay lets it and its `www.` in.
 
 ## Your own relay
 
-The game uses Chris's deploy, `https://makgora-relay.clawdgross.workers.dev`, unless SETTINGS
-on the title names another (NETWORK, remembered in the browser as `makgora.relay`). To run your
-own on your Cloudflare account (the free plan is enough):
+The game uses the relay it was built for (above) unless SETTINGS on the title names another
+(NETWORK, remembered in the browser as `makgora.relay`). To run your own on your Cloudflare
+account by hand (the free plan is enough):
 
 ```sh
 cd relay

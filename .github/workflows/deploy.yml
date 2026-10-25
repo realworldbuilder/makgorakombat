@@ -30,7 +30,12 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
+      # The repository's variables: SITE_DOMAIN, a domain of the game's own, serves it from the root
+      # instead of /makgorakombat/; RELAY_URL is the relay the Relay workflow deployed.
       - run: pnpm build
+        env:
+          VITE_BASE: ${{ vars.SITE_DOMAIN && '/' || '' }}
+          VITE_RELAY_URL: ${{ vars.RELAY_URL }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

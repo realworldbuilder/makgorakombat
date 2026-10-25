@@ -305,6 +305,11 @@ describe('relay', () => {
     expect(allowedOrigin('http://localhost')).toBe(true);
     expect(allowedOrigin('https://evil.example')).toBe(false);
     expect(allowedOrigin('http://localhost.evil.example')).toBe(false);
+    // A domain of the game's own comes in through ORIGINS, set at deploy.
+    expect(allowedOrigin('https://makgora.gg', 'https://makgora.gg, https://www.makgora.gg/')).toBe(true);
+    expect(allowedOrigin('https://www.makgora.gg', 'https://makgora.gg, https://www.makgora.gg/')).toBe(true);
+    expect(allowedOrigin('https://evil.example', 'https://makgora.gg')).toBe(false);
+    expect(allowedOrigin('', '')).toBe(false);
     const { response } = await makeRoom('http://localhost:5183');
     expect(response.headers.get('Access-Control-Allow-Origin')).toBe('http://localhost:5183');
     expect((await makeRoom('https://evil.example')).response.status).toBe(403);

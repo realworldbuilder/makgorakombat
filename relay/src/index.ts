@@ -42,6 +42,8 @@ export { Lobby } from './lobby';
 export interface Env {
   ROOMS: DurableObjectNamespace<Room>;
   LOBBY: DurableObjectNamespace<Lobby>;
+  /** More pages allowed to use the relay, comma separated (`https://makgora.gg,https://www.makgora.gg`): a domain of the game's own. Set at deploy, `--var ORIGINS:...`. */
+  ORIGINS?: string;
 }
 
 export type Role = 'host' | 'guest';
@@ -57,15 +59,16 @@ const ROLES: readonly Role[] = ['host', 'guest'];
 const SEATS: readonly Seat[] = [...ROLES, 'watch'];
 const other = (role: Role): Role => (role === 'host' ? 'guest' : 'host');
 
-/** Pages allowed to use the relay: the game's own, and any served from this machine while it is worked on. */
-export function allowedOrigin(origin: string | null): boolean {
+/** Pages allowed to use the relay: the game's own, those named in ORIGINS, and any served from this machine while it is worked on. */
+export function allowedOrigin(origin: string | null, extra = ''): boolean {
   if (origin === null) return true;
   if (origin === 'https://realworldbuilder.github.io' || origin === 'https://makgora.clawdioslave.com') return true;
+  if (extra.split(',').some((allowed) => allowed.trim() !== '' && allowed.trim().replace(/\/$/, '') === origin)) return true;
   return /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
 }
 
-function corsHeaders(origin: string | null): Record<string, string> {
-  if (origin === null || !allowedOrigin(origin)) return {};
+function corsHeaders(origin: string | null, extra?: string): Record<string, string> {
+  if (origin === null || !allowedOrigin(origin, extra)) return {};
   return {
     'Access-Control-Allow-Origin': origin,
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -462,9 +465,9 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     const origin = request.headers.get('Origin');
-    const cors = corsHeaders(origin);
+    const cors = corsHeaders(origin, env.ORIGINS);
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
-    if (!allowedOrigin(origin)) return new Response('This page may not use the relay.', { status: 403 });
+    if (!allowedOrigin(origin, env.ORIGINS)) return new Response('This page may not use the relay.', { status: 403 });
 
     if (url.pathname === '/rooms' && request.method === 'POST') {
       const code = await openRoom(env);

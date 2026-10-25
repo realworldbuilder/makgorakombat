@@ -39,8 +39,9 @@ process.env.VITE_NET_VERSION ??= (() => {
 
 export default defineConfig({
   // Served from https://realworldbuilder.github.io/makgorakombat/; VITE_BASE=/ for a site of its own
-  // (pnpm run deploy:site, https://makgora.clawdioslave.com/).
-  base: process.env.VITE_BASE ?? '/makgorakombat/',
+  // (a custom domain on GitHub Pages, or pnpm run deploy:site, https://makgora.clawdioslave.com/).
+  // An empty VITE_BASE, as the Deploy workflow passes without a domain, is the default.
+  base: process.env.VITE_BASE || '/makgorakombat/',
   plugins: [preact()],
   worker: { format: 'es' },
   // Two pages: the game, and the welcome page in front of it at /welcome/.
