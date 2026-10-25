@@ -29,8 +29,8 @@ export const PALETTE = {
   blood: '150, 6, 14',
   gore: '95, 0, 8',
   mist: '120, 10, 18',
-  dust: '150, 125, 95',
-  dirt: '95, 78, 60',
+  dust: '205, 178, 130',
+  dirt: '115, 88, 55',
   gold: '255, 205, 90',
   holy: '255, 240, 175',
   storm: '150, 200, 255',
@@ -690,7 +690,7 @@ function shapeOf(ctx: CanvasRenderingContext2D, slot: number, x: number, y: numb
         return;
       }
       const speed = Math.hypot(vx, vy);
-      const stretch = 1 + Math.min(2.2, speed / Math.max(1, size) * 0.35);
+      const stretch = 1 + Math.min(1.2, (speed / Math.max(1, size)) * 0.25);
       const ang = speed > 0.01 ? Math.atan2(vy, vx) : Math.PI / 2;
       ctx.moveTo(x + Math.cos(ang) * size * stretch, y + Math.sin(ang) * size * stretch);
       ctx.ellipse(x, y, size * stretch, size, ang, 0, Math.PI * 2);

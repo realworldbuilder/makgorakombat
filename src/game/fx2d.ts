@@ -127,7 +127,7 @@ function strokePath(ctx: CanvasRenderingContext2D, points: readonly Screen[]): v
  * A bolt of lightning from a to b with forks: a wide faint halo, a coloured body and a white core,
  * drawn additively; forks leave the trunk at random points and wander off. `width` is the core's.
  */
-function lightning(ctx: CanvasRenderingContext2D, a: Screen, b: Screen, seed: number, rgb: string, alpha: number, width: number, forks = 3): void {
+export function lightning(ctx: CanvasRenderingContext2D, a: Screen, b: Screen, seed: number, rgb: string, alpha: number, width: number, forks = 3): void {
   if (alpha <= 0) return;
   const random = rng(seed);
   const length = Math.hypot(b[0] - a[0], b[1] - a[1]);

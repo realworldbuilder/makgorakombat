@@ -1,4 +1,4 @@
-import { type Beat, type Fatality, impactFrame, isBlow } from '../engine/fatalities';
+import { ALL_FATALITIES, type Beat, type Fatality, impactFrame, isBlow } from '../engine/fatalities';
 import { KO_SLOWMO } from '../engine/stage';
 import { kind, Pool } from './particles';
 
@@ -27,12 +27,13 @@ export const ANCHOR = {
   loser: 4,
   /** The ground under the loser: what flies off them has a floor to land on. */
   feet: 5,
-  /** The ground where the winner stood when the beat began: the start of a charge, the spot a rogue vanished from. */
+  /** The ground where the winner stood when beat 0 began, then beat 1 and on: the start of a charge, the spot a rogue vanished from. */
   from: 6,
 } as const;
-export const ANCHORS = 7;
+const MOST_BEATS = Math.max(...[...ALL_FATALITIES.values()].map((f) => f.beats.length));
+export const ANCHORS = ANCHOR.from + MOST_BEATS;
 
-const { eyes: E, hand: H, winnerFeet: WG, loser: L, feet: LG, from: F } = ANCHOR;
+const { eyes: E, hand: H, winnerFeet: WG, loser: L, feet: LG } = ANCHOR;
 
 /** The bodies' heights the script throws from, in yards: the same all fight. */
 export interface Rig {
@@ -62,74 +63,77 @@ export function boltAt(frame: number, b: number): { x: number; on: boolean } {
 // What the scenes are made of.
 
 const GRIT = kind({ shape: 'dot', colour: 'dirt', size: [0.025, 0.05], life: [18, 32], drag: 0.02, gravity: 0.008, floor: 'die' });
-const DUST = kind({ shape: 'puff', colour: 'dust', size: [0.22, 0.42], life: [40, 70], drag: 0.06, grow: 0.012, gravity: -0.0006, alpha: 0.42, fadeIn: 0.12 });
-const STEEL = kind({ shape: 'spark', colour: 'white', fade: 'hot', size: [0.022, 0.04], life: [10, 22], drag: 0.03, gravity: 0.006, len: 2.2, floor: 'bounce' });
-const BLADE = kind({ shape: 'glow', colour: 'steel', size: [0.07, 0.11], life: [7, 11], alpha: 0.55 });
-const BLOOD = kind({ shape: 'drop', colour: 'blood', fade: 'gore', size: [0.03, 0.07], life: [50, 90], drag: 0.012, gravity: 0.007, floor: 'settle' });
+const DUST = kind({ shape: 'puff', colour: 'dust', size: [0.2, 0.38], life: [40, 70], drag: 0.06, grow: 0.012, gravity: -0.0006, alpha: 0.38, fadeIn: 0.12 });
+const STEEL = kind({ shape: 'spark', colour: 'white', fade: 'hot', size: [0.014, 0.026], life: [10, 22], drag: 0.03, gravity: 0.006, len: 2.2, floor: 'bounce' });
+const BLADE = kind({ shape: 'glow', colour: 'steel', size: [0.06, 0.09], life: [7, 11], alpha: 0.55 });
+const BLOOD = kind({ shape: 'drop', colour: 'blood', fade: 'gore', size: [0.012, 0.034], life: [50, 90], drag: 0.03, gravity: 0.007, floor: 'settle' });
+const SPATTER = kind({ shape: 'dot', colour: 'blood', size: [0.008, 0.016], life: [30, 50], drag: 0.05, gravity: 0.006, floor: 'die' });
 const MIST = kind({ shape: 'puff', colour: 'mist', size: [0.18, 0.34], life: [24, 40], drag: 0.08, grow: 0.01, alpha: 0.42 });
-const CRIT = kind({ shape: 'glow', colour: 'red', size: [0.45, 0.7], life: [9, 14], alpha: 0.65, grow: 0.02 });
-const SLASH = kind({ shape: 'spark', colour: 'white', fade: 'crimson', size: [0.035, 0.06], life: [6, 11], drag: 0.12, len: 3 });
+const CRIT = kind({ shape: 'glow', colour: 'red', size: [0.3, 0.45], life: [9, 14], alpha: 0.65, grow: 0.015 });
+const SLASH = kind({ shape: 'spark', colour: 'white', fade: 'crimson', size: [0.022, 0.04], life: [6, 11], drag: 0.12, len: 3 });
 
 const MOTE = kind({ shape: 'glow', colour: 'gold', size: [0.04, 0.08], life: [40, 70], drag: 0.01, alpha: 0.9 });
 const FALLING_MOTE = kind({ shape: 'glow', colour: 'holy', fade: 'gold', size: [0.05, 0.09], life: [30, 50], alpha: 0.9, floor: 'die', trail: { kind: kind({ shape: 'dot', light: true, colour: 'gold', size: [0.02, 0.035], life: [6, 12] }), rate: 0.6 } });
-const HOLY = kind({ shape: 'spark', colour: 'white', fade: 'gold', size: [0.028, 0.045], life: [14, 28], drag: 0.03, gravity: 0.004, len: 2.6, floor: 'bounce' });
-const HALO = kind({ shape: 'glow', colour: 'gold', size: [0.1, 0.18], life: [18, 28], drag: 0.05, alpha: 0.85 });
-const BLAZE = kind({ shape: 'glow', colour: 'holy', size: [0.7, 1.0], life: [12, 18], alpha: 0.55, grow: 0.03 });
+const HOLY = kind({ shape: 'spark', colour: 'white', fade: 'gold', size: [0.016, 0.028], life: [14, 28], drag: 0.03, gravity: 0.004, len: 2.6, floor: 'bounce' });
+const HALO = kind({ shape: 'glow', colour: 'gold', size: [0.08, 0.14], life: [18, 28], drag: 0.05, alpha: 0.85 });
+const BLAZE = kind({ shape: 'glow', colour: 'holy', size: [0.5, 0.7], life: [12, 18], alpha: 0.55, grow: 0.03 });
 
-const GLINT = kind({ shape: 'dot', light: true, colour: 'hot', size: [0.02, 0.035], life: [6, 12], drag: 0.05 });
-const ARROW_HIT = kind({ shape: 'spark', colour: 'white', fade: 'hot', size: [0.02, 0.035], life: [6, 12], drag: 0.06, len: 2 });
-const ARROW = kind({ shape: 'spark', colour: 'white', fade: 'hot', size: [0.05, 0.06], life: [8, 8], len: 2, trail: { kind: GLINT, rate: 2, speed: 0.008 }, burst: { kind: ARROW_HIT, n: 6, speed: [0.03, 0.08] } });
-const SHOT_GLOW = kind({ shape: 'glow', colour: 'hot', size: [0.3, 0.36], life: [8, 8], alpha: 0.8 });
-const FEATHER = kind({ shape: 'shard', colour: 'feather', fade: 'dirt', size: [0.05, 0.09], life: [30, 55], drag: 0.07, gravity: 0.0018, spin: 0.25, floor: 'die' });
-const FLARE = kind({ shape: 'glow', colour: 'hot', size: [0.35, 0.55], life: [8, 12], alpha: 0.7 });
+const GLINT = kind({ shape: 'dot', light: true, colour: 'hot', size: [0.012, 0.022], life: [6, 12], drag: 0.05 });
+const ARROW_HIT = kind({ shape: 'spark', colour: 'white', fade: 'hot', size: [0.013, 0.022], life: [6, 12], drag: 0.06, len: 2 });
+const ARROW = kind({ shape: 'spark', colour: 'white', fade: 'hot', size: [0.035, 0.04], life: [8, 8], len: 3, trail: { kind: GLINT, rate: 2, speed: 0.008 }, burst: { kind: ARROW_HIT, n: 6, speed: [0.03, 0.08] } });
+const ARROW_HEAD = kind({ shape: 'glow', colour: 'hot', size: [0.09, 0.1], life: [8, 8], alpha: 0.9 });
+const SHOT_GLOW = kind({ shape: 'glow', colour: 'hot', size: [0.22, 0.26], life: [8, 8], alpha: 0.8 });
+const FEATHER = kind({ shape: 'shard', colour: 'feather', fade: 'dirt', size: [0.06, 0.1], life: [30, 55], drag: 0.07, gravity: 0.0018, spin: 0.25, floor: 'die' });
+const FLARE = kind({ shape: 'glow', colour: 'hot', size: [0.25, 0.38], life: [8, 12], alpha: 0.7 });
 
 const SHADOW = kind({ shape: 'puff', colour: 'void', size: [0.28, 0.5], life: [30, 50], drag: 0.06, grow: 0.012, gravity: -0.001, alpha: 0.55, fadeIn: 0.1 });
-const SHADOW_GLINT = kind({ shape: 'dot', light: true, colour: 'purple', size: [0.03, 0.05], life: [12, 24], drag: 0.05, gravity: -0.002 });
+const SHADOW_GLINT = kind({ shape: 'dot', light: true, colour: 'purple', size: [0.016, 0.03], life: [12, 24], drag: 0.05, gravity: -0.002 });
 const WISP_TAIL = kind({ shape: 'glow', colour: 'violet', size: [0.05, 0.09], life: [10, 18], alpha: 0.5 });
-const WISP = kind({ shape: 'glow', colour: 'purple', size: [0.08, 0.13], life: [30, 30], alpha: 0.8, trail: { kind: WISP_TAIL, rate: 1.5 } });
-const SHADOW_SPARK = kind({ shape: 'spark', colour: 'lilac', fade: 'purple', size: [0.025, 0.045], life: [12, 22], drag: 0.04, len: 2.4 });
-const DARK_GLOW = kind({ shape: 'glow', colour: 'violet', size: [0.5, 0.8], life: [12, 20], alpha: 0.6, grow: 0.02 });
+const WISP = kind({ shape: 'glow', colour: 'purple', size: [0.08, 0.13], life: [30, 30], alpha: 0.8, trail: { kind: WISP_TAIL, rate: 1 } });
+const SHADOW_SPARK = kind({ shape: 'spark', colour: 'lilac', fade: 'purple', size: [0.015, 0.028], life: [12, 22], drag: 0.04, len: 2.4 });
+const DARK_GLOW = kind({ shape: 'glow', colour: 'violet', size: [0.35, 0.55], life: [12, 20], alpha: 0.6, grow: 0.02 });
 
-const ASH = kind({ shape: 'dot', colour: 'ash', size: [0.03, 0.055], life: [20, 40], drag: 0.03, gravity: -0.0008 });
+const ASH = kind({ shape: 'dot', colour: 'ash', size: [0.014, 0.028], life: [20, 40], drag: 0.03, gravity: -0.0008 });
+const GRIP = kind({ shape: 'dot', colour: 'void', size: [0.02, 0.035], life: [10, 18], drag: 0.05 });
 const ASH_PUFF = kind({ shape: 'puff', colour: 'ash', size: [0.18, 0.36], life: [30, 50], drag: 0.05, grow: 0.01, gravity: -0.001, alpha: 0.45, fadeIn: 0.1 });
-const FROST_GLINT = kind({ shape: 'dot', light: true, colour: 'ice', fade: 'frost', size: [0.025, 0.04], life: [8, 16], drag: 0.05 });
-const SHARD = kind({ shape: 'shard', colour: 'ice', fade: 'iceEdge', size: [0.08, 0.16], life: [35, 60], drag: 0.02, gravity: 0.006, spin: 0.3, floor: 'bounce' });
-const FROST_SPARK = kind({ shape: 'spark', colour: 'white', fade: 'frost', size: [0.025, 0.04], life: [10, 20], drag: 0.04, gravity: 0.002, len: 2.2 });
+const FROST_GLINT = kind({ shape: 'dot', light: true, colour: 'ice', fade: 'frost', size: [0.014, 0.024], life: [8, 16], drag: 0.05 });
+const SHARD = kind({ shape: 'shard', colour: 'ice', fade: 'iceEdge', size: [0.05, 0.12], life: [35, 60], drag: 0.02, gravity: 0.006, spin: 0.3, floor: 'bounce' });
+const FROST_SPARK = kind({ shape: 'spark', colour: 'white', fade: 'frost', size: [0.015, 0.026], life: [10, 20], drag: 0.04, gravity: 0.002, len: 2.2 });
 const CHILL = kind({ shape: 'puff', colour: 'chill', size: [0.3, 0.5], life: [40, 60], drag: 0.04, grow: 0.01, alpha: 0.3, fadeIn: 0.15 });
 const FROST_MOTE = kind({ shape: 'glow', colour: 'frost', size: [0.05, 0.09], life: [14, 14], alpha: 0.85, trail: { kind: FROST_GLINT, rate: 0.8 } });
-const FROST_GLOW = kind({ shape: 'glow', colour: 'frost', size: [0.6, 0.9], life: [12, 18], alpha: 0.55, grow: 0.02 });
+const FROST_GLOW = kind({ shape: 'glow', colour: 'frost', size: [0.4, 0.6], life: [12, 18], alpha: 0.55, grow: 0.02 });
 const SOUL = kind({ shape: 'glow', colour: 'frost', fade: 'ice', size: [0.06, 0.1], life: [40, 40], alpha: 0.85, trail: { kind: FROST_GLINT, rate: 0.6 } });
 
-const STORM = kind({ shape: 'spark', colour: 'white', fade: 'storm', size: [0.022, 0.038], life: [12, 26], drag: 0.02, gravity: 0.011, len: 1.6, floor: 'bounce' });
-const CRACKLE = kind({ shape: 'spark', colour: 'white', fade: 'blue', size: [0.018, 0.03], life: [4, 8], drag: 0.1, len: 1.5 });
-const STORM_GLOW = kind({ shape: 'glow', colour: 'storm', size: [0.12, 0.2], life: [14, 22], drag: 0.05, alpha: 0.8 });
-const STRIKE = kind({ shape: 'glow', colour: 'storm', size: [0.6, 0.9], life: [8, 12], alpha: 0.7 });
+const STORM = kind({ shape: 'spark', colour: 'white', fade: 'storm', size: [0.013, 0.024], life: [12, 26], drag: 0.02, gravity: 0.011, len: 1.6, floor: 'bounce' });
+const CRACKLE = kind({ shape: 'spark', colour: 'white', fade: 'blue', size: [0.012, 0.02], life: [4, 8], drag: 0.1, len: 1.5 });
+const STORM_GLOW = kind({ shape: 'glow', colour: 'storm', size: [0.08, 0.14], life: [14, 22], drag: 0.05, alpha: 0.8 });
+const STRIKE = kind({ shape: 'glow', colour: 'storm', size: [0.45, 0.6], life: [8, 12], alpha: 0.7 });
 
-const LILAC_TAIL = kind({ shape: 'dot', light: true, colour: 'lilac', size: [0.02, 0.035], life: [8, 14] });
-const SOUL_MOTE = kind({ shape: 'glow', colour: 'lilac', fade: 'purple', size: [0.06, 0.1], life: [40, 40], alpha: 0.8, trail: { kind: LILAC_TAIL, rate: 0.8 } });
+const LILAC_TAIL = kind({ shape: 'dot', light: true, colour: 'lilac', size: [0.012, 0.02], life: [8, 14] });
+const SOUL_MOTE = kind({ shape: 'glow', colour: 'lilac', fade: 'purple', size: [0.06, 0.1], life: [40, 40], alpha: 0.8, trail: { kind: LILAC_TAIL, rate: 0.5 } });
 
-const PULSE = kind({ shape: 'glow', colour: 'red', fade: 'crimson', size: [0.1, 0.16], life: [16, 24], drag: 0.04, alpha: 0.85 });
-const CHI = kind({ shape: 'spark', colour: 'white', fade: 'jade', size: [0.02, 0.035], life: [10, 18], drag: 0.05, len: 2 });
+const PULSE = kind({ shape: 'glow', colour: 'red', fade: 'crimson', size: [0.08, 0.12], life: [16, 24], drag: 0.04, alpha: 0.85 });
+const CHI = kind({ shape: 'spark', colour: 'white', fade: 'jade', size: [0.013, 0.022], life: [10, 18], drag: 0.05, len: 2 });
 const LIFE = kind({ shape: 'glow', colour: 'red', fade: 'crimson', size: [0.04, 0.07], life: [30, 50], drag: 0.02, gravity: -0.002, alpha: 0.8 });
 
-const STARDUST = kind({ shape: 'dot', light: true, colour: 'white', fade: 'moon', size: [0.022, 0.04], life: [12, 24], drag: 0.05, gravity: 0.0008 });
-const STAR_SPARK = kind({ shape: 'spark', colour: 'white', fade: 'moon', size: [0.022, 0.04], life: [10, 20], drag: 0.05, gravity: 0.002, len: 2 });
+const STARDUST = kind({ shape: 'dot', light: true, colour: 'white', fade: 'moon', size: [0.012, 0.024], life: [12, 24], drag: 0.05, gravity: 0.0008 });
+const STAR_SPARK = kind({ shape: 'spark', colour: 'white', fade: 'moon', size: [0.014, 0.024], life: [10, 20], drag: 0.05, gravity: 0.002, len: 2 });
 const STAR = kind({ shape: 'glow', colour: 'moon', size: [0.14, 0.2], life: [1, 1], trail: { kind: STARDUST, rate: 2.2, speed: 0.006 }, burst: { kind: STAR_SPARK, n: 14, speed: [0.03, 0.09] } });
 const BIG_STAR = kind({ shape: 'glow', colour: 'moon', size: [0.42, 0.5], life: [1, 1], trail: { kind: STARDUST, rate: 6, speed: 0.012 }, burst: { kind: STAR_SPARK, n: 50, speed: [0.04, 0.14] } });
-const MOONMOTE = kind({ shape: 'dot', light: true, colour: 'moon', size: [0.02, 0.035], life: [50, 80] });
-const MOON_RING = kind({ shape: 'glow', colour: 'moon', size: [0.1, 0.18], life: [16, 26], drag: 0.05, alpha: 0.85 });
-const MOON_GLOW = kind({ shape: 'glow', colour: 'moon', size: [0.6, 0.9], life: [12, 18], alpha: 0.6, grow: 0.02 });
+const MOONMOTE = kind({ shape: 'dot', light: true, colour: 'moon', size: [0.012, 0.02], life: [50, 80] });
+const MOON_RING = kind({ shape: 'glow', colour: 'moon', size: [0.08, 0.14], life: [16, 26], drag: 0.05, alpha: 0.85 });
+const MOON_GLOW = kind({ shape: 'glow', colour: 'moon', size: [0.4, 0.6], life: [12, 18], alpha: 0.6, grow: 0.02 });
 
-const FEL_EMBER = kind({ shape: 'ember', colour: 'felPale', fade: 'fel', size: [0.06, 0.12], life: [18, 34], drag: 0.03, gravity: -0.003 });
-const FEL_SMOKE = kind({ shape: 'puff', colour: 'felSmoke', size: [0.24, 0.42], life: [35, 55], drag: 0.04, grow: 0.012, gravity: -0.0015, alpha: 0.5, fadeIn: 0.15 });
-const FEL_SPARK = kind({ shape: 'spark', colour: 'felPale', fade: 'fel', size: [0.025, 0.04], life: [10, 20], drag: 0.04, gravity: 0.004, len: 2.2, floor: 'bounce' });
+const FEL_EMBER = kind({ shape: 'ember', colour: 'felPale', fade: 'fel', size: [0.05, 0.1], life: [14, 26], drag: 0.04, gravity: -0.0012 });
+const FEL_SMOKE = kind({ shape: 'puff', colour: 'felSmoke', size: [0.2, 0.36], life: [30, 45], drag: 0.05, grow: 0.01, gravity: -0.0008, alpha: 0.32, fadeIn: 0.15 });
+const FEL_SPARK = kind({ shape: 'spark', colour: 'felPale', fade: 'fel', size: [0.015, 0.026], life: [10, 20], drag: 0.04, gravity: 0.004, len: 2.2, floor: 'bounce' });
 const FEL_BLADE = kind({ shape: 'glow', colour: 'fel', size: [0.07, 0.11], life: [7, 11], alpha: 0.6 });
 const FEL_GLOW = kind({ shape: 'glow', colour: 'fel', size: [0.35, 0.5], life: [5, 8], alpha: 0.6 });
 
-const FIRE = kind({ shape: 'ember', colour: 'flame', fade: 'ember', size: [0.1, 0.2], life: [20, 32], drag: 0.01, gravity: -0.002, grow: 0.004 });
-const FIRE_GLOW = kind({ shape: 'glow', colour: 'ember', fade: 'cinder', size: [0.25, 0.42], life: [14, 24], alpha: 0.5, grow: 0.01 });
-const BLACK_SMOKE = kind({ shape: 'puff', colour: 'smoke', size: [0.3, 0.5], life: [40, 60], drag: 0.02, grow: 0.016, gravity: -0.002, alpha: 0.5, fadeIn: 0.2 });
-const CINDER = kind({ shape: 'dot', light: true, colour: 'flame', fade: 'cinder', size: [0.025, 0.045], life: [30, 50], drag: 0.02, gravity: -0.003 });
+const FIRE = kind({ shape: 'ember', colour: 'flame', fade: 'ember', size: [0.08, 0.16], life: [20, 32], drag: 0.01, gravity: -0.002, grow: 0.005, alpha: 0.85 });
+const FIRE_GLOW = kind({ shape: 'glow', colour: 'ember', fade: 'cinder', size: [0.2, 0.34], life: [14, 24], alpha: 0.35, grow: 0.012 });
+const BLACK_SMOKE = kind({ shape: 'puff', colour: 'smoke', size: [0.26, 0.44], life: [40, 60], drag: 0.02, grow: 0.014, gravity: -0.002, alpha: 0.42, fadeIn: 0.2 });
+const CINDER = kind({ shape: 'dot', light: true, colour: 'flame', fade: 'cinder', size: [0.014, 0.026], life: [30, 50], drag: 0.02, gravity: -0.003 });
 
 // ---------------------------------------------------------------------------------------------
 // The script.
@@ -152,6 +156,9 @@ interface Moment {
   hit: number;
 }
 
+/** Where the winner stood when this beat began. */
+const from = (m: Moment) => ANCHOR.from + m.k;
+
 /** A whole number for this tick of `rate` a tick, at the beat's time scale. */
 const per = (m: Moment, rate: number) => m.pool.howMany(rate * m.dt);
 
@@ -168,8 +175,9 @@ function dustRing(m: Moment, at: number, n: number, speed: number): void {
 }
 
 /** Blood thrown off the loser's chest, `angle` and `spread` the way it goes. */
-function bleed(m: Moment, n: number, angle = 0.6, spread = 1.8, speed: [number, number] = [0.05, 0.16]): void {
+function bleed(m: Moment, n: number, angle = 0.6, spread = 1.8, speed: [number, number] = [0.04, 0.12]): void {
   m.pool.burst(BLOOD, n, LG, 0, m.rig.chest, speed, angle, spread);
+  m.pool.burst(SPATTER, n, LG, 0, m.rig.chest, [speed[0] * 1.2, speed[1] * 1.4], angle, spread * 0.8);
   m.pool.smoke(MIST, Math.ceil(n / 10), LG, 0.1, m.rig.chest, 0.25, 0.004);
 }
 
@@ -191,8 +199,8 @@ function spin(m: Moment, blade: typeof BLADE, spark: typeof STEEL, period: numbe
 function warrior(m: Moment): void {
   const { pool, rig } = m;
   if (m.k === 0) {
-    if (m.t === 0) dust(m, F, 8);
-    pool.stream(DUST, per(m, 1.2), F, WG, [0.2, 1], [0, 0], 0.3, [0, 0], 0.006);
+    if (m.t === 0) dust(m, from(m), 8);
+    pool.stream(DUST, per(m, 1.2), from(m), WG, [0.2, 1], [0, 0], 0.3, [0, 0], 0.006);
   } else if (m.k === 1) {
     spin(m, BLADE, STEEL, 20);
     if (m.blow) {
@@ -254,9 +262,8 @@ function hunter(m: Moment): void {
   /** An arrow loosed now that lands `ticks` later. */
   const loose = (ticks: number, big: boolean) => {
     const flight = ticks * m.dt;
-    const i = pool.spawn(ARROW, H, L, 0, 0, 0, 0, 0, 1 / flight);
-    pool.lasting(i, flight - 1e-6);
-    if (big) pool.lasting(pool.spawn(SHOT_GLOW, H, L, 0, 0, 0, 0, 0, 1 / flight), flight - 1e-6);
+    pool.lasting(pool.spawn(ARROW, H, L, 0, 0, 0, 0, 0, 1 / flight), flight - 1e-6);
+    pool.lasting(pool.spawn(big ? SHOT_GLOW : ARROW_HEAD, H, L, 0, 0, 0, 0, 0, 1 / flight), flight - 1e-6);
   };
   const struck = (n: number) => {
     pool.burst(FEATHER, n, LG, 0, rig.chest, [0.03, 0.08], Math.PI * 0.75, 1.6);
@@ -265,7 +272,7 @@ function hunter(m: Moment): void {
     bleed(m, n, 0.3, 1.4);
   };
   if (m.k === 0) {
-    if (m.t === 0) dust(m, F, 8);
+    if (m.t === 0) dust(m, from(m), 8);
     if (m.t === m.beat.frames - 1) dust(m, WG, 6);
   } else if (m.k === 1) {
     // One every four ticks, timed to land on the blows.
@@ -287,12 +294,13 @@ function rogue(m: Moment): void {
   const { pool, rig } = m;
   const slash = (from: number, to: number, n: number) => {
     pool.arc(BLOOD, n, LG, 0, rig.chest, 0.45, from, to, [0.06, 0.15], 0.35);
+    pool.arc(SPATTER, n, LG, 0, rig.chest, 0.45, from, to, [0.08, 0.18], 0.25);
     pool.arc(SLASH, Math.round(n * 0.6), LG, 0, rig.chest, 0.5, from, to, [0.08, 0.14], 0.1);
     pool.smoke(MIST, 3, LG, 0.1, rig.chest, 0.3, 0.004);
   };
   if (m.k === 0 && m.t === 0) {
-    pool.smoke(SHADOW, 14, F, 0, 0.9, 0.6, 0.008);
-    pool.burst(SHADOW_GLINT, 20, F, 0, 0.9, [0.02, 0.06]);
+    pool.smoke(SHADOW, 14, from(m), 0, 0.9, 0.6, 0.008);
+    pool.burst(SHADOW_GLINT, 20, from(m), 0, 0.9, [0.02, 0.06]);
     pool.smoke(SHADOW, 10, WG, 0, 0.9, 0.5, 0.008);
     pool.burst(SHADOW_GLINT, 14, WG, 0, 0.9, [0.02, 0.05]);
   } else if (m.k === 1 && m.blow) slash(2.3, -0.7, 40);
@@ -346,9 +354,10 @@ function deathknight(m: Moment): void {
   if (m.k === 0) {
     if (m.t === 0) pool.burst(ASH, 30, L, 0, 0, [0.02, 0.07]);
     // The grip: ash pouring from the loser back into the hand, and the chill that comes with it.
-    pool.stream(ASH, per(m, 4), H, L, [0.1, 1], [-1 / 30, -1 / 45], 0.25);
-    pool.stream(ASH_PUFF, per(m, 0.6), H, L, [0.2, 1], [-1 / 50, -1 / 70], 0.3);
-    pool.stream(FROST_GLINT, per(m, 1.2), H, L, [0.1, 1], [-1 / 25, -1 / 35], 0.3);
+    pool.stream(GRIP, per(m, 10), H, L, [0.05, 1], [-1 / 24, -1 / 36], 0.12);
+    pool.stream(ASH, per(m, 4), H, L, [0.1, 1], [-1 / 30, -1 / 45], 0.35);
+    pool.stream(ASH_PUFF, per(m, 0.5), H, L, [0.2, 1], [-1 / 50, -1 / 70], 0.3);
+    pool.stream(FROST_GLINT, per(m, 2), H, L, [0.1, 1], [-1 / 25, -1 / 35], 0.2);
   } else if (m.k === 1) {
     if (m.t < m.hit) pool.implode(FROST_GLINT, per(m, 2), H, 0, 0, [0.6, 1.0], 14, 0.2);
     if (m.blow) shatter(40);
@@ -448,7 +457,7 @@ function monk(m: Moment): void {
     pool.ring(PULSE, Math.round(n * 0.6), LG, 0, 0.05, 0.3, [0.07, 0.11], 0.3);
     pool.burst(CHI, Math.round(n / 2), L, 0, 0, [0.05, 0.14]);
   };
-  if (m.k === 0 && m.t === 0) dust(m, F, 8);
+  if (m.k === 0 && m.t === 0) dust(m, from(m), 8);
   else if ((m.k === 1 || m.k === 2) && m.blow) kick(m.k === 1 ? 40 : 30);
   else if (m.k === 3) {
     if (m.blow) {
@@ -503,16 +512,16 @@ function druid(m: Moment): void {
 function demonhunter(m: Moment): void {
   const { pool, rig } = m;
   const beam = (rate: number) => {
-    pool.stream(FEL_EMBER, per(m, rate), E, L, [0, 1], [0.002, 0.008], 0.3, [0.002, 0.01], 0.004);
-    pool.stream(FEL_SMOKE, per(m, rate * 0.15), E, L, [0.2, 1], [0, 0.003], 0.4, [0, 0.004], 0.006);
+    pool.stream(FEL_EMBER, per(m, rate), E, L, [0, 1], [0.002, 0.008], 0.2, [0.002, 0.008], 0.002);
+    pool.stream(FEL_SMOKE, per(m, rate * 0.1), E, L, [0.3, 1], [0, 0.003], 0.3, [0, 0.003], 0.003);
     pool.fountain(FEL_EMBER, rate * 0.8, m.dt, LG, 0, rig.chest, [0.03, 0.09], 0.5, 1.6);
     pool.burst(FEL_GLOW, per(m, 0.6), L, 0, 0, [0, 0]);
     pool.burst(FEL_GLOW, per(m, 0.4), E, 0, 0, [0, 0]);
   };
   if (m.k === 0) {
-    if (m.t === 0) pool.burst(FEL_EMBER, 24, F, 0, 0.6, [0.02, 0.06]);
-    pool.stream(FEL_EMBER, per(m, 2.5), F, WG, [0.3, 1], [0, 0], 0.6, [0, 0.01], 0.01);
-    pool.stream(FEL_SMOKE, per(m, 0.5), F, WG, [0.2, 1], [0, 0], 0.4, [0, 0], 0.006);
+    if (m.t === 0) pool.burst(FEL_EMBER, 24, from(m), 0, 0.6, [0.02, 0.06]);
+    pool.stream(FEL_EMBER, per(m, 2.5), from(m), WG, [0.3, 1], [0, 0], 0.6, [0, 0.01], 0.01);
+    pool.stream(FEL_SMOKE, per(m, 0.5), from(m), WG, [0.2, 1], [0, 0], 0.4, [0, 0], 0.006);
   } else if (m.k === 1) {
     spin(m, FEL_BLADE, FEL_SPARK, 16);
     if (m.blow) {
@@ -520,10 +529,10 @@ function demonhunter(m: Moment): void {
       pool.ring(FEL_SPARK, 30, WG, 0, rig.winnerChest * 0.7, 1.0, [0.1, 0.2], 0.4);
     }
   } else if (m.k === 2) {
-    if (m.t === 0) dust(m, F, 6);
+    if (m.t === 0) dust(m, from(m), 6);
     if (m.t === m.beat.frames - 1) dust(m, WG, 6);
   } else {
-    beam(m.k === 4 ? 5 : 4);
+    beam(m.k === 4 ? 4 : 3);
     if (m.blow) {
       pool.burst(FEL_SPARK, m.k === 4 ? 60 : 30, L, 0, 0, [0.05, 0.16]);
       if (m.k === 4) pool.smoke(FEL_SMOKE, 12, LG, 0, rig.chest * 0.7, 0.6, 0.01);
@@ -535,13 +544,14 @@ function demonhunter(m: Moment): void {
 function evoker(m: Moment): void {
   const { pool, rig } = m;
   const breath = (rate: number) => {
-    pool.stream(FIRE, per(m, rate), E, L, [0, 0.15], [1 / 22, 1 / 16], 0.15, [0.004, 0.012]);
-    pool.stream(FIRE_GLOW, per(m, rate * 0.35), E, L, [0, 0.2], [1 / 22, 1 / 16], 0.2, [0.002, 0.008]);
+    // The cone: each ember flies out along the line and away from it, so the farther it gets the wider it spreads.
+    pool.stream(FIRE, per(m, rate), E, L, [0, 0.1], [1 / 22, 1 / 16], 0.1, [0.01, 0.034]);
+    pool.stream(FIRE_GLOW, per(m, rate * 0.35), E, L, [0, 0.15], [1 / 22, 1 / 16], 0.15, [0.006, 0.024]);
     pool.stream(BLACK_SMOKE, per(m, rate * 0.12), E, L, [0.6, 1.1], [0, 0.004], 0.6, [0, 0.004], 0.008);
     pool.fountain(CINDER, rate * 0.3, m.dt, LG, 0, rig.chest, [0.02, 0.05], 1.2, 1.6);
   };
   if (m.k === 0) {
-    if (m.t === 0) dust(m, F, 8);
+    if (m.t === 0) dust(m, from(m), 8);
     if (m.t === m.beat.frames - 1) dust(m, WG, 6);
   } else if (m.k === 1) {
     if (m.t >= 20) pool.implode(FIRE, per(m, 1.5), E, 0, 0, [0.8, 1.4], 18, 0.1);
@@ -596,10 +606,27 @@ export class FatalityFx {
   private key = '';
   /** Ticks the pool has been stepped through. */
   tick = 0;
+  /**
+   * Where the winner stood as each beat began, as the HUD saw it during the beat: the engine keeps
+   * only the current beat's, and dust kicked up at the start of a leap should stay there after.
+   * Not part of the pool; a beat the HUD never drew during falls back to the current one.
+   */
+  private froms: number[] = [];
+
+  /** The winner stood at `x` when beat `k` began. */
+  note(k: number, x: number): void {
+    this.froms[k] = x;
+  }
+
+  /** Where the winner stood when beat `k` began, or `x` when the HUD never saw it. */
+  fromOf(k: number, x: number): number {
+    return this.froms[k] ?? x;
+  }
 
   advance(spec: Fatality, start: number, rig: Rig, target: number): void {
     const key = `${spec.id} ${start} ${rig.chest.toFixed(3)} ${rig.top.toFixed(3)} ${rig.winnerChest.toFixed(3)}`;
     if (key !== this.key || target < this.tick) {
+      if (key !== this.key) this.froms = [];
       this.key = key;
       this.tick = 0;
       this.pool.reset(0);
