@@ -2212,3 +2212,207 @@ code {
 .fight .net-notes p {
   margin: 4px 0;
 }
+
+/* TOURNAMENT: the panel widens for the bracket; UP NEXT over it, the rounds side by side under it. */
+.guide.online.wide {
+  width: min(1080px, 96vw);
+}
+
+.guide .body.online-cup {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  padding: 20px 24px 22px;
+  text-align: center;
+}
+
+.guide.online .online-cup .players {
+  max-height: 34vh;
+}
+
+.guide.online .online-cup .players .button {
+  white-space: nowrap;
+}
+
+.guide.online .online-cup .seeds {
+  width: 100%;
+  max-height: 30vh;
+  overflow: auto;
+  margin: 0;
+  padding: 0 0 0 2.4em;
+  border-top: 1px solid var(--line);
+  text-align: left;
+}
+
+.guide.online .online-cup .seeds li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--line);
+  color: var(--gold);
+}
+
+.guide.online .online-cup .seeds .name {
+  color: var(--text);
+  font-family: var(--serif);
+  font-weight: 700;
+}
+
+.guide.online .online-cup .seeds .link {
+  font-size: 1rem;
+  text-decoration: none;
+}
+
+.guide.online .online-cup .seeds .link:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.guide.online .online-cup .small-choices {
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.guide.online .online-cup .small-choices .button {
+  min-width: 0;
+  padding: 5px 12px;
+  font-size: 0.9rem;
+}
+
+.guide.online .online-cup .button.on {
+  border-color: var(--gold);
+  background: rgba(255, 209, 0, 0.14);
+}
+
+.guide.online .online-cup .button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.guide.online .online-cup .champion {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  padding: 8px 0 4px;
+  letter-spacing: 0.2em;
+}
+
+.guide.online .online-cup .champion .big {
+  color: var(--gold);
+  font-family: var(--warcraft);
+  font-size: 2.6rem;
+  letter-spacing: 0.06em;
+}
+
+.guide .online-cup .bracket {
+  display: flex;
+  gap: 18px;
+  width: 100%;
+  overflow-x: auto;
+  padding: 6px 0 4px;
+  border-top: 1px solid var(--line);
+}
+
+.guide .online-cup .round {
+  display: flex;
+  flex: 1 0 170px;
+  flex-direction: column;
+}
+
+.guide .online-cup .round h4 {
+  margin: 4px 0 8px;
+  color: var(--dim);
+  font-family: var(--serif);
+  font-size: 0.8rem;
+  letter-spacing: 0.14em;
+}
+
+/* Each round's bouts spread over the same height, so a bout sits level with the two that feed it. */
+.guide .online-cup .bouts {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: space-around;
+  gap: 22px;
+}
+
+.guide .online-cup .bout {
+  position: relative;
+  display: grid;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.25);
+  text-align: left;
+}
+
+.guide .online-cup .bout.ready {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 1px rgba(255, 209, 0, 0.25);
+}
+
+.guide .online-cup .bout.bye {
+  opacity: 0.45;
+}
+
+.guide .online-cup .slot {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 9px;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-family: var(--serif);
+  font-weight: 700;
+  font-size: 0.95rem;
+  text-align: left;
+}
+
+.guide .online-cup .slot + .slot {
+  border-top: 1px solid var(--line);
+}
+
+.guide .online-cup button.slot {
+  cursor: pointer;
+}
+
+.guide .online-cup button.slot:hover {
+  background: rgba(255, 209, 0, 0.12);
+  color: var(--gold);
+}
+
+.guide .online-cup .slot.won {
+  color: var(--gold);
+}
+
+.guide .online-cup .slot.lost,
+.guide .online-cup .slot.away {
+  color: var(--dim);
+}
+
+.guide .online-cup .slot .who-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.guide .online-cup .slot .score {
+  font-variant-numeric: tabular-nums;
+}
+
+.guide.online .online-cup .bout .undo {
+  position: absolute;
+  right: 4px;
+  bottom: -17px;
+  margin: 0;
+  font-size: 0.72rem;
+}
+
+.guide.online .online-cup input.name {
+  width: 14em;
+  padding: 6px 10px;
+  font-size: 1rem;
+}

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { BoardTable } from './Board';
 import { notifyOn, setNotify } from './call';
 import { meet, mismatch } from './net/handshake';
+import { CupView } from './Tournament';
 import { cleanName, type Lobby, type LobbyFight, type LobbyState, EMPTY, recordText, typingName } from './net/lobby';
 import { cleanCode, createRoom, Link, relayUrl, type Role } from './net/relay';
 import { useModalKeys } from './ui/modal';
@@ -19,6 +20,7 @@ import { useModalKeys } from './ui/modal';
  * Two players on different relays can still use a room code, behind the small link at the bottom.
  * Beside WHO'S HERE is TOP TEN, the relay's board, and each name here carries its record tonight.
  * A small switch asks the browser to notify the player when a fight comes while they look away.
+ * TOURNAMENT (T) is for whoever runs the night: a bracket of the players here, see Tournament.tsx.
  * The same panel as the guide, and all of it from the keyboard.
  */
 
@@ -154,7 +156,7 @@ function OnFor({ since }: { since: number }) {
   return <span class="dim small">{`${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`}</span>;
 }
 
-type View = 'name' | 'here' | 'board' | 'code';
+type View = 'name' | 'here' | 'board' | 'code' | 'cup';
 
 export function Online({ lobby, name, onName, product, onReady, onClose, onWatch }: OnlineProps) {
   const [view, setView] = useState<View>(name ? 'here' : 'name');
@@ -193,6 +195,19 @@ export function Online({ lobby, name, onName, product, onReady, onClose, onWatch
     });
   };
 
+  // TOURNAMENT: Escape back to WHO'S HERE; the letters are its name field's.
+  useEffect(() => {
+    if (view !== 'cup') return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.code !== 'Escape') return;
+      event.stopPropagation();
+      event.preventDefault();
+      setView('here');
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [view]);
+
   // TOP TEN: Escape or B back to WHO'S HERE; the table turns its spans itself.
   useEffect(() => {
     if (view !== 'board') return;
@@ -210,7 +225,7 @@ export function Online({ lobby, name, onName, product, onReady, onClose, onWatch
     if (view !== 'here') return;
     const onKey = (event: KeyboardEvent) => {
       const key = event.code;
-      if (!['Escape', 'ArrowUp', 'ArrowDown', 'Enter', 'NumpadEnter', 'KeyQ', 'KeyN', 'KeyB', 'KeyW'].includes(key)) return;
+      if (!['Escape', 'ArrowUp', 'ArrowDown', 'Enter', 'NumpadEnter', 'KeyQ', 'KeyN', 'KeyB', 'KeyT', 'KeyW'].includes(key)) return;
       event.stopPropagation();
       event.preventDefault();
       if (key === 'Escape') {
@@ -223,6 +238,7 @@ export function Online({ lobby, name, onName, product, onReady, onClose, onWatch
       else if (key === 'KeyQ') quick();
       else if (key === 'KeyN') setView('name');
       else if (key === 'KeyB') setView('board');
+      else if (key === 'KeyT') setView('cup');
       // W watches the fight the chosen player is in, or else the one that has been on longest.
       else if (key === 'KeyW') watch((at >= 0 ? fightOf(others[at]!.id) : undefined) ?? state.fights[0]);
       else if (at < 0) {
@@ -240,7 +256,7 @@ export function Online({ lobby, name, onName, product, onReady, onClose, onWatch
 
   return (
     <div class="guide-backdrop" onClick={close}>
-      <div class="guide online" onClick={(event) => event.stopPropagation()}>
+      <div class={`guide online ${view === 'cup' ? 'wide' : ''}`} onClick={(event) => event.stopPropagation()}>
         <nav class="tabs">
           <button class={view === 'here' || view === 'name' ? 'here' : ''} type="button" onClick={() => setView(name ? 'here' : 'name')}>
             {view === 'name' ? 'YOUR NAME' : "WHO'S HERE"}
@@ -249,9 +265,14 @@ export function Online({ lobby, name, onName, product, onReady, onClose, onWatch
             <button class="here" type="button">WITH A CODE</button>
           ) : (
             view !== 'name' && (
-              <button class={view === 'board' ? 'here' : ''} type="button" onClick={() => setView('board')}>
-                TOP TEN · B
-              </button>
+              <>
+                <button class={view === 'board' ? 'here' : ''} type="button" onClick={() => setView('board')}>
+                  TOP TEN · B
+                </button>
+                <button class={view === 'cup' ? 'here' : ''} type="button" onClick={() => setView('cup')}>
+                  TOURNAMENT · T
+                </button>
+              </>
             )
           )}
           <button class="close" onClick={close} aria-label="Close" type="button">✕</button>
@@ -269,6 +290,8 @@ export function Online({ lobby, name, onName, product, onReady, onClose, onWatch
           <div class="body online-board">
             <BoardTable />
           </div>
+        ) : view === 'cup' ? (
+          <CupView lobby={lobby} state={state} onWatch={onWatch} />
         ) : view === 'code' ? (
           <CodeView product={product} onReady={onReady} onBack={() => setView(name ? 'here' : 'name')} />
         ) : (
@@ -376,7 +399,7 @@ export function Online({ lobby, name, onName, product, onReady, onClose, onWatch
               </label>
             )}
             <p class="dim small">
-              ↑ ↓ choose · Enter fight{onWatch ? ' · W watch' : ''} · B the board · Esc {state.queued || state.outgoing ? 'take it back' : 'close'}. Each of you needs the game open with your own World of Warcraft
+              ↑ ↓ choose · Enter fight{onWatch ? ' · W watch' : ''} · B the board · T a tournament · Esc {state.queued || state.outgoing ? 'take it back' : 'close'}. Each of you needs the game open with your own World of Warcraft
               folder. Whoever challenges is player 1 and picks the ground.{' '}
               <button type="button" class="link" onClick={() => setView('code')}>join with a code</button>
             </p>
