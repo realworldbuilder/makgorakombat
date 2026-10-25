@@ -7,7 +7,7 @@ import type { Fighter, Match, Projectile, Spark } from '../engine/engine';
  * the outside once a frame: a spark that was not there last frame is a hit, a fighter whose move
  * clock went back started a move, a banner that changed is a round event. Every clip is one of
  * the player's own game files (see Mogshot's character/sounds.ts for how each was chosen),
- * decoded once with WebAudio.
+ * decoded once with WebAudio and kept for the last few fighters heard.
  *
  * Browsers keep audio silent until the page has seen a key or a click, so the AudioContext is
  * made on the first key press anywhere and nothing plays before it. M mutes.
@@ -130,30 +130,64 @@ interface Decoded {
   clips: { buffer: AudioBuffer; volume: number; weight: number }[];
 }
 
+/** How many fighters' decoded sounds are kept: both sides of this fight and the last. */
+export const KEEP_VOICES = 4;
+
+/**
+ * Each fighter's clips decoded, by kit, for the last few fighters heard. Decoded sound is
+ * large (a second in stereo is a third of a megabyte), so it is kept for the fighters likely
+ * to be heard again, picked once more after a trip back to the roster, and not for every one
+ * ever built. Keyed by the fighter's own sound set, which the roster's cache hands back with
+ * the fighter: a fighter rebuilt has a new set and is decoded again, and both sides of a
+ * mirror match share one.
+ */
+const decodedSets = new Map<FightSoundSet, Promise<Map<number, Decoded>>>();
+
+/** A set's clips, decoded with WebAudio once while they are kept. */
+export function decodedSet(ctx: Pick<BaseAudioContext, 'decodeAudioData'>, set: FightSoundSet): Promise<Map<number, Decoded>> {
+  let decoded = decodedSets.get(set);
+  if (decoded) {
+    // Heard again: it goes to the back of the line.
+    decodedSets.delete(set);
+    decodedSets.set(set, decoded);
+    return decoded;
+  }
+  decoded = decode(ctx, set);
+  decodedSets.set(set, decoded);
+  while (decodedSets.size > KEEP_VOICES) decodedSets.delete(decodedSets.keys().next().value!);
+  return decoded;
+}
+
+async function decode(ctx: Pick<BaseAudioContext, 'decodeAudioData'>, set: FightSoundSet): Promise<Map<number, Decoded>> {
+  const decoded = new Map<number, Decoded>();
+  await Promise.all(
+    Object.values(set.kits).map(async (kit: SoundKitClips) => {
+      const clips: Decoded['clips'] = [];
+      for (const clip of kit.clips) {
+        try {
+          // decodeAudioData takes the buffer, so each clip is copied out of the set.
+          const buffer = await ctx.decodeAudioData(clip.bytes.slice().buffer as ArrayBuffer);
+          clips.push({ buffer, volume: clip.volume, weight: clip.weight });
+        } catch (error) {
+          console.warn(`Sound file ${clip.fileId} did not decode:`, error);
+        }
+      }
+      if (clips.length > 0) decoded.set(kit.kit, { kit: kit.kit, pitchVariation: kit.pitchVariation, clips });
+    }),
+  );
+  return decoded;
+}
+
 /** One fighter's decoded sounds, by name. */
 class Voice {
-  private readonly decoded = new Map<number, Decoded>();
+  private decoded = new Map<number, Decoded>();
   /** Set once the clips are decoded; until then everything is silent. */
   ready = false;
 
   constructor(readonly set: FightSoundSet) {}
 
   async decode(ctx: AudioContext): Promise<void> {
-    await Promise.all(
-      Object.values(this.set.kits).map(async (kit: SoundKitClips) => {
-        const clips: Decoded['clips'] = [];
-        for (const clip of kit.clips) {
-          try {
-            // decodeAudioData takes the buffer, so each clip is copied out of the set.
-            const buffer = await ctx.decodeAudioData(clip.bytes.slice().buffer as ArrayBuffer);
-            clips.push({ buffer, volume: clip.volume, weight: clip.weight });
-          } catch (error) {
-            console.warn(`Sound file ${clip.fileId} did not decode:`, error);
-          }
-        }
-        if (clips.length > 0) this.decoded.set(kit.kit, { kit: kit.kit, pitchVariation: kit.pitchVariation, clips });
-      }),
-    );
+    this.decoded = await decodedSet(ctx, this.set);
     this.ready = true;
   }
 
