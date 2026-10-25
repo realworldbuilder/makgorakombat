@@ -87,7 +87,7 @@ pnpm dev
 
 The engine (CASC reader, model and animation parsers, skinning, WebGL renderer, the worker that reads the folder) is [Mogshot](https://github.com/realworldbuilder/mogshot), brought in as the submodule `vendor/mogshot`. To work on both at once, point the game at a checkout of Mogshot: `MOGSHOT_SRC=../mogshot/src pnpm dev`.
 
-`pnpm test` runs the engine's tests (the fight itself is deterministic and runs without a browser). `pnpm build` makes the static site in `dist/`; a push to `main` deploys it to GitHub Pages.
+`pnpm test` runs the engine's tests (the fight itself is deterministic and runs without a browser). `pnpm build` makes the static site in `dist/`; a push to `main` deploys it to GitHub Pages. Working on it together: [CONTRIBUTING.md](CONTRIBUTING.md); every change goes through a pull request.
 
 ### Stages
 
