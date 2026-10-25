@@ -29,6 +29,8 @@ export interface FightUiProps {
   assets: UiAssets;
   /** Online: which fighter this machine plays. Its bar shows player 1's keys, the one played over the wire none. */
   me?: 0 | 1;
+  /** Online with the lobby open: the match's end offers N, the next opponent from the queue. */
+  next?: boolean;
 }
 
 interface Frame {
@@ -94,7 +96,7 @@ function sequenceOf(match: Match, p2: Source, me: 0 | 1 | undefined): SequenceVi
 
 const liveMatch = (): Match | undefined => (window as unknown as { mk?: { match?: () => Match } }).mk?.match?.();
 
-export function FightUi({ fighters, p2, assets, me }: FightUiProps) {
+export function FightUi({ fighters, p2, assets, me, next }: FightUiProps) {
   const icons = useMemo(() => new Icons(assets), [assets]);
   const [frame, setFrame] = useState<Frame>();
   const [abilityIcons, setAbilityIcons] = useState<[Map<string, string>, Map<string, string>]>([new Map(), new Map()]);
@@ -197,7 +199,8 @@ export function FightUi({ fighters, p2, assets, me }: FightUiProps) {
       </div>
       {frame.phase === 'matchEnd' && (
         <div class="hint end">
-          {me === 1 ? <>the host calls the rematch · <b>ESC</b> new champions</> : <><b>ENTER</b> rematch · <b>ESC</b> new champions</>}
+          {me === 1 ? <>the host calls the rematch</> : <><b>ENTER</b> rematch</>}
+          {next && <> · <b>N</b> next opponent</>} · <b>ESC</b> new champions
         </div>
       )}
       <div class="bottom">

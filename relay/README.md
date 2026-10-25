@@ -8,17 +8,23 @@ themselves in lockstep, each from its own World of Warcraft folder, and the rela
 their inputs between them. A room nobody has been in for ten minutes is forgotten.
 
 Before the room there is the lobby, one Durable Object for everyone, where players find each
-other by name: one challenges another, or both ask for a quick match, and the lobby makes the
-room and tells each of them its code and whether they host. Nobody reads a code out.
+other by name: one challenges another, or both sit in the queue, and the lobby makes the room
+and tells each of them its code and whether they host. Nobody reads a code out.
 
 ## The lobby
 
 - `GET /lobby/ws?name=<name>&id=<id>` upgrades to a WebSocket; while it is open the player is
   here. A name is 2 to 16 letters, digits and spaces; the id is a random one the page makes once
   and keeps, so a reload or a second tab takes the old place instead of making a second player.
-  `&busy=1` is a page in an online match coming back between fights.
-- Everyone hears `{"t":"here","players":[{"id","name","status":"free"|"busy"}]}` whenever
-  somebody comes, goes or starts a match, and every 20 seconds besides.
+  `&busy=1` is a page in an online match coming back between fights; `&busy=0&requeue=1` a page
+  back from one that wants the next opponent, and goes straight into the queue.
+- Everyone hears `{"t":"here","players":[{"id","name","status":"free"|"busy"}],"online","waiting","fighting"}`
+  whenever somebody comes, goes, joins or leaves the queue or starts a match, and every 20
+  seconds besides. `online` is the players here, `waiting` those in the queue, `fighting` the
+  players in a room with their opponent (the pages leave the lobby for the fight itself, so the
+  rooms tell the lobby how many are in them).
+- `GET /lobby/stats` answers the same three numbers, `{"online","waiting","fighting"}`, for a
+  page that is not in the lobby (the game's title) or a bot.
 - `{"t":"challenge","to":id}`: the other player hears `{"t":"challenged","from":{id,name},"ttl":30000}`
   and the challenger `{"t":"challenging","to":{id,name},"ttl":30000}`. One open challenge at a
   time each way; challenging somebody busy, or somebody already answering one, is an
@@ -28,8 +34,11 @@ room and tells each of them its code and whether they host. Nobody reads a code 
   seconds. When one ends without a match the challenger hears `{"t":"declined","by":id,"reason"}`
   and the one challenged `{"t":"withdrawn","from":id,"reason"}`, the reason being `declined`,
   `cancelled`, `timeout`, `left` or `busy`.
-- `{"t":"quick"}` pairs the sender with the player who has waited longest for a quick match, or
-  puts them in line (`{"t":"queued"}`); `{"t":"unquick"}` leaves it (`{"t":"unqueued"}`).
+- `{"t":"quick"}` pairs the sender with the player who has waited longest in the queue, or puts
+  them at the back of it (`{"t":"queued","queued":true,"since"}`); `{"t":"unquick"}` leaves it
+  (`{"t":"unqueued","queued":false}`). A player in the queue can still be challenged by name and
+  leaves it for the match if they accept; one who challenges somebody leaves it too. Ten minutes
+  in the queue with nobody coming and the lobby lets them go, `{"t":"unqueued","queued":false,"reason":"idle"}`.
 - A match: the lobby makes a room as `POST /rooms` would and tells both
   `{"t":"fight","code","role":"host"|"guest","with":{id,name}}`. The challenger hosts, or in a
   quick match the one who waited longer. Both are busy until their lobby sockets come back.
@@ -74,4 +83,5 @@ must use the same relay.
 - `node scripts/probe.mjs [url] [rounds]` makes a room on a deployed relay, joins it twice and
   prints how long a ping to the room and an echo through it take.
 - `node scripts/lobby.mjs [url]` comes into a deployed relay's lobby as two players, has one
-  challenge the other, both go into the room they are given, then a decline and a quick match.
+  challenge the other, both go into the room they are given, then a decline, a quick match and
+  both back for the next opponent with `requeue=1`, reading `/lobby/stats` while they fight.

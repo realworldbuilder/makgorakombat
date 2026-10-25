@@ -6,12 +6,14 @@ import { useModalKeys } from './ui/modal';
 
 /*
  * PLAY ONLINE: two players, two machines, and the lobby between them. The panel asks once what
- * to call you, then shows WHO'S HERE, everyone else with the game open: FIGHT challenges one of
- * them, QUICK MATCH waits for anybody who asks for one too. When the lobby pairs two players it
- * hands them a room, and from there it is as it always was: both pages meet in the room and agree
- * on the game's version, and the roster opens with the host as player 1 and the guest as player 2.
- * A challenge that comes in shows over whatever screen is up. Two players on different relays
- * can still use a room code, behind the small link at the bottom. The same panel as the guide.
+ * to call you, then opens on how many are online, waiting and fighting, and FIND A FIGHT: the
+ * queue, where a stranger sits with the seconds counting up until the next one to come is paired
+ * with them. Under it WHO'S HERE, everyone else with the game open, to challenge one by name. When
+ * the lobby pairs two players it hands them a room, and from there it is as it always was: both
+ * pages meet in the room and agree on the game's version, and the roster opens with the host as
+ * player 1 and the guest as player 2. A challenge that comes in shows over whatever screen is up.
+ * Two players on different relays can still use a room code, behind the small link at the bottom.
+ * The same panel as the guide, and all of it from the keyboard.
  */
 
 /** Two pages that have met in a room and can fight. */
@@ -84,6 +86,24 @@ function useLeft(until: number | undefined, ttl = 30_000): number {
   return until === undefined ? 0 : Math.max(0, Math.min(1, (until - now) / ttl));
 }
 
+/** The time since `from` (this page's clock) as m:ss, ticking while there is one. */
+function useSince(from: number | undefined): string {
+  const [now, setNow] = useState(performance.now());
+  useEffect(() => {
+    if (from === undefined) return;
+    setNow(performance.now());
+    const timer = setInterval(() => setNow(performance.now()), 250);
+    return () => clearInterval(timer);
+  }, [from]);
+  const seconds = from === undefined ? 0 : Math.max(0, Math.floor((now - from) / 1000));
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+}
+
+/** The lobby's numbers in a line. */
+export function countsLine({ online, waiting, fighting }: LobbyState['counts']): string {
+  return `${online} online · ${waiting} waiting · ${fighting} fighting`;
+}
+
 /** The thirty seconds as a ring that empties, with the seconds in it. */
 function Ring({ until, size = 64 }: { until: number; size?: number }) {
   const left = useLeft(until);
@@ -121,9 +141,16 @@ export function Online({ lobby, name, onName, product, onReady, onClose }: Onlin
   const [view, setView] = useState<View>(name ? 'here' : 'name');
   const state = useLobby(lobby);
   const others = state.players.filter((p) => p.id !== lobby?.id);
-  const [chosen, setChosen] = useState(0);
-  const at = Math.min(chosen, Math.max(0, others.length - 1));
+  // What Enter does: -1 is FIND A FIGHT, the panel's first thing; 0 on are the players by name.
+  const [chosen, setChosen] = useState(-1);
+  const at = Math.min(chosen, others.length - 1);
   const [copied, setCopied] = useState<string>();
+  const waited = useSince(state.queued ? state.queuedAt : undefined);
+  /** Shut, the panel takes this page out of the queue: nobody waits there unseen. */
+  const close = () => {
+    if (state.queued) lobby?.quick(false);
+    onClose();
+  };
 
   const fight = (id: string) => {
     if (!lobby || state.outgoing) return;
@@ -149,11 +176,14 @@ export function Online({ lobby, name, onName, product, onReady, onClose }: Onlin
         if (state.outgoing) lobby?.cancel();
         else if (state.queued) lobby?.quick(false);
         else onClose();
-      } else if (key === 'ArrowUp') setChosen(Math.max(0, at - 1));
+      } else if (key === 'ArrowUp') setChosen(Math.max(-1, at - 1));
       else if (key === 'ArrowDown') setChosen(Math.min(others.length - 1, at + 1));
       else if (key === 'KeyQ') quick();
       else if (key === 'KeyN') setView('name');
-      else {
+      else if (at < 0) {
+        // Enter on FIND A FIGHT goes into the queue; leaving it is Escape's.
+        if (!state.queued && state.connected) quick();
+      } else {
         const them = others[at];
         if (them && them.status === 'free') fight(them.id);
       }
@@ -163,14 +193,14 @@ export function Online({ lobby, name, onName, product, onReady, onClose }: Onlin
   });
 
   return (
-    <div class="guide-backdrop" onClick={onClose}>
+    <div class="guide-backdrop" onClick={close}>
       <div class="guide online" onClick={(event) => event.stopPropagation()}>
         <nav class="tabs">
           <button class={view !== 'code' ? 'here' : ''} type="button" onClick={() => setView(name ? 'here' : 'name')}>
             {view === 'name' ? 'YOUR NAME' : "WHO'S HERE"}
           </button>
           {view === 'code' && <button class="here" type="button">WITH A CODE</button>}
-          <button class="close" onClick={onClose} aria-label="Close" type="button">✕</button>
+          <button class="close" onClick={close} aria-label="Close" type="button">✕</button>
         </nav>
         {view === 'name' ? (
           <NameView
@@ -179,19 +209,20 @@ export function Online({ lobby, name, onName, product, onReady, onClose }: Onlin
               onName(given);
               setView('here');
             }}
-            onBack={() => (name ? setView('here') : onClose())}
+            onBack={() => (name ? setView('here') : close())}
           />
         ) : view === 'code' ? (
           <CodeView product={product} onReady={onReady} onBack={() => setView(name ? 'here' : 'name')} />
         ) : (
           <div class="body online-here">
+            <p class="counts" aria-live="polite">{state.connected ? countsLine(state.counts) : 'reaching the lobby…'}</p>
             <p class="me">
               You are <b>{name}</b>
               {' · '}
               {!state.connected ? (
-                <span class="waiting">reaching the lobby…</span>
+                <span class="waiting">not in the lobby yet</span>
               ) : state.queued ? (
-                <span class="waiting">waiting for anyone who wants a fight</span>
+                <span class="waiting">in the queue</span>
               ) : state.outgoing ? (
                 <span class="waiting">challenging {state.outgoing.name}</span>
               ) : (
@@ -199,10 +230,30 @@ export function Online({ lobby, name, onName, product, onReady, onClose }: Onlin
               )}
               <button type="button" class="link" onClick={() => setView('name')}>change · N</button>
             </p>
+            {state.queued ? (
+              <div class={`find on ${at < 0 ? 'chosen' : ''}`} role="status" onMouseEnter={() => setChosen(-1)}>
+                <span class="clock">{waited}</span>
+                <span class="words">waiting for an opponent</span>
+                <button type="button" class="button" onClick={quick}>LEAVE THE QUEUE · ESC</button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                class={`find ${at < 0 ? 'chosen' : ''}`}
+                disabled={!state.connected || state.outgoing !== undefined}
+                onClick={quick}
+                onMouseEnter={() => setChosen(-1)}
+              >
+                <span class="big">FIND A FIGHT</span>
+                <span class="keys">{at < 0 ? 'ENTER · ' : ''}Q</span>
+              </button>
+            )}
+            <p class="dim small">The next player to come into the queue fights you, whoever they are. The one who waited longer is player 1.</p>
+            <h3 class="who">WHO'S HERE</h3>
             {others.length === 0 ? (
               <div class="nobody">
                 <p class="dim">{state.connected ? 'Nobody else is here yet.' : ' '}</p>
-                <p class="dim small">Send your opponent the link; they drop their folder, give a name, and appear here.</p>
+                <p class="dim small">Send a friend the link; they drop their folder, give a name, and appear here.</p>
                 <button type="button" class="button" onClick={() => copy(pageLink())}>
                   {copied === pageLink() ? 'COPIED' : 'COPY THE LINK'}
                 </button>
@@ -231,12 +282,10 @@ export function Online({ lobby, name, onName, product, onReady, onClose }: Onlin
                 })}
               </ul>
             )}
-            <button type="button" class={`button quick ${state.queued ? 'on' : ''}`} disabled={!state.connected} onClick={quick}>
-              {state.queued ? 'STOP WAITING · Q' : 'QUICK MATCH · Q'}
-            </button>
             {state.notice && <p class="bad">{state.notice}</p>}
             <p class="dim small">
-              Each of you needs the game open with your own World of Warcraft folder. Whoever challenges is player 1 and picks the ground.{' '}
+              ↑ ↓ choose · Enter fight · Esc {state.queued || state.outgoing ? 'take it back' : 'close'}. Each of you needs the game open with your own World of Warcraft
+              folder. Whoever challenges is player 1 and picks the ground.{' '}
               <button type="button" class="link" onClick={() => setView('code')}>join with a code</button>
             </p>
           </div>
@@ -454,8 +503,12 @@ export function Challenge({ from, until, onAccept, onDecline }: { from: string; 
   );
 }
 
-/** Between the lobby's match and the roster: both pages finding each other in the room. */
-export function Matching({ name, error, onCancel }: { name: string; error?: string; onCancel: () => void }) {
+/**
+ * Between the lobby's match and the roster: both pages finding each other in the room. A match
+ * from the queue says FOUND over the opponent's name, and stays up at least two seconds, so a
+ * stranger knows who they got before the roster opens.
+ */
+export function Matching({ name, found, error, onCancel }: { name: string; found?: boolean; error?: string; onCancel: () => void }) {
   useModalKeys(true, (event) => {
     if (event.code === 'Escape' || (error && (event.code === 'Enter' || event.code === 'NumpadEnter'))) onCancel();
   });
@@ -467,12 +520,13 @@ export function Matching({ name, error, onCancel }: { name: string; error?: stri
             <>
               <p class="big">No fight with {name}</p>
               <p class="bad">{error}</p>
-              <button type="button" class="button" onClick={onCancel}>BACK · ENTER</button>
+              <button type="button" class="button" onClick={onCancel}>{found ? 'BACK TO THE QUEUE · ENTER' : 'BACK · ENTER'}</button>
             </>
           ) : (
             <>
+              {found && <p class="found">FOUND</p>}
               <p class="big">{name}</p>
-              <p class="waiting">Meeting your opponent in the room…</p>
+              <p class="waiting">{found ? 'Your opponent. Meeting them in the room…' : 'Meeting your opponent in the room…'}</p>
               <button type="button" class="button" onClick={onCancel}>GIVE UP · ESC</button>
             </>
           )}

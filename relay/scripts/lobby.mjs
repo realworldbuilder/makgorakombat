@@ -1,6 +1,8 @@
 // A run through a deployed relay's lobby from node, as two pages would: both come in by name,
 // see each other, one challenges and the other accepts, and both go into the room they are given
-// and hear each other there; then the same two again by quick match, and a decline.
+// and hear each other there; then the same two again by quick match, and a decline; then both
+// back for the next opponent (requeue=1), the numbers at /lobby/stats while they are in the room.
+// The queue parts are skipped when a real player is already waiting, so the probe never takes them.
 //   node scripts/lobby.mjs [https://makgora-relay.<you>.workers.dev]
 const base = (process.argv[2] ?? 'https://makgora-relay.clawdgross.workers.dev').replace(/\/$/, '');
 const ws = base.replace(/^http/, 'ws');
@@ -35,7 +37,9 @@ function open(url) {
   });
 }
 
-const enter = (name, id) => open(`${ws}/lobby/ws?name=${encodeURIComponent(name)}&id=${id}`);
+const enter = (name, id, extra = '') => open(`${ws}/lobby/ws?name=${encodeURIComponent(name)}&id=${id}${extra}`);
+const stats = async () => (await fetch(`${base}/lobby/stats`)).json();
+const counts = (m) => `${m.online} online · ${m.waiting} waiting · ${m.fighting} fighting`;
 const ids = { chris: `probe-chris-${tag}`, will: `probe-will-${tag}` };
 const has = (...want) => (m) => want.every((id) => m.players.some((p) => p.id === id));
 
@@ -43,7 +47,7 @@ let t = performance.now();
 const chris = await enter(`Chris ${tag}`, ids.chris);
 const will = await enter(`Will ${tag}`, ids.will);
 const here = await chris.next('here', has(ids.chris, ids.will));
-console.log(`both in the lobby after ${(performance.now() - t).toFixed(0)} ms; here: ${here.players.map((p) => `${p.name} (${p.status})`).join(', ')}`);
+console.log(`both in the lobby after ${(performance.now() - t).toFixed(0)} ms; here: ${here.players.map((p) => `${p.name} (${p.status})`).join(', ')}; ${counts(here)}`);
 
 async function intoRoom(fightA, fightB) {
   if (fightA.code !== fightB.code) throw new Error('two codes');
@@ -84,13 +88,44 @@ will2.send({ t: 'decline', from: ids.chris });
 const declined = await chris2.next('declined');
 console.log(`a second challenge declined: ${declined.reason}`);
 
+const before = await stats();
+console.log(`GET /lobby/stats: ${counts(before)}`);
+if (before.waiting > 0) {
+  console.log('somebody real is in the queue: the quick match and the requeue are left out');
+  chris2.socket.close(1000, 'done');
+  will2.socket.close(1000, 'done');
+  process.exit(0);
+}
+
 t = performance.now();
 will2.send({ t: 'quick' });
 await will2.next('queued');
+const waiting = await chris2.next('here', (m) => m.waiting >= 1);
+console.log(`Will in the queue: ${counts(waiting)}`);
 chris2.send({ t: 'quick' });
 const [q1, q2] = [await will2.next('fight'), await chris2.next('fight')];
 console.log(`quick match: room ${q1.code}, Will ${q1.role} (waited first), Chris ${q2.role}, ${(performance.now() - t).toFixed(0)} ms`);
 await intoRoom(q1, q2);
 console.log('both went into the quick match room and heard each other');
-chris2.socket.close(1000, 'done');
-will2.socket.close(1000, 'done');
+
+// NEXT OPPONENT: back from the match asking for the queue again; the first waits, the second is matched at once.
+chris2.socket.close(1000, 'fight');
+will2.socket.close(1000, 'fight');
+t = performance.now();
+const chris3 = await enter(`Chris ${tag}`, ids.chris, '&busy=0&requeue=1');
+await chris3.next('queued');
+console.log(`Chris back with requeue=1: in the queue after ${(performance.now() - t).toFixed(0)} ms`);
+const will3 = await enter(`Will ${tag}`, ids.will, '&busy=0&requeue=1');
+const [r1, r2] = [await chris3.next('fight'), await will3.next('fight')];
+console.log(`Will back with requeue=1: matched with ${r2.with.name} at once, room ${r1.code}, Chris ${r1.role}, ${(performance.now() - t).toFixed(0)} ms`);
+const room = (role) => open(`${ws}/rooms/${r1.code}/ws?role=${role}`);
+const [host, guest] = [await room('host'), await room('guest')];
+await host.next('peer');
+let during = await stats();
+for (let tries = 0; during.fighting < 2 && tries < 10; tries++) during = await stats();
+console.log(`both in the room: ${counts(during)}`);
+if (during.fighting < 2) throw new Error('the room was not counted as a fight');
+host.socket.close(1000, 'done');
+guest.socket.close(1000, 'done');
+chris3.socket.close(1000, 'done');
+will3.socket.close(1000, 'done');

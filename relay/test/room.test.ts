@@ -1,6 +1,7 @@
 import { env, runDurableObjectAlarm, runInDurableObject, SELF } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
-import { ALPHABET, allowedOrigin, isCode, type Room } from '../src/index';
+import { ALPHABET, isCode } from '../src/code';
+import { allowedOrigin, type Room } from '../src/index';
 import { Client } from './client';
 
 async function makeRoom(origin?: string): Promise<{ code: string; response: Response }> {

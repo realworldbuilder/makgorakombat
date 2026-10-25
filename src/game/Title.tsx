@@ -5,6 +5,7 @@ import { ActionBar, GLYPHS, type Slot } from './ActionBar';
 import { editionOf, type EditionKey } from './edition';
 import { lastProduct, type Phase } from './folder';
 import { Guide, type GuidePage } from './Guide';
+import { type Counts, lobbyStats } from './net/lobby';
 import { Settings } from './Settings';
 
 interface TitleProps {
@@ -68,6 +69,41 @@ export function LogoArt({ small }: { small?: boolean }) {
     <h1 class={`logo-art ${small ? 'small' : ''}`}>
       <img src={art('logo.png')} alt={BRAND.title} draggable={false} />
     </h1>
+  );
+}
+
+/** How often the presence line asks the relay again. */
+const PRESENCE_MS = 30_000;
+
+/**
+ * The line that says there is somebody to play: how many are fighting online, and how many wait in
+ * the queue for anyone. On the title under the action bar, where a visitor decides whether to drop
+ * their folder at all, and on the roster under the call once it is open; `online` is the key that
+ * opens PLAY ONLINE there. It asks the relay's lobby every thirty seconds, needing no folder, and
+ * says nothing until it answers, if it cannot be reached, or while nobody is there.
+ */
+export function Presence({ online }: { online: string }) {
+  const [counts, setCounts] = useState<Counts>();
+  useEffect(() => {
+    let live = true;
+    const read = () => void lobbyStats().then((answer) => live && setCounts(answer), () => undefined);
+    read();
+    const timer = setInterval(read, PRESENCE_MS);
+    return () => {
+      live = false;
+      clearInterval(timer);
+    };
+  }, []);
+  if (!counts || counts.online + counts.fighting === 0) return null;
+  return (
+    <p class="presence">
+      <b>{counts.fighting}</b> fighting online
+      {counts.waiting > 0 && (
+        <>
+          {' · '}<b>{counts.waiting}</b> waiting for a fight · <b>{online}</b> play online
+        </>
+      )}
+    </p>
   );
 }
 
@@ -224,6 +260,7 @@ export function Title({ phase, dragging, onPick, onChoose, onCreate, onOnline }:
               },
             ]}
           />
+          <Presence online="6" />
           <p class="hint">
             <b>Drop your World of Warcraft folder</b> anywhere on this page, or press 1 to choose it. It is in <code>Applications</code> on a
             Mac. Your game files are read here in the browser and never leave your computer.
