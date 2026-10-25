@@ -43,12 +43,13 @@ export function LogoArt({ small }: { small?: boolean }) {
 const PRESENCE_MS = 30_000;
 
 /**
- * The line under the call once the folder is open, so a player with nobody beside them sees there
- * is somebody to play: how many are fighting online, and how many wait in the queue for anyone.
- * It asks the relay's lobby every thirty seconds, and says nothing until it answers, if it cannot
- * be reached, or while nobody is there.
+ * The line that says there is somebody to play: how many are fighting online, and how many wait in
+ * the queue for anyone. On the title under the action bar, where a visitor decides whether to drop
+ * their folder at all, and on the roster under the call once it is open; `online` is the key that
+ * opens PLAY ONLINE there. It asks the relay's lobby every thirty seconds, needing no folder, and
+ * says nothing until it answers, if it cannot be reached, or while nobody is there.
  */
-export function Presence() {
+export function Presence({ online }: { online: string }) {
   const [counts, setCounts] = useState<Counts>();
   useEffect(() => {
     let live = true;
@@ -66,7 +67,7 @@ export function Presence() {
       <b>{counts.fighting}</b> fighting online
       {counts.waiting > 0 && (
         <>
-          {' · '}<b>{counts.waiting}</b> waiting for a fight · <b>O</b> play online
+          {' · '}<b>{counts.waiting}</b> waiting for a fight · <b>{online}</b> play online
         </>
       )}
     </p>
@@ -206,6 +207,7 @@ export function Title({ phase, dragging, onPick, onCreate, onOnline }: TitleProp
               },
             ]}
           />
+          <Presence online="6" />
           <p class="hint">
             <b>Drop your World of Warcraft folder</b> anywhere on this page, or press 1 to choose it. It is in <code>Applications</code> on a
             Mac. Your game files are read here in the browser and never leave your computer.

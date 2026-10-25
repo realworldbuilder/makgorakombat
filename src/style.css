@@ -221,6 +221,7 @@ code {
 .title .hint,
 .title .opening,
 .title .credits,
+.title .presence,
 .title .logo,
 .title .tagline,
 .title .billing {
@@ -1423,7 +1424,7 @@ code {
 
 /* ---- PLAY ONLINE ---------------------------------------------------------------------- */
 
-/* Under the roster's call: how many are fighting online and waiting in the queue. */
+/* Under the title's action bar and the roster's call: how many are fighting online and waiting in the queue. */
 .presence {
   flex-basis: 100%;
   margin: 4px 0 0;

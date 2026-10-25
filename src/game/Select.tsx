@@ -708,7 +708,7 @@ export function Select({ races, classes, records, legends, portraits, fighters, 
         <header>
           <LogoArt small={!legendsOnly} />
           <h1>{BRAND.choose}</h1>
-          {!online && <Presence />}
+          {!online && <Presence online="O" />}
         </header>
         <div class={`grid ${legendsOnly ? 'legends-only' : ''}`}>
           <div class="label">{legends.length > 0 ? 'LEGENDS' : 'YOUR CHAMPIONS'}</div>
