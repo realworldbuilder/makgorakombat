@@ -60,6 +60,38 @@ export const BUILTIN_CHAMPIONS: readonly SavedChampion[] = [
     ],
     armour: 'Chronicle',
   },
+  // Rambleon is William's night elf hunter in his final form at the end of the classic beta
+  // (22 Oct 2026), from his MOG2 code: the Molten Core epics as their classic ids, since the
+  // beta's hotfixed copies have no look in the files, and Rhok'delar from Lord Kazzak. His beta
+  // legs and gloves (270031, 273824) drew as nothing, so he wears the Beastmaster's there.
+  {
+    id: `${BUILTIN}rambleon`,
+    name: 'Rambleon',
+    raceId: 4,
+    sex: 0,
+    classId: 3,
+    choices: [
+      [40, 700],
+      [41, 720],
+      [42, 739],
+      [43, 754],
+      [738, 8089],
+      [9490, 78911],
+    ],
+    gear: [
+      ['head', 16846], // Giantstalker's Helmet
+      ['shoulder', 273804], // Executioner Mantle
+      ['back', 17102],
+      ['chest', 5814], // Snapbrook Armor
+      ['shirt', 148], // Rugged Trapper's Shirt
+      ['wrist', 3202],
+      ['hands', 22015], // Beastmaster's Gloves
+      ['waist', 9827],
+      ['legs', 22017], // Beastmaster's Pants
+      ['feet', 10402],
+      ['mainHand', 18713], // Rhok'delar, Longbow of the Ancient Keepers
+    ],
+  },
 ];
 
 /** Whether an entry is one of the game's own, which the creator shows but does not change. */
