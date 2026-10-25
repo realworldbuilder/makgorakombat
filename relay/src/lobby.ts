@@ -5,14 +5,18 @@ import { type Env, openRoom } from './index';
  * The lobby: one Durable Object for everyone, so two friends with the game open find each other
  * by name instead of reading a code across the room. Each open socket is a player here, with the
  * name they gave and the id their browser keeps. Everyone hears who is here whenever that changes
- * and every twenty seconds. A player challenges another, who accepts or declines within thirty
- * seconds; or asks for a quick match and is paired with the next one who asks. A match is a room
+ * and every twenty seconds, and with it how many are online, waiting in the queue and fighting. A
+ * player challenges another, who accepts or declines within thirty seconds; or sits in the queue
+ * and is paired with the next one who comes into it, in the order they came. A match is a room
  * made just as POST /rooms makes one, and both players are told its code and their part in it;
  * the fight itself then goes through the room as before, and the lobby only marks the two busy
- * until their sockets here come back.
+ * until their sockets here come back. A page back from a match that asks for the next opponent
+ * (requeue=1) goes straight into the queue; one left in it ten minutes with nobody coming is let go.
  *
  * Nothing is kept in memory: the players are the sockets and what is attached to them, and the
- * open challenges and the quick-match queue are in storage, so the lobby can sleep between messages.
+ * open challenges, the queue and the rooms' head counts are in storage, so the lobby can sleep
+ * between messages. The pages close their socket here for the fight itself, so who is fighting is
+ * counted from the rooms, which tell the lobby whenever somebody comes in or goes.
  */
 
 /** How long a challenge waits for its answer. */
@@ -21,6 +25,10 @@ export const CHALLENGE_MS = 30 * 1000;
 export const BEAT_MS = 20 * 1000;
 /** The one lobby's name. */
 export const LOBBY = 'lobby';
+/** A player in the queue this long with nobody coming is taken out of it. */
+export const QUEUE_MS = 10 * 60 * 1000;
+/** A room that has said nothing for this long is no longer counted, whatever it last said. */
+export const ROOM_STALE_MS = 6 * 60 * 60 * 1000;
 
 export type Status = 'free' | 'busy';
 export interface Player {
@@ -40,6 +48,25 @@ interface Challenge {
   from: string;
   to: string;
   at: number;
+}
+/** A place in the queue: who, and since when. */
+interface Waiting {
+  id: string;
+  at: number;
+}
+/** How many are in a room, as it last said, and when. */
+interface Heads {
+  n: number;
+  at: number;
+}
+/** The lobby's numbers, with every list of who is here and at GET /lobby/stats. */
+export interface Counts {
+  /** Players with the game open and a socket here. */
+  online: number;
+  /** In the queue, waiting for anybody. */
+  waiting: number;
+  /** In a room with their opponent: picking, on the VS screen or fighting. */
+  fighting: number;
 }
 
 /** A display name as the lobby shows it: letters, digits and single spaces, 2 to 16 of them; undefined when it is not one. */
@@ -99,7 +126,9 @@ export class Lobby extends DurableObject<Env> {
     const seat: Seat = { id, name, busy: url.searchParams.get('busy') === '1', at: Date.now() };
     this.ctx.acceptWebSocket(server, [id]);
     server.serializeAttachment(seat);
-    await this.beat();
+    // Back from a match for the next opponent: straight into the queue, as if they had asked.
+    if (url.searchParams.get('requeue') === '1' && !seat.busy) await this.quick(server, seat);
+    else await this.beat();
     return new Response(null, { status: 101, webSocket: client });
   }
 
@@ -119,9 +148,9 @@ export class Lobby extends DurableObject<Env> {
       case 'quick':
         return this.quick(ws, me);
       case 'unquick':
-        await this.setQueue((await this.queue()).filter((id) => id !== me.id));
-        ws.send(JSON.stringify({ t: 'unqueued' }));
-        return;
+        await this.setQueue((await this.queue()).filter((w) => w.id !== me.id));
+        ws.send(JSON.stringify({ t: 'unqueued', queued: false }));
+        return this.beat();
     }
   }
 
@@ -138,12 +167,35 @@ export class Lobby extends DurableObject<Env> {
     await this.left(ws);
   }
 
-  /** Challenges that have waited too long lapse, and everyone hears who is here. */
+  /** Challenges that have waited too long lapse, so do places in the queue, and everyone hears who is here. */
   async alarm(): Promise<void> {
     const now = Date.now();
     await this.withdraw((c) => now - c.at >= CHALLENGE_MS, 'timeout');
-    if (now >= ((await this.ctx.storage.get<number>('beat')) ?? 0) - 50) await this.beat();
+    const queue = await this.queue();
+    const idle = queue.filter((w) => now - w.at >= QUEUE_MS);
+    if (idle.length > 0) {
+      await this.setQueue(queue.filter((w) => !idle.includes(w)));
+      for (const w of idle) this.tell(w.id, { t: 'unqueued', queued: false, reason: 'idle' });
+    }
+    if (idle.length > 0 || now >= ((await this.ctx.storage.get<number>('beat')) ?? 0) - 50) await this.beat();
     else await this.schedule();
+  }
+
+  /** The numbers alone, for GET /lobby/stats. */
+  async stats(): Promise<Counts> {
+    return this.counts(this.seats(this.live()));
+  }
+
+  /** A room's head count, which it sends whenever somebody comes in or goes; an empty room is forgotten. */
+  async roomHeads(code: string, n: number): Promise<void> {
+    const rooms = await this.rooms();
+    const before = this.fighting(rooms);
+    const now = Date.now();
+    if (n > 0) rooms[code] = { n, at: now };
+    else delete rooms[code];
+    for (const [other, room] of Object.entries(rooms)) if (now - room.at >= ROOM_STALE_MS) delete rooms[other];
+    await this.ctx.storage.put('rooms', rooms);
+    if (this.fighting(rooms) !== before && this.live().length > 0) await this.beat();
   }
 
   private async challenge(ws: WebSocket, me: Seat, to: string): Promise<void> {
@@ -157,8 +209,12 @@ export class Lobby extends DurableObject<Env> {
     if (open.some((c) => c.from === me.id)) return fail('You are already waiting on a challenge.');
     if (open.some((c) => c.from === them.id || c.to === them.id)) return fail(`${them.name} is answering another challenge.`);
     if (open.some((c) => c.to === me.id)) return fail('Answer the challenge you have first.');
-    // A challenge takes the challenger out of the quick-match queue.
-    await this.setQueue((await this.queue()).filter((id) => id !== me.id));
+    // A challenge takes the challenger out of the queue.
+    const queue = await this.queue();
+    if (queue.some((w) => w.id === me.id)) {
+      await this.setQueue(queue.filter((w) => w.id !== me.id));
+      ws.send(JSON.stringify({ t: 'unqueued', queued: false }));
+    }
     await this.setChallenges([...open, { from: me.id, to, at: Date.now() }]);
     this.tell(to, { t: 'challenged', from: { id: me.id, name: me.name }, ttl: CHALLENGE_MS });
     ws.send(JSON.stringify({ t: 'challenging', to: { id: them.id, name: them.name }, ttl: CHALLENGE_MS }));
@@ -181,35 +237,42 @@ export class Lobby extends DurableObject<Env> {
     await this.match(from, me.id);
   }
 
-  /** Pairs the sender with the first player already waiting, or puts them in line. */
+  /**
+   * Pairs the sender with the one who has waited longest, or puts them at the back of the queue.
+   * Asking again while in it keeps their place. A player waiting there can still be challenged, and
+   * leaves the queue for the match if they accept.
+   */
   private async quick(ws: WebSocket, me: Seat): Promise<void> {
     if (me.busy) {
       ws.send(JSON.stringify({ t: 'error', message: 'You are in a match.' }));
-      return;
+      return this.beat();
     }
     await this.withdraw((c) => c.from === me.id, 'cancelled');
-    const waiting = (await this.queue()).filter((id) => id !== me.id && this.seatById(id)?.busy === false);
+    const queue = (await this.queue()).filter((w) => this.seatById(w.id)?.busy === false);
+    const mine = queue.find((w) => w.id === me.id);
+    const waiting = queue.filter((w) => w.id !== me.id);
     const first = waiting[0];
     if (first === undefined) {
-      await this.setQueue([...waiting, me.id]);
-      ws.send(JSON.stringify({ t: 'queued' }));
-      return;
+      const place = mine ?? { id: me.id, at: Date.now() };
+      await this.setQueue([place]);
+      ws.send(JSON.stringify({ t: 'queued', queued: true, since: place.at }));
+      return this.beat();
     }
     await this.setQueue(waiting.slice(1));
     // The one who waited longer hosts.
-    await this.match(first, me.id);
+    await this.match(first.id, me.id);
   }
 
   /** A room for two, both told, both busy, and anything else either had open called off. */
   private async match(host: string, guest: string): Promise<void> {
     const pair = [host, guest];
-    const code = await openRoom(this.env);
+    const code = await openRoom(this.env, this.ctx.id.name ?? LOBBY);
     if (!code) {
       for (const id of pair) this.tell(id, { t: 'error', message: 'The relay has no free room; try again.' });
       return;
     }
     await this.withdraw((c) => pair.includes(c.from) || pair.includes(c.to), 'busy');
-    await this.setQueue((await this.queue()).filter((id) => !pair.includes(id)));
+    await this.setQueue((await this.queue()).filter((w) => !pair.includes(w.id)));
     const seats = pair.map((id) => this.seatById(id)!);
     for (const ws of pair.flatMap((id) => this.socketsOf(id))) {
       const seat = ws.deserializeAttachment() as Seat;
@@ -241,32 +304,49 @@ export class Lobby extends DurableObject<Env> {
     const seat = this.seatOf(ws);
     if (seat && !this.socketsOf(seat.id).some((s) => s !== ws)) {
       await this.withdraw((c) => c.from === seat.id || c.to === seat.id, 'left');
-      await this.setQueue((await this.queue()).filter((id) => id !== seat.id));
+      await this.setQueue((await this.queue()).filter((w) => w.id !== seat.id));
     }
     await this.beat(ws);
   }
 
-  /** Tells everyone who is here, and sets the next beat. */
+  /** Tells everyone who is here and the numbers, and sets the next beat. */
   private async beat(gone?: WebSocket): Promise<void> {
     const sockets = this.live().filter((ws) => ws !== gone);
+    const seats = this.seats(sockets);
+    const players: Player[] = seats.map((seat) => ({ id: seat.id, name: seat.name, status: seat.busy ? 'busy' : 'free' }));
+    const here = JSON.stringify({ t: 'here', players, ...(await this.counts(seats)) });
+    for (const ws of sockets) ws.send(here);
+    await this.ctx.storage.put('beat', Date.now() + BEAT_MS);
+    await this.schedule(sockets.length);
+  }
+
+  /** Each player once, as their newest socket has them, in the order they came. */
+  private seats(sockets: WebSocket[]): Seat[] {
     const seen = new Map<string, Seat>();
     for (const ws of sockets) {
       const seat = ws.deserializeAttachment() as Seat;
       const prior = seen.get(seat.id);
       if (!prior || seat.at > prior.at) seen.set(seat.id, seat);
     }
-    const players: Player[] = [...seen.values()]
-      .sort((a, b) => a.at - b.at)
-      .map((seat) => ({ id: seat.id, name: seat.name, status: seat.busy ? 'busy' : 'free' }));
-    const here = JSON.stringify({ t: 'here', players });
-    for (const ws of sockets) ws.send(here);
-    await this.ctx.storage.put('beat', Date.now() + BEAT_MS);
-    await this.schedule(sockets.length);
+    return [...seen.values()].sort((a, b) => a.at - b.at);
   }
 
-  /** One alarm for the next beat or the first challenge to lapse, whichever is sooner; none for an empty lobby. */
+  private async counts(seats: Seat[]): Promise<Counts> {
+    const free = new Set(seats.filter((seat) => !seat.busy).map((seat) => seat.id));
+    const waiting = (await this.queue()).filter((w) => free.has(w.id)).length;
+    return { online: seats.length, waiting, fighting: this.fighting(await this.rooms()) };
+  }
+
+  /** Players in rooms with both in them; a room silent for hours has lost its word and is left out. */
+  private fighting(rooms: Record<string, Heads>): number {
+    const now = Date.now();
+    return Object.values(rooms).reduce((sum, room) => sum + (room.n >= 2 && now - room.at < ROOM_STALE_MS ? room.n : 0), 0);
+  }
+
+  /** One alarm for the next beat, the first challenge to lapse or the first place in the queue to run out, whichever is soonest; none for an empty lobby. */
   private async schedule(present = this.live().length): Promise<void> {
     const times = (await this.challenges()).map((c) => c.at + CHALLENGE_MS);
+    for (const w of await this.queue()) times.push(w.at + QUEUE_MS);
     if (present > 0) times.push((await this.ctx.storage.get<number>('beat')) ?? Date.now() + BEAT_MS);
     if (times.length === 0) await this.ctx.storage.deleteAlarm();
     else await this.ctx.storage.setAlarm(Math.min(...times));
@@ -285,12 +365,18 @@ export class Lobby extends DurableObject<Env> {
     await this.ctx.storage.put('challenges', list);
   }
 
-  private async queue(): Promise<string[]> {
-    return (await this.ctx.storage.get<string[]>('quick')) ?? [];
+  /** The queue, oldest first; one kept as bare ids by the lobby before it timed anybody counts from now. */
+  private async queue(): Promise<Waiting[]> {
+    const list = (await this.ctx.storage.get<(Waiting | string)[]>('quick')) ?? [];
+    return list.map((w) => (typeof w === 'string' ? { id: w, at: Date.now() } : w));
   }
 
-  private async setQueue(list: string[]): Promise<void> {
+  private async setQueue(list: Waiting[]): Promise<void> {
     await this.ctx.storage.put('quick', list);
+  }
+
+  private async rooms(): Promise<Record<string, Heads>> {
+    return (await this.ctx.storage.get<Record<string, Heads>>('rooms')) ?? {};
   }
 
   private seatOf(ws: WebSocket): Seat | undefined {

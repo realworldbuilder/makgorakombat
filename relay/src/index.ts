@@ -9,7 +9,8 @@ export { Lobby } from './lobby';
  * other as it came, and tells each when the other comes or goes. It never reads, keeps or
  * judges what the players send: the fight runs on both machines in lockstep, and the relay is
  * only the wire between them. A room nobody has been in for ten minutes is forgotten. The lobby
- * (lobby.ts) is where two players find each other and are handed a room.
+ * (lobby.ts) is where two players find each other and are handed a room; every room tells it how
+ * many are in whenever that changes, so the lobby can say how many are fighting.
  */
 
 export interface Env {
@@ -55,11 +56,11 @@ export function isCode(code: string): boolean {
   return code.length === CODE_LENGTH && [...code].every((c) => ALPHABET.includes(c));
 }
 
-/** Makes a room under a fresh code and answers it; undefined when no free code turned up. */
-export async function openRoom(env: Env): Promise<string | undefined> {
+/** Makes a room under a fresh code and answers it; undefined when no free code turned up. The room tells `lobby` who is in it. */
+export async function openRoom(env: Env, lobby = LOBBY): Promise<string | undefined> {
   for (let attempt = 0; attempt < 8; attempt++) {
     const code = newCode();
-    if (await env.ROOMS.getByName(code).open()) return code;
+    if (await env.ROOMS.getByName(code).open(code, lobby)) return code;
   }
   return undefined;
 }
@@ -73,10 +74,10 @@ export class Room extends DurableObject<Env> {
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
   }
 
-  /** Opens the room under its code; false when the code is taken. */
-  async open(): Promise<boolean> {
+  /** Opens the room under its code, to report to the lobby named; false when the code is taken. */
+  async open(code: string, lobby = LOBBY): Promise<boolean> {
     if ((await this.ctx.storage.get<number>('opened')) !== undefined) return false;
-    await this.ctx.storage.put('opened', Date.now());
+    await this.ctx.storage.put({ opened: Date.now(), code, lobby });
     await this.ctx.storage.setAlarm(Date.now() + IDLE_MS);
     return true;
   }
@@ -98,6 +99,7 @@ export class Room extends DurableObject<Env> {
       server.send(peer(true));
       for (const ws of others) ws.send(peer(true));
     }
+    await this.report(this.live().length);
     return new Response(null, { status: 101, webSocket: client });
   }
 
@@ -129,7 +131,20 @@ export class Room extends DurableObject<Env> {
   private async left(ws: WebSocket): Promise<void> {
     const role = this.roleOf(ws);
     if (role) for (const to of this.live(other(role)).filter((s) => s !== ws)) to.send(peer(false));
-    if (this.live().filter((s) => s !== ws).length === 0) await this.ctx.storage.setAlarm(Date.now() + IDLE_MS);
+    const still = this.live().filter((s) => s !== ws).length;
+    if (still === 0) await this.ctx.storage.setAlarm(Date.now() + IDLE_MS);
+    await this.report(still);
+  }
+
+  /** Tells the lobby how many are in; a lobby that cannot be reached just has an old count, and the room goes on. */
+  private async report(n: number): Promise<void> {
+    const [code, lobby] = await Promise.all([this.ctx.storage.get<string>('code'), this.ctx.storage.get<string>('lobby')]);
+    if (!code) return;
+    try {
+      await this.env.LOBBY.getByName(lobby ?? LOBBY).roomHeads(code, n);
+    } catch (cause) {
+      console.warn('The lobby did not take the room\'s count:', cause);
+    }
   }
 
   private roleOf(ws: WebSocket): Role | undefined {
@@ -165,8 +180,13 @@ export default {
     }
 
     if (url.pathname === '/lobby/ws' && request.method === 'GET') return env.LOBBY.getByName(LOBBY).fetch(request);
+    // The lobby's numbers, for a page that is not in it (the title) or a bot.
+    if (url.pathname === '/lobby/stats' && request.method === 'GET') {
+      const counts = await env.LOBBY.getByName(LOBBY).stats();
+      return Response.json(counts, { headers: { ...cors, 'Cache-Control': 'no-store' } });
+    }
 
-    if (url.pathname === '/') return new Response('makgora-relay: GET /lobby/ws?name=&id=; or POST /rooms, then GET /rooms/:code/ws?role=host|guest', { headers: cors });
+    if (url.pathname === '/') return new Response('makgora-relay: GET /lobby/ws?name=&id=[&busy=1|&requeue=1], GET /lobby/stats; or POST /rooms, then GET /rooms/:code/ws?role=host|guest', { headers: cors });
     return new Response('Not found', { status: 404, headers: cors });
   },
 } satisfies ExportedHandler<Env>;
