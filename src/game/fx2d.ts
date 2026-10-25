@@ -1,5 +1,5 @@
 import type { Fighter, Match, Projectile, SpellEvent } from '../engine/engine';
-import { ATTACH, type AnchorAt, type Point } from './fx';
+import { ATTACH, type AnchorAt, type Point, flightAt } from './fx';
 
 /*
  * The spells as light over the ring, on the HUD's canvas: each ability of the kits drawn as what
@@ -251,7 +251,7 @@ const release = (c: Cast, within: number) => c.events.find((e) => e.kind === 're
 const impact = (c: Cast, within: number) => c.events.find((e) => e.kind === 'impact' && e.t <= within);
 /** Fraction of the cast bar filled, when this spell is being cast. */
 const casting = (c: Cast): number | undefined => (c.caster.cast && c.caster.cast.ability === c.index ? c.caster.cast.t / Math.max(1, c.caster.cast.total) : undefined);
-const shotAt = (c: Cast, shot: Projectile, back = 0): Screen | undefined => c.s.at([shot.x - shot.vx * back, 0, shot.z]);
+const shotAt = (c: Cast, shot: Projectile, back = 0): Screen | undefined => c.s.at(flightAt(c.s.match, shot, c.s.anchor, back));
 
 // ---------------------------------------------------------------------------------------------
 // The spells.

@@ -3,7 +3,7 @@ import type { DataClient } from '@mogshot/worker/client';
 /*
  * The game's own typefaces, read from the open folder by file id and loaded into the page:
  * Friz Quadrata for every label and tooltip, Arial Narrow for the numbers on the bars, Morpheus
- * for the big titles. They are never shipped with the game; once read from a player's own
+ * for the big titles, Skurri for the damage that floats off a blow. They are never shipped with the game; once read from a player's own
  * install they are kept in that browser, so the title screen has them on the next visit too.
  */
 
@@ -17,6 +17,7 @@ export const GAME_FONTS: readonly GameFont[] = [
   { family: 'WoW Friz', fileId: 615960 },
   { family: 'WoW Narrow', fileId: 615958 },
   { family: 'WoW Morpheus', fileId: 615962 },
+  { family: 'WoW Skurri', fileId: 615961 },
 ];
 
 const STORE = 'mk.font:';

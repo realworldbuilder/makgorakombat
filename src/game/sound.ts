@@ -1,6 +1,6 @@
 import type { FightSoundName, FightSoundSet, SoundKitClips } from '@mogshot/worker/api';
 import { BRAND } from '../engine/brand';
-import type { Fighter, Match, Projectile, Spark } from '../engine/engine';
+import { type Fighter, type Match, moveOf, type Projectile, type Spark } from '../engine/engine';
 
 /*
  * The fight's sound. The engine says nothing about sound, so the mixer watches the match from
@@ -297,7 +297,8 @@ export class Mixer {
     for (let i = 0 as 0 | 1; i < 2; i++) {
       const f = match.fighters[i];
       const was = this.last[i];
-      const started = was === undefined ? false : f.move !== was.move || f.state !== was.state || f.t < was.t;
+      // A looping move (a stun, a cast, a channel) going round again is not a new one: it would cry every second.
+      const started = was === undefined ? false : f.move !== was.move || f.state !== was.state || (f.t < was.t && !moveOf(match, i, f.move).loop);
       if (started) this.onMove(match, i, f);
       this.last[i] = { state: f.state, move: f.move, t: f.t };
     }

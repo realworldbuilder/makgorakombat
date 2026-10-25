@@ -865,6 +865,17 @@ code {
   color: var(--gold);
 }
 
+/* The select screen's one line of fine print, under its controls. */
+.select .fine {
+  flex: none;
+  margin: 0;
+  font-size: 0.66rem;
+  color: var(--dim);
+  opacity: 0.7;
+  letter-spacing: 0.03em;
+  text-align: center;
+}
+
 /* ---- versus and the fight ------------------------------------------------------------- */
 
 .ring,
@@ -1419,6 +1430,143 @@ code {
   font-weight: 700;
   font-size: 1.2rem;
   color: var(--gold);
+}
+
+/* ---- report an issue ------------------------------------------------------------------ */
+
+/* The bug tab, pinned to the top of the screen as the beta pins its reporter: there on every
+   screen, quiet until the pointer finds it. */
+.reporter-tab {
+  position: fixed;
+  top: 0;
+  left: 50%;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 22px;
+  padding: 0;
+  transform: translateX(-50%);
+  background: linear-gradient(180deg, #3a0c0c, #1a0606);
+  border: 1px solid #8a6a2a;
+  border-top: none;
+  border-radius: 0 0 6px 6px;
+  color: var(--gold);
+  opacity: 0.55;
+  cursor: pointer;
+  transition: opacity 0.15s, height 0.15s;
+}
+
+.reporter-tab:hover,
+.reporter-tab:focus-visible {
+  height: 28px;
+  opacity: 1;
+}
+
+.reporter-tab .reporter-tip {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  display: none;
+  width: max-content;
+  max-width: 24em;
+  transform: translateX(-50%);
+  font-variant: normal;
+  pointer-events: none;
+}
+
+.reporter-tab:hover .reporter-tip {
+  display: block;
+}
+
+.reporter-backdrop {
+  z-index: 40;
+}
+
+.guide.reporter {
+  width: min(560px, 94vw);
+}
+
+.reporter .body p.dim.small {
+  margin: 0 0 10px;
+}
+
+.reporter .body input,
+.reporter .body textarea {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid #5c5c66;
+  border-radius: 4px;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.95rem;
+  resize: vertical;
+}
+
+.reporter .body input:focus,
+.reporter .body textarea:focus {
+  outline: none;
+  border-color: var(--gold-dark);
+  box-shadow: 0 0 0 1px rgba(255, 209, 0, 0.3);
+}
+
+.reporter .count {
+  margin-top: -4px;
+  text-align: right;
+}
+
+.reporter .attached {
+  margin: 6px 0 14px;
+  font-size: 0.85rem;
+  color: var(--dim);
+}
+
+.reporter .attached summary {
+  color: var(--wow-gold);
+  cursor: pointer;
+}
+
+.reporter .attached ul {
+  margin: 6px 0 0;
+  padding-left: 20px;
+  overflow-wrap: anywhere;
+}
+
+.reporter .actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.reporter .button {
+  background: linear-gradient(180deg, #3a2a2a, #1a1010);
+  font: inherit;
+}
+
+.reporter .button.primary {
+  background: linear-gradient(180deg, #8a1010, #3a0606);
+}
+
+.reporter .button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.reporter .hint {
+  margin: 12px 0 0;
+}
+
+.reporter .done h3 {
+  margin-top: 0;
+  color: var(--wow-gold);
+}
+
+.reporter .done a {
+  color: var(--wow-blue);
 }
 
 /* ---- PLAY ONLINE ---------------------------------------------------------------------- */

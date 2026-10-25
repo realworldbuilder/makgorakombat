@@ -48,7 +48,7 @@ describe('the handshake', () => {
     const got = decode(text) as Hello;
     expect(got).toEqual(sent);
     expect(got.tables[0]).toEqual(sent.tables[0]);
-    expect(got.tables[1].fatality.loser).toEqual(sent.tables[1].fatality.loser);
+    expect(got.tables[1].fatality.victim).toEqual(sent.tables[1].fatality.victim);
     expect(championOf(got.fighters[0])).toEqual(thrall);
     expect(championOf(got.fighters[1])).toEqual(made);
     // The tables are small enough for one message.
@@ -73,8 +73,10 @@ describe('the handshake', () => {
 
   it('refuses another version with a message that says what to do', () => {
     expect(mismatch(meet('wow'))).toBeUndefined();
-    expect(mismatch({ version: VERSION + 1 })).toMatch(/newer version.*reload/);
-    expect(mismatch({ version: VERSION - 1 })).toMatch(/older version/);
+    expect(mismatch({ version: `${VERSION}x` })).toMatch(/different version.*reload/);
+    // A page from before the fingerprint said 1.
+    expect(mismatch({ version: 1 })).toMatch(/different version/);
+    expect(VERSION).toMatch(/^[0-9a-f]{10}$/);
   });
 
   it('draws a legend with this install’s own display of it, or as its race when it has none', () => {

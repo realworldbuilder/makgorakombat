@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
+import type { BuildInfoEntry } from '@mogshot/casc/build-info';
 import { BRAND } from '../engine/brand';
-import { ActionBar, GLYPHS } from './ActionBar';
-import type { Phase } from './folder';
+import { ActionBar, GLYPHS, type Slot } from './ActionBar';
+import { editionOf, type EditionKey } from './edition';
+import { lastProduct, type Phase } from './folder';
 import { Guide, type GuidePage } from './Guide';
 import { Settings } from './Settings';
 
@@ -9,10 +11,41 @@ interface TitleProps {
   phase: Phase;
   dragging: boolean;
   onPick: (input: HTMLInputElement) => void;
+  /** A game picked from a folder that holds several. */
+  onChoose?: (product: string) => void;
   /** CREATE YOUR CHAMPION is open (or closed): a folder chosen meanwhile opens the roster on the creator's question mark. */
   onCreate: (open: boolean) => void;
   /** PLAY ONLINE is open (or closed): a folder chosen meanwhile opens the online panel over the roster. */
   onOnline: (open: boolean) => void;
+}
+
+/** What each edition brings to the ring, for the slot's tooltip before anything is read. */
+const EDITION_WORDS: Record<EditionKey, { hue: 'legendary' | 'epic' | 'rare'; lines: string[] }> = {
+  retail: { hue: 'epic', lines: ["Today's Azeroth: every allied race and all thirteen classes.", 'The legends in their newest looks, with their artifact weapons.', 'Stages on the rebuilt world.'] },
+  forever: { hue: 'legendary', lines: ['The world before Molten Core, and the Skyborne.', 'The legends as they first looked, Sylvanas among them.', 'Stages on the 2004 ground, the Valley of Heroes too.'] },
+  classic: { hue: 'rare', lines: ['The original races and classes.', 'The legends as they first looked.'] },
+};
+
+/** One slot per game in the folder, the one played last lit. */
+function editionSlots(products: readonly BuildInfoEntry[], onChoose: (product: string) => void): Slot[] {
+  const last = lastProduct();
+  return products.map((entry, i) => {
+    const edition = editionOf(entry.product, entry.version);
+    const words = EDITION_WORDS[edition.key];
+    return {
+      key: String(i + 1),
+      label: edition.name.replace(/ Edition$/, '').toUpperCase(),
+      icon: GLYPHS[edition.key],
+      lit: entry.product === last,
+      onClick: () => onChoose(entry.product),
+      tip: [
+        { left: edition.name, kind: 'name', hue: words.hue },
+        { left: edition.game, right: entry.version.split('.').slice(0, 3).join('.') },
+        ...words.lines.map((line) => ({ left: line, hue: 'green' as const })),
+        { left: `"${entry.product}"`, hue: 'gold' },
+      ],
+    };
+  });
 }
 
 const chromium = typeof window !== 'undefined' && 'chrome' in window;
@@ -38,7 +71,7 @@ export function LogoArt({ small }: { small?: boolean }) {
   );
 }
 
-export function Title({ phase, dragging, onPick, onCreate, onOnline }: TitleProps) {
+export function Title({ phase, dragging, onPick, onChoose, onCreate, onOnline }: TitleProps) {
   const [guide, setGuidePage] = useState<GuidePage>();
   const setGuide = (page: GuidePage | undefined) => {
     setGuidePage(page);
@@ -56,7 +89,8 @@ export function Title({ phase, dragging, onPick, onCreate, onOnline }: TitleProp
   // The action bar's hotkeys: 1 opens the folder picker (a key press counts as the click the
   // browser wants), 2 how to play, 3 CREATE YOUR CHAMPION, 4 the source, 5 the settings, 6 PLAY ONLINE.
   useEffect(() => {
-    if (opening) return;
+    // A folder with several games takes the digits for its WHICH WORLD? slots instead.
+    if (opening || phase.kind === 'choose') return;
     const onKey = (event: KeyboardEvent) => {
       if (guide || settings || event.metaKey || event.ctrlKey || event.altKey) return;
       switch (event.code) {
@@ -72,7 +106,20 @@ export function Title({ phase, dragging, onPick, onCreate, onOnline }: TitleProp
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [opening, guide, settings]);
+  }, [opening, phase.kind, guide, settings]);
+
+  // A folder with several games: 1, 2... pick one, Enter the one played last.
+  useEffect(() => {
+    if (phase.kind !== 'choose' || !onChoose) return;
+    const onKey = (event: KeyboardEvent) => {
+      const index = /^(?:Digit|Numpad)([1-9])$/.exec(event.code)?.[1];
+      const picked = index ? phase.products[Number(index) - 1] : event.code === 'Enter' ? (phase.products.find((p) => p.product === lastProduct()) ?? phase.products[0]) : undefined;
+      if (picked) onChoose(picked.product);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [phase, onChoose]);
+
   return (
     <div class={`screen title ${dragging ? 'over' : ''}`}>
       <div class="faceoff" aria-hidden="true">
@@ -90,6 +137,12 @@ export function Title({ phase, dragging, onPick, onCreate, onOnline }: TitleProp
         <div class="opening">
           <p class="big">ENTERING THE RING</p>
           <p class="dim">{phase.message}</p>
+        </div>
+      ) : phase.kind === 'choose' && onChoose ? (
+        <div class="choose-edition">
+          <p class="big">WHICH WORLD?</p>
+          <p class="dim">This folder holds {phase.products.length} games. Each brings its own champions, its own ground and its own edition of the ring.</p>
+          <ActionBar slots={editionSlots(phase.products, onChoose)} />
         </div>
       ) : (
         <>

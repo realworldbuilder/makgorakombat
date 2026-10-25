@@ -163,8 +163,8 @@ describe('the built-in champions', () => {
     const legend: Tile = { kind: 'race', id: 'legend-stand-in', race: RACES[1]! };
     const elf: SavedChampion = { ...thraka, id: 'def', name: 'Leafy', raceId: 4, classId: 11 };
     const row = championRow([legend], [thraka, elf], RACES);
-    expect(row.map((tile) => tile.id)).toEqual(['legend-stand-in', 'saved:builtin:cassidy', 'create', 'saved:def', 'saved:abc']);
-    expect(championRow([], [], RACES).map((tile) => tile.id)).toEqual(['saved:builtin:cassidy', 'create']);
+    expect(row.map((tile) => tile.id)).toEqual(['legend-stand-in', 'saved:builtin:cassidy', 'saved:builtin:rambleon', 'create', 'saved:def', 'saved:abc']);
+    expect(championRow([], [], RACES).map((tile) => tile.id)).toEqual(['saved:builtin:cassidy', 'saved:builtin:rambleon', 'create']);
   });
 
   it('are never written to storage, nor read back from it, nor saved over or deleted', () => {

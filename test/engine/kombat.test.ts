@@ -351,7 +351,7 @@ describe('KOMBAT: specials', () => {
     mage.cast = undefined;
     mage.state = 'idle';
     tick(match, NONE);
-    expect(mage.resource).toBeCloseTo(50 + 2 * (3 / 60), 5);
+    expect(mage.resource).toBeCloseTo(50 + 2 * match.tables[0].kit.regen, 5);
   });
 });
 
@@ -456,7 +456,8 @@ describe('KOMBAT: the CPU', () => {
       for (let n = 0; n < 6000 && match.phase !== 'matchEnd'; n++) {
         tick(match, [cpuInputs(match, 0), cpuInputs(match, 1)]);
         for (const i of [0, 1] as const) {
-          reeling[i] = match.fighters[i].hitstun > 0 ? reeling[i]! + 1 : 0;
+          // Reeling from blows, not held by a stun ability: a stun is its own clock (Kidney Shot, Hammer of Justice).
+          reeling[i] = match.fighters[i].hitstun > 0 && !(match.fighters[i].stunT > 0) ? reeling[i]! + 1 : 0;
           longest[i] = Math.max(longest[i]!, reeling[i]!);
           if (match.fighters[i].state === 'block' && match.fighters[i].t === 0) blocks++;
           const state = match.fighters[i].state;

@@ -39,7 +39,7 @@ describe.skipIf(!live)('online, through the deployed relay', () => {
     const theirs = [next(host, 'meet'), next(guest, 'meet')];
     host.send(meet('wow'));
     guest.send(meet('wow_classic'));
-    for (const m of await Promise.all(theirs)) expect(mismatch(m as { version: number })).toBeUndefined();
+    for (const m of await Promise.all(theirs)) expect(mismatch(m as { version: string })).toBeUndefined();
 
     // The hello, tables and all, through the relay in one message.
     const hello: Hello = {

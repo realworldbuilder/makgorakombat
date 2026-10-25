@@ -34,7 +34,7 @@ export type StageKey = { kind: 'stage'; slug: string } | { kind: 'screen'; id: n
 /** Both sides say who they are on meeting: a different VERSION cannot fight. */
 export interface Meet {
   t: 'meet';
-  version: number;
+  version: string;
   /** 'wow', 'wow_classic' ...: told, not checked; the host's tables keep two installs in step. */
   product: string;
 }
@@ -42,7 +42,7 @@ export interface Meet {
 /** The host starts a fight. */
 export interface Hello {
   t: 'hello';
-  version: number;
+  version: string;
   product: string;
   /** For when the engine has rule sets; passed through untouched until then. */
   rules?: string;
@@ -123,10 +123,13 @@ export function championOf(spec: FighterSpec): Champion {
 
 /**
  * A move table as it came over the wire. JSON has no undefined, so the beats of a fatality that
- * leave the loser alone come back as null; they go back to undefined, as the engine checks.
+ * leave the loser alone come back as null; they go back to undefined, as the engine checks. The
+ * loser's part is kept for every class's fatality, by fatality id.
  */
 export function reviveTable(table: MoveTable): MoveTable {
-  table.fatality.loser = table.fatality.loser.map((move) => move ?? undefined);
+  const victim: Record<string, (MoveTable['fatality']['winner'][number] | undefined)[]> = {};
+  for (const [id, moves] of Object.entries(table.fatality.victim)) victim[id] = moves.map((move) => move ?? undefined);
+  table.fatality.victim = victim;
   return table;
 }
 
@@ -154,10 +157,9 @@ export function meet(product: string): Meet {
 }
 
 /** Why two pages cannot fight, or undefined when they can. */
-export function mismatch(theirs: { version: number }): string | undefined {
+export function mismatch(theirs: { version: string | number }): string | undefined {
   if (theirs.version === VERSION) return undefined;
-  const newer = theirs.version > VERSION ? 'Your opponent has a newer version of the game' : 'Your opponent has an older version of the game';
-  return `${newer} (${theirs.version}, this page is ${VERSION}). Both of you reload the page so it is the same one, then try again.`;
+  return `Your opponent's game is a different version (${theirs.version}, this page is ${VERSION}). Both of you reload the page so it is the same one, then try again.`;
 }
 
 /** The ground as a key the other machine can look up. */

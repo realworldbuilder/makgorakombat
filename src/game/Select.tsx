@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { ClassEntry, Race } from '@mogshot/character/appearance';
+import type { BuildInfoEntry } from '@mogshot/casc/build-info';
 import type { ImportedRecord } from '@mogshot/import/record';
 import { BRAND } from '../engine/brand';
+import { GLYPHS } from './ActionBar';
+import { type Edition, editionOf } from './edition';
+import type { EditionArt } from './editionArt';
 import { type KeyLayout, keyLayout, LAYOUT_WORDS, MENU_KEYS, ROSTER_KEYS, setKeyLayout } from '../engine/input';
 import { type BuiltFighter, type Champion, type Fighters } from './fighters';
 import { headshotOf, storedHeadshot } from './headshot';
@@ -25,7 +29,8 @@ const RESOURCE_WORDS: Record<ResourceKind, string> = { rage: 'Rage: builds in co
  * at once, each champion drawn full size on its player's side as soon as the cursor rests
  * on it. After the last legend come the champions built into the game (Cassidy Darkstar), then
  * a question mark that opens CREATE YOUR CHAMPION, and the champions made there follow it,
- * newest first.
+ * newest first. The screen is dressed as the open game's edition: its name under our logo, one of
+ * its loading screens behind, its colours; E switches to another game in the same folder.
  */
 
 export type Source = 'keyboard' | 'gamepad' | 'cpu';
@@ -44,6 +49,12 @@ export interface OnlinePick {
 }
 
 interface SelectProps {
+  /** Which of the folder's games is open, and its art. */
+  edition: Edition;
+  art: EditionArt;
+  /** The folder's other games, to switch to. */
+  others: BuildInfoEntry[];
+  onEdition: (product: string) => void;
   races: Race[];
   classes: ClassEntry[];
   records: ImportedRecord[];
@@ -112,7 +123,7 @@ const freshPlayer = (sex: number): Player => ({
 /** The legends' portraits are rendered once through the Mogshot command line and shipped with the game, as the browser has no portrait atlas for NPCs. */
 const legendPortrait = (slug: string) => `${import.meta.env.BASE_URL}legends/${slug}.png`;
 
-export function Select({ races, classes, records, legends, portraits, fighters, saved, onSaved, startOnCreate, p2, onP2, onReady, onBack, online, paused, onOnline }: SelectProps) {
+export function Select({ edition, art, others, onEdition, races, classes, records, legends, portraits, fighters, saved, onSaved, startOnCreate, p2, onP2, onReady, onBack, online, paused, onOnline }: SelectProps) {
   const roster = useMemo(() => rosterTiles(races), [races]);
   const [layout, setLayout] = useState<KeyLayout>(keyLayout());
   const champions = useMemo(() => championTiles(records, races), [records, races]);
@@ -121,7 +132,7 @@ export function Select({ races, classes, records, legends, portraits, fighters, 
   const createAt = legendRow.indexOf(CREATE_TILE);
   // The rows from the top, leaving out the empty ones; the cursor moves up and down through them.
   // For now the ring is for the legends only (William, 24 Oct 2026); the races and your own
-  // characters come back by setting LEGENDS_ONLY to false. An install with no legend the game
+  // characters come back with `?all` on the address. An install with no legend the game
   // can draw still gets the full roster rather than an empty screen.
   const legendsOnly = LEGENDS_ONLY && legends.length > 0;
   const zones = useMemo(() => {
@@ -158,6 +169,8 @@ export function Select({ races, classes, records, legends, portraits, fighters, 
   makingRef.current = making;
   const p2Ref = useRef(p2);
   p2Ref.current = p2;
+  const othersRef = useRef(others);
+  othersRef.current = others;
   const onlineRef = useRef(online);
   onlineRef.current = online;
   const pausedRef = useRef(paused);
@@ -354,6 +367,13 @@ export function Select({ races, classes, records, legends, portraits, fighters, 
           else onBack();
         } else if (a.locked || b.locked) setPlayers([{ ...a, locked: false }, { ...b, locked: false }]);
         else onBack();
+        return;
+      }
+      // Another game in the same folder: its own edition of the ring, read afresh.
+      // Online the room is on this game's files: switching games stays an offline thing.
+      if (event.code === 'KeyE' && !onlineRef.current && othersRef.current.length > 0) {
+        event.preventDefault();
+        onEdition(othersRef.current[0]!.product);
         return;
       }
       if (event.code === 'Tab') {
@@ -654,7 +674,7 @@ export function Select({ races, classes, records, legends, portraits, fighters, 
       const weapon = player.built?.moves.weapon;
       if (weapon) {
         const speed = weapon.speed / 60;
-        lines.push({ left: `${weapon.damage} Damage`, right: `Speed ${speed.toFixed(2)}` });
+        lines.push({ left: `${Number(weapon.damage.toFixed(1))} Damage`, right: `Speed ${speed.toFixed(2)}` });
         lines.push({ left: `(${(weapon.damage / speed).toFixed(1)} damage per second)` });
       }
       const kit = kitSpec(classId, player.built?.result.wielding ?? 'oneHand');
@@ -697,7 +717,8 @@ export function Select({ races, classes, records, legends, portraits, fighters, 
   };
 
   return (
-    <div class="screen select">
+    <div class={`screen select edition-${edition.key}`}>
+      {art.backdrop && <div class="edition-backdrop" style={{ backgroundImage: `url(${art.backdrop})` }} aria-hidden="true" />}
       <div class="sides">
         <div class="side left">
           <Preview fighter={players[0].built} locked={players[0].locked} side="left" />
@@ -707,6 +728,10 @@ export function Select({ races, classes, records, legends, portraits, fighters, 
         <div class={`middle ${legendsOnly ? 'legends-only' : ''}`}>
         <header>
           <LogoArt small={!legendsOnly} />
+          <div class="edition-mark" title={`${edition.game} ${edition.version}`}>
+            <span class="glyph">{GLYPHS[edition.key]}</span>
+            <span class="words">{edition.name.toUpperCase()}</span>
+          </div>
           <h1>{BRAND.choose}</h1>
         </header>
         <div class={`grid ${legendsOnly ? 'legends-only' : ''}`}>
@@ -750,8 +775,14 @@ export function Select({ races, classes, records, legends, portraits, fighters, 
           <span><b>P1</b> {ROSTER_HINTS[layout][0][0]}{legendsOnly ? '' : ROSTER_HINTS[layout][0][1]}</span>
           <span><b>P2</b> {ROSTER_HINTS[layout][1][0]}{legendsOnly ? '' : ROSTER_HINTS[layout][1][1]}</span>
           <span><b>Tab</b> player 2: {p2} · <b>N</b> create / edit · <b>C</b> keys: {LAYOUT_WORDS[layout]} · <b>O</b> play online · <b>Esc</b> back</span>
+          {others.length > 0 && (
+            <button class="switch-edition" type="button" onClick={() => onEdition(others[0]!.product)}>
+              <b>E</b> {editionOf(others[0]!.product, others[0]!.version).name}
+            </button>
+          )}
         </footer>
       )}
+      <p class="fine">A fan game, not made by or affiliated with Blizzard Entertainment. World of Warcraft is theirs; the fighters come from your own copy.</p>
       {making && (
         <Create
           races={races}
