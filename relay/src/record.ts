@@ -11,6 +11,8 @@
  * same layout, with the seat's byte in front as every frame to a watcher has.
  */
 
+/** Watchers a room takes at once. Here and not in index.ts, whose exports the runtime takes for handlers. */
+export const WATCH_CAP = 50;
 /** The first byte of every frame of the fight. */
 const FRAME_TAG = 0x4b;
 /** The most of each player's inputs kept: an hour of fight at sixty ticks a second. */

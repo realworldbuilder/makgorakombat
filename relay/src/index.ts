@@ -1,7 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import { isCode, newCode } from './code';
 import { LOBBY, type Lobby } from './lobby';
-import { GameRecord, kindOf } from './record';
+import { GameRecord, kindOf, WATCH_CAP } from './record';
 
 export { Lobby } from './lobby';
 
@@ -31,9 +31,6 @@ export interface Env {
 export type Role = 'host' | 'guest';
 /** A seat in the room: one of the two players, or one of those watching. */
 type Seat = Role | 'watch';
-
-/** Watchers a room takes at once. */
-export const WATCH_CAP = 50;
 
 /** A room with nobody in it closes after this long. */
 const IDLE_MS = 10 * 60 * 1000;
