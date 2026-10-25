@@ -1,6 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import { isCode, newCode } from './code';
 import { LOBBY, type Lobby } from './lobby';
+import { HELD_MAX, RECONNECT_MS, SILENT_MS } from './seats';
 
 export { Lobby } from './lobby';
 
@@ -27,16 +28,6 @@ export type Role = 'host' | 'guest';
 
 /** A room with nobody in it closes after this long. */
 const IDLE_MS = 10 * 60 * 1000;
-/** A player whose socket dropped keeps their seat this long. */
-export const RECONNECT_MS = 20_000;
-/** At most this many messages are held for a player who is away; the oldest frames go first. */
-export const HELD_MAX = 600;
-/**
- * A page with an id pings every two seconds and sends the fight's frames every frame; one that has
- * sent nothing for this long while the other is talking has dropped without a word (Wi-Fi pulled:
- * no close ever comes), and is taken for away.
- */
-export const SILENT_MS = 6000;
 /** Close codes that mean the page left on purpose (BACK TO THE ROSTER, a closed tab): no seat is kept for it. */
 const LEAVING = new Set([1000, 1001]);
 
