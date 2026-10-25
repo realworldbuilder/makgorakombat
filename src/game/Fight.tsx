@@ -244,6 +244,8 @@ export function Fight({ fighters, stage, p2, onBack, net }: FightProps) {
     let push = 1;
     let hitsSeen = 0;
     const loop = (now: number) => {
+      // The fight left: its canvases are gone a frame before this effect's cleanup cancels the loop.
+      if (!canvas.current || !overlay.current) return;
       frame = requestAnimationFrame(loop);
       const current = match.current!;
       // Held by a script, or standing still while a report is written; never online, where holding here would stall the other player.
