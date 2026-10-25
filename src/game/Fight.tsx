@@ -182,6 +182,7 @@ export function Fight({ fighters, stage, p2, onBack, net }: FightProps) {
         held = on;
       },
     };
+    const handle = (window as unknown as { mk?: unknown }).mk;
     // Each fighter's head, standing, at its own size: where its nameplate hangs and its words rise.
     const heads: [number, number] = [headHeight(fighters[0]), headHeight(fighters[1])];
     const input = new InputReader();
@@ -323,6 +324,9 @@ export function Fight({ fighters, stage, p2, onBack, net }: FightProps) {
       lockstep?.dispose();
       offLink?.();
       window.removeEventListener('keydown', onKey);
+      // The console's handle goes with the fight: it reaches the fighters, the ring and the mixer, and would keep them after.
+      const page = window as unknown as { mk?: unknown };
+      if (page.mk === handle) delete page.mk;
     };
   }, [fighters, stage, p2, onBack, net]);
 
