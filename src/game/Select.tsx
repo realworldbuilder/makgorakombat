@@ -66,8 +66,11 @@ interface Player {
 }
 
 const COLUMNS = 8;
-/** Only the legends on the select screen. */
-const LEGENDS_ONLY = true;
+/**
+ * Only the legends on the select screen (William, 24 Oct 2026), unless the page is opened with
+ * `?all` on the address, which brings back every race and the player's own characters.
+ */
+const LEGENDS_ONLY = !(typeof location !== 'undefined' && new URLSearchParams(location.search).has('all'));
 const HOVER_MS = 200;
 
 const KEYS: Record<number, Record<string, 'up' | 'down' | 'left' | 'right' | 'confirm' | 'back' | 'sex' | 'classPrev' | 'classNext'>> = {
@@ -98,7 +101,7 @@ export function Select({ edition, art, others, onEdition, races, classes, record
   const champions = useMemo(() => championTiles(records, races), [records, races]);
   // The rows from the top, leaving out the empty ones; the cursor moves up and down through them.
   // For now the ring is for the legends only (William, 24 Oct 2026); the races and your own
-  // characters come back by setting LEGENDS_ONLY to false. An install with no legend the game
+  // characters come back with `?all` on the address. An install with no legend the game
   // can draw still gets the full roster rather than an empty screen.
   const legendsOnly = LEGENDS_ONLY && legends.length > 0;
   const zones = useMemo(() => {
