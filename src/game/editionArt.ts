@@ -1,17 +1,13 @@
 import { CLASSIC_SCREEN_ASPECT, composeBackdrop } from '@mogshot/render/backdrop';
 import type { DataClient } from '@mogshot/worker/client';
 import type { Edition } from './edition';
-import { pictureUrl } from './pixels';
 
 /*
- * The edition's art, read from the open install: the game's logo off its login screen, and one
- * of its loading screens drawn full screen behind CHOOSE YOUR CHAMPION. Either is left out when
- * the install has none of the files the edition names.
+ * The edition's art, read from the open install: one of its loading screens drawn full screen
+ * behind CHOOSE YOUR CHAMPION, left out when the install has none of the files the edition names.
  */
 
 export interface EditionArt {
-  /** The game's logo, as an image URL. */
-  logo?: string;
   /** A loading screen of the game, cropped to the screen's shape. */
   backdrop?: string;
 }
@@ -32,9 +28,8 @@ async function canvasUrl(canvas: OffscreenCanvas | HTMLCanvasElement): Promise<s
 }
 
 export async function loadEditionArt(client: DataClient, edition: Edition): Promise<EditionArt> {
-  const [logo, screen] = await Promise.all([firstImage(client, edition.logos), firstImage(client, edition.backdrops)]);
+  const screen = await firstImage(client, edition.backdrops);
   const art: EditionArt = {};
-  if (logo) art.logo = pictureUrl(logo.image);
   if (screen) {
     // A square file is a 4:3 screen of the original game, stretched; the newer ones are wide with bars.
     const square = screen.image.width === screen.image.height;

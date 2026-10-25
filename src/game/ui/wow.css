@@ -508,29 +508,43 @@
 
 .select .edition-mark {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  margin: -0.4vh 0 0.2vh;
+  gap: 0.55em;
+  margin: -0.2vh 0 0.6vh;
   line-height: 1;
-}
-
-.select .edition-mark img {
-  height: clamp(48px, 10vh, 112px);
-  width: auto;
-  filter: drop-shadow(0 0.3em 0.8em rgba(0, 0, 0, 0.85));
-}
-
-.select .edition-mark span {
-  margin-top: 0.15em;
-  font-family: var(--friz);
-  font-size: clamp(0.7rem, 1.5vh, 0.95rem);
-  letter-spacing: 0.32em;
+  font-size: clamp(0.85rem, 2vh, 1.2rem);
   color: var(--edition-ink);
-  text-shadow: 0 0 0.9em var(--edition-glow), 1px 1px 0 #000;
 }
 
-.select .middle:not(.legends-only) .edition-mark img {
-  height: 44px;
+/* Thin rules either side, as the game sets a subtitle under a title. */
+.select .edition-mark::before,
+.select .edition-mark::after {
+  content: '';
+  width: 3.2em;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--edition-rim));
+}
+
+.select .edition-mark::after {
+  background: linear-gradient(90deg, var(--edition-rim), transparent);
+}
+
+.select .edition-mark .glyph {
+  display: block;
+  width: 1.5em;
+  height: 1.5em;
+  filter: drop-shadow(0 0 0.4em var(--edition-glow));
+}
+
+.select .edition-mark .glyph svg {
+  width: 100%;
+  height: 100%;
+}
+
+.select .edition-mark .words {
+  font-family: var(--friz);
+  letter-spacing: 0.3em;
+  text-shadow: 0 0 0.9em var(--edition-glow), 1px 1px 0 #000;
 }
 
 .select .grid {
