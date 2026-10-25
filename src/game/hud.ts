@@ -2,13 +2,13 @@ import { BRAND } from '../engine/brand';
 import type { FloatingText, Match } from '../engine/engine';
 import { directionOf, type FatalityEffect, impactFrame, type SequenceToken, STEP_FRAMES } from '../engine/fatalities';
 import { actionLabel, type InputSource } from '../engine/input';
-import { FINISH_FRAMES, HALF, HP, HUMAN_HEAD, ROUND_FRAMES } from '../engine/stage';
+import { FINISH_FRAMES, HP, HUMAN_HEAD, ROUND_FRAMES } from '../engine/stage';
 import { type AnchorAt, ATTACH } from './fx';
 import { drawSpells } from './fx2d';
 
 /*
- * What is drawn over the ring and belongs to the world: the ground line, the nameplates with
- * their slivers of health, cast bars and stun stars, the hit sparks, the spells in flight, the
+ * What is drawn over the ring and belongs to the world: the nameplates with their
+ * slivers of health, cast bars and stun stars, the hit sparks, the spells in flight, the
  * numbers and words that float off a hit, and the words that slam in (ROUND 1, FIGHT!, K.O.);
  * during the finish the fatality's key sequence on the winner's side, and during the fatality
  * itself the class's effect over the pair, a flash at the blow, letterbox bars and a red vignette.
@@ -98,7 +98,6 @@ export function drawHud(ctx: CanvasRenderingContext2D, width: number, height: nu
 
   const bodies = bodiesOf(match, options.heads ?? [HUMAN_HEAD, HUMAN_HEAD], options.anchor ?? (() => undefined));
 
-  groundLine(ctx, at);
   hurtFlash(ctx, w, h, match, human);
   nameplates(ctx, match, names, at, bodies);
   sparks(ctx, match, at, bodies);
@@ -117,23 +116,6 @@ export function drawHud(ctx: CanvasRenderingContext2D, width: number, height: nu
     ctx.fillText(debug, 12, h - 8);
   }
   ctx.restore();
-}
-
-/** The ground line, where the fighters' feet are. */
-function groundLine(ctx: CanvasRenderingContext2D, at: (p: readonly [number, number, number]) => [number, number] | undefined): void {
-  const left = at([-HALF - 0.5, 0, 0]);
-  const right = at([HALF + 0.5, 0, 0]);
-  if (!left || !right) return;
-  const gradient = ctx.createLinearGradient(left[0], 0, right[0], 0);
-  gradient.addColorStop(0, 'rgba(255, 209, 0, 0)');
-  gradient.addColorStop(0.5, 'rgba(255, 209, 0, 0.55)');
-  gradient.addColorStop(1, 'rgba(255, 209, 0, 0)');
-  ctx.strokeStyle = gradient;
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(left[0], left[1] + 2);
-  ctx.lineTo(right[0], right[1] + 2);
-  ctx.stroke();
 }
 
 /** A thin plate over each head: the name, a sliver of health, the cast bar while casting, stars while stunned. */
