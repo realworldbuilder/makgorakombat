@@ -59,6 +59,8 @@ Under FINISH THE MAK'GORA! the winner's keys are read as a sequence. The prompt 
 
 Each beat is one of the winner's own animations (CombatBladeStorm, CombatExecute, CombatEviscerate, DeathStrike, Stormstrike, PalmStrike, DHBladeDance1, BreathOfFire, the class casts and channels...) with a plain strike or cast standing in where the model lacks one, and the loser's Stun, Cower, CombatCritical, Knockdown and Death. The scene runs in slow motion with the camera pushed in, letterboxed, with the class's effect drawn over the pair, and ends under **DISHONOR!** with the fatality's name. A legend without a class plays the warrior's, or the hunter's behind a bow.
 
+The effects are particles on the HUD's canvas (`src/game/particles.ts`, the script in `src/game/fatalityFx.ts`): steel sparks and dust round the Bladestorm, a pillar of gold motes that comes down in a ring of light, arrows trailing sparks into a burst of feathers, arcs of blood off each strike, shadow winding into the loser, ice shards, sparks shed by the bolts, falling stars, fel embers along the beam, a cone of fire and black smoke. The pool is stepped once a tick from a seed made of the frame the fatality began on and the beat, and its particles hang off the fighters' hands, chests and feet rather than the screen, so both players of an online match see the same sparks, and a pool rebuilt after a stall or a rematch is the same as one that was there all along. `tools/fatality-fx/` drives the engine into each fatality on stand-in figures without a game folder; one sheet per class in [docs/fatality-fx-&lt;class&gt;.png](docs/).
+
 ### Controls
 
 | | Player 1 | Player 2 |
