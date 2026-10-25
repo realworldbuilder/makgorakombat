@@ -907,6 +907,25 @@ describe('rounds', () => {
     expect(match.fighters[0].wins).toBe(1);
   });
 
+  it('a loser in the air when the timer runs out lands dead, not knocked down to get up', () => {
+    const match = fighting(1.5);
+    swing(match, 0, 'hit');
+    const l = match.fighters[1];
+    l.airborne = true;
+    l.z = 1;
+    l.vz = 0;
+    l.knockdownOnLand = true;
+    l.stunT = 120;
+    match.timer = 1;
+    tick(match, NONE);
+    expect(match.phase).toBe('ko');
+    run(match, KO_SLOWMO.frames + 60);
+    expect(match.phase).toBe('roundEnd');
+    expect(l.airborne).toBe(false);
+    expect(l.state).toBe('death');
+    expect(l.move).toBe('death');
+  });
+
   it('a flawless round says HONOR RESTORED', () => {
     const match = fighting();
     winRound(match);

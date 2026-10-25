@@ -450,7 +450,8 @@ export function moveOf(match: Match, i: 0 | 1, ref: MoveRef): Move {
   if (ref.startsWith('ability')) return table.kit.abilities[Number(ref.slice(7))]!.move;
   if (ref.startsWith('cast')) return table.kit.abilities[Number(ref.slice(4))]!.hold;
   if (ref.startsWith('fatality')) return table.fatality.winner[Number(ref.slice(8))] ?? table.moves.idle;
-  if (ref.startsWith('victim')) return table.fatality.loser[Number(ref.slice(6))] ?? table.moves.idle;
+  // The loser plays their part of the winner's fatality, on their own model.
+  if (ref.startsWith('victim')) return table.fatality.victim[match.tables[other(i)].fatality.spec.id]?.[Number(ref.slice(6))] ?? table.moves.idle;
   return table.moves[ref as keyof typeof table.moves];
 }
 
@@ -798,6 +799,11 @@ function advanceMove(match: Match, i: 0 | 1): void {
   const rate = f.state === 'attack' || f.state === 'ability' ? ATTACK_RATE : 1;
   f.t += TICK_MS * match.slowmo * rate;
   if (f.t < duration) return;
+  // The dead stay down, whatever animation stands in for their death.
+  if (f.state === 'death') {
+    f.t = duration;
+    return;
+  }
   if (move.loop) {
     f.t = duration > 0 ? f.t % duration : 0;
     return;
@@ -816,8 +822,8 @@ function advanceMove(match: Match, i: 0 | 1): void {
       f.t = duration;
       return;
     default:
-      // A stun, a fear, the fatality's last beat and a death hold their last frame.
-      if (f.state === 'stun' || f.state === 'fear' || f.state === 'finisher' || f.state === 'death') {
+      // A stun, a fear and the fatality's last beat hold their last frame (a death is held above).
+      if (f.state === 'stun' || f.state === 'fear' || f.state === 'finisher') {
         f.t = duration;
         return;
       }
@@ -1430,7 +1436,10 @@ function physics(match: Match): void {
         f.vz = 0;
         f.airVx = 0;
         f.airborne = false;
-        if (f.knockdownOnLand) {
+        if (f.state === 'death') {
+          // Killed in the air: they land dead, not knocked down to get up again.
+          f.knockdownOnLand = false;
+        } else if (f.knockdownOnLand) {
           f.knockdownOnLand = false;
           if (f.stunT > 0) play(f, 'stun', 'dazed');
           else play(f, 'knockdown', 'knockdown');
@@ -1525,8 +1534,13 @@ function timeout(match: Match): void {
     return;
   }
   const winner: 0 | 1 = a.hp > b.hp ? 0 : 1;
-  const loser = other(winner);
-  play(match.fighters[loser], 'death', 'death');
+  const l = match.fighters[other(winner)];
+  l.knockdownOnLand = false;
+  l.stunT = 0;
+  l.fearT = 0;
+  l.cast = undefined;
+  l.dash = undefined;
+  play(l, 'death', 'death');
   match.projectiles.length = 0;
   knockout(match, winner);
 }

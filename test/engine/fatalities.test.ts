@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { BRAND } from '../../src/engine/brand';
 import { cpuInputs } from '../../src/engine/cpu';
-import { type Inputs, type Match, poseOf, tick } from '../../src/engine/engine';
+import { type Inputs, type Match, moveOf, poseOf, tick } from '../../src/engine/engine';
 import { ALL_FATALITIES, directionOf, fatalityFor, fatalityFrames, PENALTY_FRAMES, type SequenceToken, STEP_FRAMES } from '../../src/engine/fatalities';
 import { ALL_MOVE_NAMES } from '../../src/engine/moves';
 import { FINISH_FRAMES, KO_SLOWMO } from '../../src/engine/stage';
@@ -69,15 +69,17 @@ describe('every class has a fatality', () => {
         expect(move.variations.length, `${table.fatality.spec.id} beat ${k}`).toBeGreaterThan(0);
         expect(move.variations[0]!.duration).toBeGreaterThan(0);
       });
-      table.fatality.loser.forEach((move, k) => {
-        if (table.fatality.spec.beats[k]!.loser) expect(move?.variations.length, `${table.fatality.spec.id} victim ${k}`).toBeGreaterThan(0);
-        else expect(move).toBeUndefined();
-      });
+      for (const f of ALL_FATALITIES.values()) {
+        table.fatality.victim[f.id]!.forEach((move, k) => {
+          if (f.beats[k]!.loser) expect(move?.variations.length, `${f.id} victim ${k}`).toBeGreaterThan(0);
+          else expect(move).toBeUndefined();
+        });
+      }
     }
     const warrior = fakeTable(FULL_SET, 'oneHand', {}, WARRIOR).fatality;
     expect(warrior.winner[1]!.animation).toBe('CombatWhirlwind');
     expect(warrior.winner[3]!.animation).toBe('CombatExecute');
-    expect(warrior.loser[3]!.animation).toBe('Death');
+    expect(warrior.victim.warrior![3]!.animation).toBe('Death');
     expect(warrior.winner[0]!.animation).toBe('CombatChargeLoop');
   });
 
@@ -291,6 +293,32 @@ describe('the fatality', () => {
       expect(match.fatality!.hits, spec.id).toBeGreaterThan(0);
       expect(Math.abs(match.fighters[0].x), spec.id).toBeLessThanOrEqual(5);
       expect(match.fighters[0].z, spec.id).toBe(0);
+    }
+  });
+
+  it('the loser of another class plays the winner\'s fatality and stays dead through the round\'s end', () => {
+    // A druid's own fatality has three beats; a warrior's death blow is the fourth. The loser's
+    // part once came from their own class's fatality, so the druid stood up idle and cried again every second.
+    for (const winner of ALL_FATALITIES.keys()) {
+      for (const loser of ALL_FATALITIES.keys()) {
+        const match = finish(0, [winner, loser], 3, 2.0);
+        const spec = match.tables[0].fatality.spec;
+        const label = `${spec.id} on ${match.tables[1].fatality.spec.id}`;
+        enter(match, 0, spec.sequence);
+        run(match, fatalityFrames(spec) + KO_SLOWMO.frames + 1);
+        expect(match.phase, label).toBe('roundEnd');
+        const l = match.fighters[1];
+        expect(l.state, label).toBe('death');
+        expect(moveOf(match, 1, l.move).animation, label).toBe('Death');
+        // The fall plays on to its last frame and never starts over.
+        let time = poseOf(match, 1).time;
+        for (let n = 0; n < 150; n++) {
+          tick(match, [inputs(), inputs()]);
+          expect(poseOf(match, 1).time, label).toBeGreaterThanOrEqual(time);
+          time = poseOf(match, 1).time;
+        }
+        expect(time, label).toBe(moveOf(match, 1, l.move).variations[0]!.duration);
+      }
     }
   });
 
