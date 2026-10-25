@@ -4,7 +4,7 @@ import type { Stage } from './stages';
 
 /*
  * The music: the game's own tracks, read from the open folder by file id like everything else.
- * CHOOSE YOUR CHAMPION has the login screen's theme; the VS screen plays the music of the stage
+ * CHOOSE YOUR CHAMPION has the open game's login theme (edition.ts); the VS screen plays the music of the stage
  * under the cursor, as the game plays it in that zone; the fight keeps that music on underneath,
  * lower, and lower still while a fatality plays.
  *
@@ -23,9 +23,6 @@ export interface Cue {
   /** Alternatives, best first: the first group with a file on disk is played. */
   groups: readonly (readonly number[])[];
 }
-
-/** The login screen's "Legends of Azeroth", as the original game shipped it, then classic's own copy. */
-export const TITLE: Cue = { key: 'title', groups: [[53223], [8176610]] };
 
 /** The battlegrounds' music, for a fight before a loading screen. */
 export const BATTLEGROUND: Cue = { key: 'battleground', groups: [[53684, 53685, 53686, 53687, 53688]] };
@@ -66,6 +63,8 @@ interface Playing {
 
 export class Music {
   private client: DataClient | undefined;
+  /** Which open folder and product the tracks were read from. */
+  private opened: string | undefined;
   private wanted: { cue: Cue; level: number } | undefined;
   private playing: Playing | undefined;
   /** Bumped by every change of cue, so a track still loading for an old one is dropped. */
@@ -80,10 +79,11 @@ export class Music {
     });
   }
 
-  /** The open folder to read tracks from; a new folder forgets the old one's. */
-  use(client: DataClient): void {
-    if (client === this.client) return;
+  /** The open folder to read tracks from, `opened` naming the folder and product; another forgets the old one's. */
+  use(client: DataClient, opened: string): void {
+    if (client === this.client && opened === this.opened) return;
     this.client = client;
+    this.opened = opened;
     for (const url of this.urls.values()) void url.then((u) => u && URL.revokeObjectURL(u));
     this.urls.clear();
     this.lists.clear();

@@ -86,7 +86,7 @@ export function Guide({ page, onPage, onClose }: GuideProps) {
             <ol>
               <li>
                 <a href={ADDON_ZIP}>Download Mogshot</a> and copy its <code>addon/Mogshot</code> folder into{' '}
-                <code>World of Warcraft/_retail_/Interface/AddOns/</code> (or <code>_classic_beta_</code>; one copy loads in both). The source is{' '}
+                <code>World of Warcraft/_retail_/Interface/AddOns/</code> (or <code>_forever_</code> for WoW Forever; one copy loads in both). The source is{' '}
                 <a href={ADDON} target="_blank" rel="noreferrer">on GitHub</a>.
               </li>
               <li>
