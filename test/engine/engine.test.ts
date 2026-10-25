@@ -899,3 +899,32 @@ describe('determinism', () => {
     expect(a.round > 1 || a.fighters[0].hp + a.fighters[1].hp < 2 * HP).toBe(true);
   });
 });
+
+describe('the finish window', () => {
+  it('a cast the winner had in flight does not land as the plain finisher', () => {
+    const match = fighting(1.5, 1, [PRIEST, WARRIOR]);
+    const [priest, warrior] = match.fighters;
+    press(match, 0, 0); // Mind Blast, a 1 s cast
+    expect(priest.cast).toBeDefined();
+    run(match, 20);
+    warrior.hp = 0; // a damage-over-time tick ends the round mid-cast
+    tick(match, NONE);
+    expect(match.phase).toBe('finish');
+    expect(priest.cast).toBeUndefined();
+    run(match, 90);
+    expect(match.phase).toBe('finish');
+    expect(warrior.state).toBe('dazed');
+  });
+
+  it('a swing the winner had started does not land either', () => {
+    const match = fighting(1.0, 1);
+    const [a, b] = match.fighters;
+    tick(match, [inputs({ attack: true }), inputs()]);
+    expect(a.state).toBe('attack');
+    b.hp = 0;
+    tick(match, NONE);
+    expect(match.phase).toBe('finish');
+    run(match, 90);
+    expect(match.phase).toBe('finish');
+  });
+});

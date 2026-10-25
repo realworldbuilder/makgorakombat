@@ -1454,7 +1454,16 @@ function checkFinish(match: Match): void {
   w.dots.length = 0;
   w.stunT = 0;
   w.fearT = 0;
-  if (w.state === 'stun' || w.state === 'fear') play(w, 'idle', 'idle');
+  // Nothing the winner had in flight lands by itself: a cast about to go off, a dash, a swing or
+  // bolt mid-animation, or a queued press would be the plain finisher before the sequence could
+  // be entered. The window is theirs to use.
+  w.cast = undefined;
+  w.dash = undefined;
+  w.hitDone = true;
+  w.buffered = -1;
+  w.bufferedT = 0;
+  w.queued = false;
+  if (w.state === 'stun' || w.state === 'fear' || w.state === 'cast' || w.state === 'dash') play(w, 'idle', 'idle');
   match.projectiles.length = 0;
   match.roundWinner = winner;
   // The sequence starts clean: a key held through the knockdown is not a press.
