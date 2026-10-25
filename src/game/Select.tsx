@@ -9,6 +9,7 @@ import type { EditionArt } from './editionArt';
 import { type KeyLayout, keyLayout, LAYOUT_WORDS, MENU_KEYS, ROSTER_KEYS, setKeyLayout } from '../engine/input';
 import { type BuiltFighter, type Champion, type Fighters } from './fighters';
 import { headshotOf, storedHeadshot } from './headshot';
+import { usePadMode, usePadUse } from './pads';
 import { Preview } from './Preview';
 import { championTiles, classesOf, CREATE_TILE, cycleClass, factionOf, gridMove, randomTile, rosterTiles, sexFor, type Tile } from './roster';
 import { Create } from './Create';
@@ -103,6 +104,9 @@ const COLUMNS = 8;
 const LEGENDS_ONLY = !(typeof location !== 'undefined' && new URLSearchParams(location.search).has('all'));
 const HOVER_MS = 200;
 
+/** The roster hint for a player on a controller. */
+const PAD_HINT: readonly [string, string] = ['d-pad move · A choose · B back', ' · Y ♂/♀ · LB/RB class'];
+
 /** The roster hint per player under each layout. */
 const ROSTER_HINTS: Readonly<Record<KeyLayout, readonly [[string, string], [string, string]]>> = {
   classic: [['WASD move · J choose · H back', ' · U ♂/♀ · K/L class'], ['arrows · , or Num1 choose · M back', ' · Right Shift ♂/♀ · . / class']],
@@ -125,6 +129,8 @@ const legendPortrait = (slug: string) => `${import.meta.env.BASE_URL}legends/${s
 
 export function Select({ edition, art, others, onEdition, races, classes, records, legends, portraits, fighters, saved, onSaved, startOnCreate, p2, onP2, onReady, onBack, online, paused, onOnline }: SelectProps) {
   const roster = useMemo(() => rosterTiles(races), [races]);
+  usePadMode('roster');
+  const padUse = usePadUse();
   const [layout, setLayout] = useState<KeyLayout>(keyLayout());
   const champions = useMemo(() => championTiles(records, races), [records, races]);
   // The legends' row: the legends, the built-in champions, the question mark, and the champions made here, newest first.
@@ -135,6 +141,11 @@ export function Select({ edition, art, others, onEdition, races, classes, record
   // characters come back with `?all` on the address. An install with no legend the game
   // can draw still gets the full roster rather than an empty screen.
   const legendsOnly = LEGENDS_ONLY && legends.length > 0;
+  /** A player's roster keys, or a controller's buttons once they play with one; the legends alone have no sex or class to change. */
+  const hint = (who: 0 | 1) => {
+    const [move, more] = padUse[who] ? PAD_HINT : ROSTER_HINTS[layout][who];
+    return legendsOnly ? move : move + more;
+  };
   const zones = useMemo(() => {
     const rows: { zone: Cursor['zone']; tiles: Tile[] }[] = [];
     rows.push({ zone: 'legends', tiles: legendRow });
@@ -768,14 +779,14 @@ export function Select({ edition, art, others, onEdition, races, classes, record
       {online ? (
         <footer class="controls">
           <span><b>ONLINE</b> room {online.code} · you are player {online.me + 1}</span>
-          <span>{ROSTER_HINTS[layout][0][0]}{legendsOnly ? '' : ROSTER_HINTS[layout][0][1]}</span>
+          <span>{hint(0)}</span>
           <span><b>N</b> create / edit · <b>C</b> keys: {LAYOUT_WORDS[layout]} · <b>Esc</b> leave the room</span>
         </footer>
       ) : (
         <footer class="controls">
-          <span><b>P1</b> {ROSTER_HINTS[layout][0][0]}{legendsOnly ? '' : ROSTER_HINTS[layout][0][1]}</span>
-          <span><b>P2</b> {ROSTER_HINTS[layout][1][0]}{legendsOnly ? '' : ROSTER_HINTS[layout][1][1]}</span>
-          <span><b>Tab</b> player 2: {p2} · <b>N</b> create / edit · <b>C</b> keys: {LAYOUT_WORDS[layout]} · <b>O</b> play online · <b>Esc</b> back</span>
+          <span><b>P1</b> {hint(0)}</span>
+          <span><b>P2</b> {hint(1)}</span>
+          <span><b>{padUse[0] ? 'X' : 'Tab'}</b> player 2: {p2} · <b>N</b> create / edit · <b>C</b> keys: {LAYOUT_WORDS[layout]} · <b>O</b> play online · <b>Esc</b> back</span>
           {others.length > 0 && (
             <button class="switch-edition" type="button" onClick={() => onEdition(others[0]!.product)}>
               <b>E</b> {editionOf(others[0]!.product, others[0]!.version).name}

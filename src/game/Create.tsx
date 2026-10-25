@@ -5,6 +5,7 @@ import { BRAND } from '../engine/brand';
 import { keyLayout, MENU_KEYS, ROSTER_KEYS } from '../engine/input';
 import type { BuiltFighter, Champion, Fighters } from './fighters';
 import { headshotOf } from './headshot';
+import { usePadMode } from './pads';
 import { Preview } from './Preview';
 import { classesOf, rosterTiles, sexFor } from './roster';
 import { cleanName, defaultName, fullName, isBuiltin, madeKey, NAME_LENGTH, newSavedId, type SavedChampion } from './saved';
@@ -117,6 +118,7 @@ function savedDraft(saved: SavedChampion): Draft {
 const armourFor = (armour: Armour): Armour => (armour.kind === 'random' || armour.kind === 'none' ? armour : { kind: 'set' });
 
 export function Create({ races, classes, portraits, fighters, saved, editing, onSave, onDelete, onCancel }: CreateProps) {
+  usePadMode('roster');
   const order = useMemo(() => rosterTiles(races).flatMap((tile) => (tile.kind === 'race' ? [tile.race] : [])), [races]);
   const [draft, setDraft] = useState<Draft>(() => (editing ? savedDraft(editing) : freshDraft(order[0]!, classes)));
   const [sets, setSets] = useState<{ classId: number; list: ItemSetInfo[] }>();

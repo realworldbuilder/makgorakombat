@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { type Inputs, type Match, moveOf, newMatch, poseOf, type Spark, tick } from '../engine/engine';
-import { InputReader } from '../engine/input';
+import { InputReader, type InputSource } from '../engine/input';
 import { type MoveTable, resolveMoves, variationOf } from '../engine/moves';
 import { type FighterView, fighterView } from '../engine/view';
 import { bodyRadius, CAMERA, HUMAN_HEAD, TICK_MS } from '../engine/stage';
@@ -11,6 +11,7 @@ import { drawHud, LETTERBOX } from './hud';
 import { seedOf } from './pixels';
 import { isReporting } from './report';
 import { LEVEL, music, stageCue } from './music';
+import { usePadMode, usingPad } from './pads';
 import { isMuted, Mixer, toggleMute } from './sound';
 import type { Source } from './Select';
 import { chosenRules } from './Settings';
@@ -175,6 +176,7 @@ export function Fight({ fighters, stage, p2, onBack, net, watch }: FightProps) {
   const arena = useRef<Arena>(null);
   const overlay = useRef<HTMLCanvasElement>(null);
   const stageElement = useRef<HTMLDivElement>(null);
+  usePadMode('fight');
   const [debug, setDebug] = useState(false);
   const debugRef = useRef(debug);
   debugRef.current = debug;
@@ -246,6 +248,12 @@ export function Fight({ fighters, stage, p2, onBack, net, watch }: FightProps) {
     input.attach(window);
     // Online this keyboard plays as player 1 whichever side it is, and the other side comes over the wire.
     input.setSource(1, net || watch ? 'remote' : p2);
+    // The buttons the HUD names for a side: a pad's when the player at those keys last played with one.
+    const sourceShown = (side: 0 | 1): InputSource => {
+      const source = input.source(side);
+      if (watch || source === 'cpu' || (net && side !== net.me)) return source;
+      return usingPad(net ? 0 : side) ? 'gamepad' : source;
+    };
     stageElement.current!.focus();
 
     let frame = 0;
@@ -357,7 +365,7 @@ export function Fight({ fighters, stage, p2, onBack, net, watch }: FightProps) {
       drawHud(ctx, hud.width, hud.height, current, names, (point) => ring.project(camera, point), {
         human: [true, net !== undefined || watch !== undefined || p2 !== 'cpu'],
         debug: note,
-        sources: [input.source(0), input.source(1)],
+        sources: [sourceShown(0), sourceShown(1)],
         keys: net || watch ? [0, 0] : undefined,
         anchor: ring.anchor,
         heads,
