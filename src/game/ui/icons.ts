@@ -48,6 +48,41 @@ const LOOKALIKES: Record<string, string[]> = {
   'Interrupted': ['Counterspell', 'Kick'],
 };
 
+/**
+ * The icon files of the player's own spell, tried before the name, where looking the name up
+ * finds something else (checked against the classic beta and retail on 25 Oct 2026): retail's
+ * lowest Chaos Strike, Fel Rush, Fire Breath and Living Flame are creature spells with other
+ * pictures, classic's lowest Fear wears the game's placeholder, and Bash and Riposte change picture
+ * from one game to the other. Retail redrew Aimed Shot and Wrath in a style unlike the rest of
+ * the bar; the classic picture, which both games have, is kept so a kit looks the same in either.
+ * The auto-attack, when the weapon has no icon, is Heroic Strike's sword and Shoot is the bow:
+ * looked up by name they were a totem's fire, a cat's face and a wand. An install without a file
+ * falls through to the name.
+ */
+const PINNED: Record<string, number[]> = {
+  'Aimed Shot': [135130],
+  Wrath: [136006],
+  Attack: [132282],
+  Shoot: [132222],
+  'Chaos Strike': [1305152],
+  'Fel Rush': [1247261],
+  'Blade Dance': [1305149],
+  'Fire Breath': [4622458],
+  'Living Flame': [4622464],
+  Fear: [136183],
+  Bash: [132114],
+  Riposte: [132336],
+};
+
+/** One set of icons per open folder, kept for the visit: a new fight shows its bar at once instead of names first. */
+const shared = new WeakMap<DataClient, Icons>();
+
+export function iconsFor(assets: UiAssets): Icons {
+  let icons = shared.get(assets.client);
+  if (!icons) shared.set(assets.client, (icons = new Icons(assets)));
+  return icons;
+}
+
 export class Icons {
   private readonly urls = new Map<number, Promise<string | undefined>>();
   private readonly spells = new Map<string, Promise<number>>();
@@ -83,7 +118,15 @@ export class Icons {
 
   /** The icon of a spell by name, or of a look-alike when this build has no such spell; undefined when none has one. */
   async spell(name: string): Promise<string | undefined> {
-    for (const candidate of LOOKALIKES[name] ?? [name]) {
+    const candidates = LOOKALIKES[name] ?? [name];
+    // The spell's own picture first, then each look-alike's.
+    for (const candidate of [name, ...candidates.filter((c) => c !== name)]) {
+      for (const pinned of PINNED[candidate] ?? []) {
+        const url = await this.picture(pinned);
+        if (url) return url;
+      }
+    }
+    for (const candidate of candidates) {
       const fileId = await this.spellFile(candidate);
       if (fileId) {
         const url = await this.picture(fileId);
