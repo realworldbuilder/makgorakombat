@@ -8,7 +8,7 @@ export const FULL_SET = [
   'Stand', 'Ready1H', 'Walk', 'Run', 'Walkbackwards', 'JumpStart', 'Jump', 'JumpEnd',
   'Attack1H', 'Attack1H', 'Attack1H', 'AttackUnarmed', 'Special1H', 'SpellCastDirected', 'ReadySpellDirected',
   'ShieldBlock', 'Parry1H', 'Dodge', 'CombatWound', 'CombatCritical', 'Knockdown', 'Stun', 'Death',
-  'CombatExecute', 'CombatAbility1H01', 'CombatAbility2HBig01', 'CombatWhirlwind', 'CombatChargeLoop', 'CombatChargeEnd',
+  'CombatExecute', 'CombatAbility1H01', 'CombatAbility2HBig01', 'CombatAbility2H02', 'CombatWhirlwind', 'CombatChargeLoop', 'CombatChargeEnd',
   'Kick', 'MagSpellCastBothFront', 'SpellCastOmni', 'BattleRoar', 'EmoteCheer',
 ];
 

@@ -284,6 +284,8 @@ const TEXT_LIFE = 72;
 const INFO_LIFE = 45;
 const KNOCKDOWN_FRAMES = 30;
 const PROJECTILE_Z = 1.25;
+/** A projectile strikes when it is this close to the target's middle. */
+export const PROJECTILE_HIT = 0.7;
 const HP_EASE = 0.08;
 /** How far into the release animation a bolt leaves the hand. */
 const BOLT_AT = 0.22;
@@ -1360,7 +1362,7 @@ function projectiles(match: Match): void {
     const ti = other(p.owner);
     const target = match.fighters[ti];
     let gone = Math.abs(p.x) > HALF + 1;
-    if (!gone && target.state !== 'death' && Math.abs(target.x - p.x) < 0.7 && target.z < 1.0) {
+    if (!gone && target.state !== 'death' && Math.abs(target.x - p.x) < PROJECTILE_HIT && target.z < 1.0) {
       const a = p.ability >= 0 ? abilityOf(match, p.owner, p.ability) : undefined;
       const dir = Math.sign(p.vx) || 1;
       strike(match, p.owner, ti, { damage: p.damage, roll: a ? 'spell' : 'ranged', ability: a, pushback: a ? PUSHBACK.bolt : PUSHBACK.spell, hitstop: 5 }, dir, p.x, p.z);
