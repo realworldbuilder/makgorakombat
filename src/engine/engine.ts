@@ -302,7 +302,11 @@ const DODGE_RECOVER = 0.4;
 const REACH_SLACK = 0.4;
 const DASH_SPEED = 0.3;
 /** A charge stops this far short of contact. */
-const DASH_STOP = 0.15;
+/**
+ * A charge ends this far short of contact: its end animation (CombatChargeEnd) carries the body
+ * on another 1 to 2 yd, and stopping at contact buried Cairne in his target. Still in reach.
+ */
+const DASH_STOP = 0.9;
 const DASH_LIMIT = 60;
 const RIPOSTE_FRAMES = 90;
 /** A blow sets a cast bar back half a second, twice at most, as in the game; a stun, a fear or an interrupt ends it. */
