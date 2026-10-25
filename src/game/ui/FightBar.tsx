@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { Ability } from '../../engine/abilities';
-import { type InputAction, KEYS, keyLabel } from '../../engine/input';
+import { actionLabel, type InputAction, KEYS } from '../../engine/input';
+import { usePadUse } from '../pads';
 import type { Weapon } from '../../engine/moves';
 import type { AbilityView, FighterView } from '../../engine/view';
 import { describeAbility, describeWeapon, type Tooltip } from './describe';
@@ -39,6 +40,9 @@ export function FightBar({ side, view, icons, specs, weapon, keys = side }: Figh
   // when the press did nothing, and show its tooltip while the key is held.
   const pressed = useRef(new Map<InputAction, { at: number; down: boolean }>());
   const [hovered, setHovered] = useState<string>();
+  const pads = usePadUse();
+  /** The key for an action, or the controller's button once this player plays with one. */
+  const labelOf = (action: InputAction) => actionLabel(keys!, pads[keys!] ? 'gamepad' : 'keyboard', action);
   useEffect(() => {
     if (keys === null) return;
     const map = KEYS[keys];
@@ -79,14 +83,14 @@ export function FightBar({ side, view, icons, specs, weapon, keys = side }: Figh
       >
         <Icon url={icons.get('attack')} name={attackTip.name.toUpperCase()} />
         <span class="sweep" style={{ '--sweep': swingSweep }} />
-        {keys !== null && <span class="key">{keyLabel(keys, 'attack')}</span>}
+        {keys !== null && <span class="key">{labelOf('attack')}</span>}
         <span class="rim" />
         {(hovered === 'attack' || held('attack')) && <TooltipBox tip={attackTip} why={swing.inReach ? undefined : 'OUT OF RANGE'} colour={view.resource.colour} />}
       </div>
       {view.abilities.map((ability) => (
         <AbilitySlot
           key={ability.id}
-          keys={keys}
+          label={keys === null ? undefined : labelOf(ability.action)}
           ability={ability}
           spec={specs.get(ability.id)}
           resource={view.resource}
@@ -101,7 +105,8 @@ export function FightBar({ side, view, icons, specs, weapon, keys = side }: Figh
 }
 
 interface SlotProps {
-  keys: 0 | 1 | null;
+  /** The key or button that casts it, when the bar is this machine's. */
+  label: string | undefined;
   ability: AbilityView;
   spec: Ability | undefined;
   resource: FighterView['resource'];
@@ -111,7 +116,7 @@ interface SlotProps {
   onHover: () => void;
 }
 
-function AbilitySlot({ keys, ability, spec, resource, icon, flash, open, onHover }: SlotProps) {
+function AbilitySlot({ label, ability, spec, resource, icon, flash, open, onHover }: SlotProps) {
   const cooling = ability.cooldown.remaining > 0 && ability.cooldown.total > 0;
   const onGcd = !cooling && ability.gcd > 0;
   const sweep = cooling ? ability.cooldown.remaining / ability.cooldown.total : onGcd ? ability.gcd / ability.gcdTotal : 0;
@@ -137,7 +142,7 @@ function AbilitySlot({ keys, ability, spec, resource, icon, flash, open, onHover
       <Icon url={icon} name={ability.short} />
       <span class="sweep" style={{ '--sweep': sweep }} />
       {cooling && <span class="time">{seconds(ability.cooldown.remaining)}</span>}
-      {keys !== null && <span class="key">{keyLabel(keys, ability.action)}</span>}
+      {label !== undefined && <span class="key">{label}</span>}
       {ability.cost > 0 && <span class="cost">{ability.cost}</span>}
       <span class="rim" />
       {open && <TooltipBox tip={tip} why={why} colour={resource.colour} />}

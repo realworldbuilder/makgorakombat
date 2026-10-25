@@ -4,11 +4,12 @@ import { RULES } from '../../engine/rules';
 import type { Ability } from '../../engine/abilities';
 import type { Match } from '../../engine/engine';
 import type { MoveTable, Weapon } from '../../engine/moves';
-import { keyLabel } from '../../engine/input';
+import { actionLabel, type InputAction } from '../../engine/input';
 import { ROUNDS_TO_WIN } from '../../engine/stage';
 import { type FighterView, fighterView } from '../../engine/view';
 import type { BuiltFighter } from '../fighters';
 import { headshotOf } from '../headshot';
+import { usePadUse, usingPad } from '../pads';
 import type { Source } from '../Select';
 import { FightBar } from './FightBar';
 import { SequenceStrip, type SequenceView } from './SequenceStrip';
@@ -89,7 +90,7 @@ function sequenceOf(match: Match, p2: Source, me: 0 | 1 | undefined): SequenceVi
     windowT: s.windowT,
     penaltyT: s.penaltyT,
     phaseT: match.phaseT,
-    source: winner === 0 || me !== undefined ? 'keyboard' : p2,
+    source: usingPad(me === undefined ? winner : 0) ? 'gamepad' : winner === 0 || me !== undefined ? 'keyboard' : p2,
     keys: me === undefined ? winner : 0,
   };
 }
@@ -183,6 +184,10 @@ export function FightUi({ fighters, p2, assets, me, next }: FightUiProps) {
   const human: [boolean, boolean] = [true, me !== undefined || p2 !== 'cpu'];
   /** Whose keys a side's bar shows: its own player's, or online player 1's for this machine's fighter and none for the other. */
   const keysOf = (i: 0 | 1): 0 | 1 | null => (me === undefined ? i : i === me ? 0 : null);
+  const pads = usePadUse();
+  /** A side's key for an action, or its controller's button. */
+  const keyOf = (i: 0 | 1, action: InputAction) => actionLabel(keysOf(i)!, pads[keysOf(i)!] ? 'gamepad' : 'keyboard', action);
+  const onPad = pads[0] || pads[1];
   return (
     <div class={`wowui ${frame.cinematic ? 'cinematic' : ''}`}>
       {frame.sequence && <SequenceStrip view={frame.sequence} icons={tokenIcons(frame.sequence.winner)} />}
@@ -200,8 +205,8 @@ export function FightUi({ fighters, p2, assets, me, next }: FightUiProps) {
       </div>
       {frame.phase === 'matchEnd' && (
         <div class="hint end">
-          {me === 1 ? <>the host calls the rematch</> : <><b>ENTER</b> rematch</>}
-          {next && <> · <b>N</b> next opponent</>} · <b>ESC</b> new champions
+          {me === 1 ? <>the host calls the rematch</> : <><b>{onPad ? 'START' : 'ENTER'}</b> rematch</>}
+          {next && <> · <b>N</b> next opponent</>} · <b>{onPad ? 'BACK' : 'ESC'}</b> new champions
         </div>
       )}
       <div class="bottom">
@@ -214,7 +219,7 @@ export function FightUi({ fighters, p2, assets, me, next }: FightUiProps) {
                   'YOUR OPPONENT'
                 ) : human[i] ? (
                   <>
-                    {RULES[frame.rules].word} rules · <b>{keyLabel(keysOf(i)!, 'left')}</b> <b>{keyLabel(keysOf(i)!, 'right')}</b> move{frame.rules === 'kombat' ? ', back blocks, twice dashes' : ''} · <b>{keyLabel(keysOf(i)!, 'jump')}</b> jump · <b>{keyLabel(keysOf(i)!, 'attack')}</b> attack · hover or hold a key for what it does
+                    {RULES[frame.rules].word} rules · <b>{keyOf(i, 'left')}</b> <b>{keyOf(i, 'right')}</b> move{frame.rules === 'kombat' ? ', back blocks, twice dashes' : ''} · <b>{keyOf(i, 'jump')}</b> jump · <b>{keyOf(i, 'attack')}</b> attack · hover or hold a key for what it does
                   </>
                 ) : (
                   'COMPUTER'

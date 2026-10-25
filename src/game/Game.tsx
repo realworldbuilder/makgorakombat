@@ -10,6 +10,7 @@ import { Fight, type NetFight, tableOf } from './Fight';
 import { chosenRules, picksStageOnline } from './Settings';
 import { type BuiltFighter, Fighters } from './fighters';
 import { messageOf, useFolder } from './folder';
+import { setPadForPlayer2 } from './pads';
 import { LEVEL, music } from './music';
 import { pictureUrl } from './pixels';
 import { setWhere } from './report';
@@ -98,6 +99,8 @@ export function Game() {
   const lobbyRef = useRef<Lobby>(null);
   if (name && !lobbyRef.current) lobbyRef.current = new Lobby(name);
   const lobby = lobbyRef.current ?? undefined;
+  // Player 2 on PAD takes a lone controller; online this page is one player, and a pad plays it.
+  useEffect(() => setPadForPlayer2(!online && p2 === 'gamepad'), [online, p2]);
   const lobbyState = useLobby(lobby);
   // A match the lobby made, while both pages find each other in its room; `found` when the queue made it.
   const [matching, setMatching] = useState<{ name: string; found?: boolean; error?: string }>();
