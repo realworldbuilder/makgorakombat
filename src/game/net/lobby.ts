@@ -2,7 +2,8 @@ import { relayUrl, type Role } from './relay';
 
 /*
  * The page's end of the relay's lobby: the player here under the name they gave, the list of who
- * else is, and the challenges and quick matches that end in a room. One socket for as long as the
+ * else is, how many are online, waiting and fighting, and the challenges and the queue that end
+ * in a room. One socket for as long as the
  * game is open with a folder, closed while a fight is on and opened again after; it comes back by
  * itself when the wire drops. What the lobby has said is folded into one state the screens draw.
  */
@@ -18,6 +19,13 @@ export interface LobbyPlayer {
   id: string;
   name: string;
   status: 'free' | 'busy';
+}
+
+/** The lobby's numbers, as every list of who is here and GET /lobby/stats give them. */
+export interface Counts {
+  online: number;
+  waiting: number;
+  fighting: number;
 }
 
 /** A challenge one way or the other: who, and when it lapses (this page's clock). */
@@ -36,23 +44,27 @@ export interface LobbyState {
   outgoing?: Pending;
   /** The challenge this player has been sent. */
   incoming?: Pending;
-  /** In line for a quick match. */
+  /** In the queue, waiting for anybody. */
   queued: boolean;
+  /** When this page went into the queue (its own clock), for the count-up. */
+  queuedAt?: number;
+  /** How many are online, waiting and fighting. */
+  counts: Counts;
   /** The last thing worth saying: a decline, a refusal. */
   notice?: string;
 }
 
-export const EMPTY: LobbyState = { connected: false, players: [], queued: false };
+export const EMPTY: LobbyState = { connected: false, players: [], queued: false, counts: { online: 0, waiting: 0, fighting: 0 } };
 
 /** What the lobby sends. */
 export type LobbyMessage =
-  | { t: 'here'; players: LobbyPlayer[] }
+  | ({ t: 'here'; players: LobbyPlayer[] } & Partial<Counts>)
   | { t: 'challenged'; from: { id: string; name: string }; ttl: number }
   | { t: 'challenging'; to: { id: string; name: string }; ttl: number }
   | { t: 'declined'; by: string; reason: string }
   | { t: 'withdrawn'; from: string; reason: string }
-  | { t: 'queued' }
-  | { t: 'unqueued' }
+  | { t: 'queued'; since?: number }
+  | { t: 'unqueued'; reason?: string }
   | { t: 'fight'; code: string; role: Role; with: { id: string; name: string } }
   | { t: 'error'; message: string };
 
@@ -61,6 +73,8 @@ export interface Match {
   code: string;
   role: Role;
   with: { id: string; name: string };
+  /** The queue made it, not a challenge: a stranger, whom the page shows before the roster. */
+  queued: boolean;
 }
 
 /** A display name as the lobby takes it: letters, digits and single spaces, 2 to 16; undefined when it is not one. */
@@ -111,12 +125,14 @@ const nameOf = (state: LobbyState, id: string) => state.players.find((p) => p.id
 /** Folds one message from the lobby into the state; `now` is this page's clock, for the thirty seconds. */
 export function fold(state: LobbyState, message: LobbyMessage, now: number): LobbyState {
   switch (message.t) {
-    case 'here':
-      return { ...state, players: message.players };
+    case 'here': {
+      const { online = message.players.length, waiting = 0, fighting = 0 } = message;
+      return { ...state, players: message.players, counts: { online, waiting, fighting } };
+    }
     case 'challenged':
       return { ...state, incoming: { ...message.from, until: now + message.ttl }, notice: undefined };
     case 'challenging':
-      return { ...state, outgoing: { ...message.to, until: now + message.ttl }, queued: false, notice: undefined };
+      return { ...state, outgoing: { ...message.to, until: now + message.ttl }, queued: false, queuedAt: undefined, notice: undefined };
     case 'declined': {
       if (state.outgoing?.id !== message.by) return state;
       const name = nameOf(state, message.by);
@@ -135,11 +151,17 @@ export function fold(state: LobbyState, message: LobbyMessage, now: number): Lob
       return { ...state, incoming: undefined, notice: why[message.reason] ?? state.notice };
     }
     case 'queued':
-      return { ...state, queued: true, outgoing: undefined, notice: undefined };
+      // Already waiting (asked twice): the count-up goes on from where it was.
+      return { ...state, queued: true, queuedAt: state.queued ? state.queuedAt : now, outgoing: undefined, notice: undefined };
     case 'unqueued':
-      return { ...state, queued: false };
+      return {
+        ...state,
+        queued: false,
+        queuedAt: undefined,
+        notice: message.reason === 'idle' ? 'Ten minutes and nobody came; you are out of the queue. Q to wait again.' : state.notice,
+      };
     case 'fight':
-      return { ...state, incoming: undefined, outgoing: undefined, queued: false, notice: undefined };
+      return { ...state, incoming: undefined, outgoing: undefined, queued: false, queuedAt: undefined, notice: undefined };
     case 'error':
       return { ...state, notice: message.message };
   }
@@ -154,6 +176,8 @@ export class Lobby {
   private mode: LobbyMode = 'off';
   /** The socket open now was opened busy, or the lobby has made it busy with a match. */
   private busy = false;
+  /** This page wants to be in the queue: a socket opened free asks for it as it opens (requeue=1), after a match or a dropped wire. */
+  private wantQueue = false;
   private retry = 0;
   private retryTimer: ReturnType<typeof setTimeout> | undefined;
   private pingTimer: ReturnType<typeof setInterval> | undefined;
@@ -226,7 +250,17 @@ export class Lobby {
   }
 
   quick(on: boolean): void {
+    this.wantQueue = on;
     this.send({ t: on ? 'quick' : 'unquick' });
+  }
+
+  /**
+   * NEXT OPPONENT: into the queue as soon as the lobby has this page free. A socket open free asks
+   * now; otherwise the next one opened free (once the match is left) comes in with requeue=1.
+   */
+  queueAgain(): void {
+    this.wantQueue = true;
+    if (this.ws?.readyState === WebSocket.OPEN && !this.busy) this.send({ t: 'quick' });
   }
 
   /** Forgets the last notice once it has been read. */
@@ -244,7 +278,7 @@ export class Lobby {
     clearTimeout(this.retryTimer);
     this.retryTimer = undefined;
     const busy = this.mode === 'busy';
-    const query = `name=${encodeURIComponent(this.name)}&id=${encodeURIComponent(this.id)}${busy ? '&busy=1' : ''}`;
+    const query = `name=${encodeURIComponent(this.name)}&id=${encodeURIComponent(this.id)}${busy ? '&busy=1' : this.wantQueue ? '&busy=0&requeue=1' : ''}`;
     let ws: WebSocket;
     try {
       ws = new WebSocket(`${this.base.replace(/^http/, 'ws')}/lobby/ws?${query}`);
@@ -275,10 +309,15 @@ export class Lobby {
       } catch {
         return;
       }
+      const wasQueued = this.state.queued;
       this.set(fold(this.state, message, performance.now()));
+      if (message.t === 'queued') this.wantQueue = true;
+      else if (message.t === 'unqueued' || message.t === 'challenging' || message.t === 'fight') this.wantQueue = false;
+      // A refusal (asking for the queue while still in a match) leaves the wish unmet, not pending.
+      else if (message.t === 'error' && !this.state.queued) this.wantQueue = false;
       if (message.t === 'fight') {
         this.busy = true;
-        for (const listener of [...this.matches]) listener({ code: message.code, role: message.role, with: message.with });
+        for (const listener of [...this.matches]) listener({ code: message.code, role: message.role, with: message.with, queued: wasQueued });
       }
     });
     const lost = () => {

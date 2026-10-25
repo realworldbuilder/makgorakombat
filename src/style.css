@@ -1535,16 +1535,89 @@ code {
   gap: 10px;
 }
 
-.guide.online .button.quick {
-  min-width: 14em;
-  padding: 10px 18px;
-  background: none;
-  font-size: 1.05rem;
+/* The numbers at the top of the panel: how many are online, waiting and fighting. */
+.guide.online .counts {
+  color: var(--gold);
+  font-family: var(--serif);
+  font-weight: 700;
+  font-size: 0.95rem;
+  letter-spacing: 0.08em;
 }
 
-.guide.online .button.quick.on {
-  background: rgba(255, 209, 0, 0.12);
+/* FIND A FIGHT: the queue, the panel's first and biggest thing; waiting, the seconds count up in it. */
+.guide.online .find {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 16px 18px;
+  background: rgba(255, 209, 0, 0.04);
+  border: 2px solid var(--gold-dark);
+  border-radius: 10px;
+  color: var(--gold);
+  font: inherit;
+  cursor: pointer;
+}
+
+.guide.online .find.chosen {
+  border-color: var(--gold);
+  background: rgba(255, 209, 0, 0.1);
+}
+
+.guide.online button.find:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.guide.online .find .big {
+  font-family: var(--warcraft);
+  font-size: 2rem;
+  letter-spacing: 0.06em;
+}
+
+.guide.online .find .keys {
+  color: var(--dim);
+  font-size: 0.8rem;
+}
+
+.guide.online .find.on {
+  cursor: default;
   animation: pulse 1.6s ease-in-out infinite;
+}
+
+.guide.online .find .clock {
+  font-family: var(--serif);
+  font-weight: 700;
+  font-size: 2.4rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.guide.online .find .words {
+  color: var(--text);
+}
+
+.guide.online .find .button {
+  margin-top: 6px;
+  padding: 5px 14px;
+  background: none;
+}
+
+.guide.online .who {
+  justify-self: start;
+  margin: 6px 0 -6px;
+  color: var(--dim);
+  font-family: var(--serif);
+  font-size: 0.85rem;
+  letter-spacing: 0.12em;
+}
+
+/* A match from the queue: FOUND over the stranger's name. */
+.guide.online .found {
+  color: var(--gold);
+  font-family: var(--warcraft);
+  font-size: 1.4rem;
+  letter-spacing: 0.2em;
 }
 
 .guide.online input.name {

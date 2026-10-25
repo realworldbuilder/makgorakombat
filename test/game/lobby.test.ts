@@ -39,6 +39,21 @@ describe('the lobby, on the page', () => {
     state = fold(fold(EMPTY, { t: 'queued' }, 0), { t: 'fight', code: 'BCDFGH', role: 'guest', with: { id: 'x-000001', name: 'X' } }, 0);
     expect(state.queued).toBe(false);
   });
+
+  it('keeps the numbers, and the time the queue began for the count-up', () => {
+    let state = fold(EMPTY, { t: 'here', players: [], online: 5, waiting: 1, fighting: 2 }, 0);
+    expect(state.counts).toEqual({ online: 5, waiting: 1, fighting: 2 });
+    // A lobby from before the numbers: as many online as are listed.
+    expect(fold(EMPTY, { t: 'here', players: [{ id: 'a-0000001', name: 'A', status: 'free' }] }, 0).counts).toEqual({ online: 1, waiting: 0, fighting: 0 });
+
+    state = fold(state, { t: 'queued', since: 99 }, 1000);
+    expect(state).toMatchObject({ queued: true, queuedAt: 1000 });
+    // Asked twice, the clock goes on.
+    expect(fold(state, { t: 'queued' }, 5000).queuedAt).toBe(1000);
+    expect(fold(state, { t: 'unqueued' }, 6000)).toMatchObject({ queued: false, queuedAt: undefined, notice: undefined });
+    expect(fold(state, { t: 'unqueued', reason: 'idle' }, 600_000).notice).toMatch(/Ten minutes and nobody came/);
+    expect(fold(state, { t: 'fight', code: 'BCDFGH', role: 'host', with: { id: 'x-000001', name: 'X' } }, 7000).queuedAt).toBe(undefined);
+  });
 });
 
 /** Sockets the lobby opens, kept to look at and to answer as the relay would. */
@@ -113,6 +128,37 @@ describe('the lobby socket', () => {
     lobby.setMode('free');
     expect(FakeSocket.made[1]!.closed).toBe(true);
     expect(FakeSocket.made[2]!.url).not.toContain('busy');
+    lobby.close();
+  });
+
+  it('goes back into the queue after a match for the next opponent, and keeps its place through a dropped wire', () => {
+    const lobby = new Lobby('Chris', 'chris-0001', 'https://relay.test');
+    lobby.setMode('busy');
+    FakeSocket.made[0]!.open();
+    // NEXT OPPONENT, still busy: nothing is asked yet, and the socket opened free asks as it opens.
+    lobby.queueAgain();
+    expect(FakeSocket.made[0]!.sent).toEqual([]);
+    lobby.setMode('free');
+    expect(FakeSocket.made[1]!.url).toBe('wss://relay.test/lobby/ws?name=Chris&id=chris-0001&busy=0&requeue=1');
+    FakeSocket.made[1]!.open();
+    FakeSocket.made[1]!.say({ t: 'queued' });
+    expect(lobby.state.queued).toBe(true);
+
+    // The wire drops while waiting: back in the queue as it comes again.
+    FakeSocket.made[1]!.close();
+    vi.advanceTimersByTime(1000);
+    expect(FakeSocket.made[2]!.url).toContain('&requeue=1');
+    FakeSocket.made[2]!.open();
+    // Matched: the next socket is a plain one.
+    FakeSocket.made[2]!.say({ t: 'fight', code: 'BCDFGH', role: 'guest', with: { id: 'will-0001', name: 'Will' } });
+    lobby.setMode('off');
+    lobby.setMode('free');
+    expect(FakeSocket.made[3]!.url).not.toContain('requeue');
+
+    // Free already: NEXT OPPONENT asks at once.
+    FakeSocket.made[3]!.open();
+    lobby.queueAgain();
+    expect(FakeSocket.made[3]!.sent).toEqual([JSON.stringify({ t: 'quick' })]);
     lobby.close();
   });
 

@@ -29,6 +29,15 @@ import { Versus } from './Versus';
  * here and handed down.
  */
 
+/** How long a match from the queue shows FOUND and the opponent's name before the roster. */
+const FOUND_MS = 2000;
+
+/** The fight on screen has ended its match, as the fight screen shows it through window.mk. */
+function matchOver(): boolean {
+  const mk = (window as unknown as { mk?: { match?: () => { phase: string } | undefined } }).mk;
+  return mk?.match?.()?.phase === 'matchEnd';
+}
+
 type Screen =
   | { kind: 'select' }
   | { kind: 'versus'; fighters: [BuiltFighter, BuiltFighter]; pick?: OnlinePick }
@@ -76,8 +85,8 @@ export function Game() {
   if (name && !lobbyRef.current) lobbyRef.current = new Lobby(name);
   const lobby = lobbyRef.current ?? undefined;
   const lobbyState = useLobby(lobby);
-  // A match the lobby made, while both pages find each other in its room.
-  const [matching, setMatching] = useState<{ name: string; error?: string }>();
+  // A match the lobby made, while both pages find each other in its room; `found` when the queue made it.
+  const [matching, setMatching] = useState<{ name: string; found?: boolean; error?: string }>();
   const matchLink = useRef<Link>(null);
   // A stable handler: Fight rebuilds the whole match when its props change, and dragging a file
   // across the window re-renders Game (the title's drop state), which must not restart a fight.
@@ -101,6 +110,20 @@ export function Game() {
     setHello(undefined);
     setLeft(undefined);
     setScreen({ kind: 'select' });
+  }, [online]);
+  /**
+   * NEXT OPPONENT, at the end of an online match or when the other has gone: out of the room and
+   * back into the lobby's queue, the panel up with the wait counting, so a stranger can play one
+   * after another without touching the mouse.
+   */
+  const nextOpponent = useCallback(() => {
+    lobbyRef.current?.queueAgain();
+    online?.link.close();
+    setOnline(undefined);
+    setHello(undefined);
+    setLeft(undefined);
+    setScreen({ kind: 'select' });
+    setShowOnline(true);
   }, [online]);
   const rosterOnline = useMemo(() => (online ? { me: online.me, link: online.link, code: online.code } : undefined), [online]);
   const versusOnline = useMemo(() => (online ? { host: online.role === 'host', link: online.link } : undefined), [online]);
@@ -179,8 +202,9 @@ export function Game() {
     if (!lobby) return;
     return lobby.onMatch((match) => {
       setShowOnline(false);
-      setMatching({ name: match.with.name });
+      setMatching({ name: match.with.name, found: match.queued });
       matchLink.current = null;
+      const shown = performance.now();
       let given = false;
       const giveUp = setTimeout(() => {
         given = true;
@@ -193,8 +217,19 @@ export function Game() {
       }).then(
         (session) => {
           clearTimeout(giveUp);
-          if (given || matchLink.current !== session.link) session.link.close();
-          else startSession(session);
+          if (given || matchLink.current !== session.link) {
+            session.link.close();
+            return;
+          }
+          // A stranger from the queue: FOUND and their name stay up two seconds before the roster.
+          const wait = match.queued ? Math.max(0, FOUND_MS - (performance.now() - shown)) : 0;
+          setTimeout(() => {
+            if (matchLink.current !== session.link) return;
+            if (session.link.closed || !session.link.peer) {
+              session.link.close();
+              setMatching({ name: match.with.name, error: `${match.with.name} left the room.` });
+            } else startSession(session);
+          }, wait);
         },
         (cause: unknown) => {
           clearTimeout(giveUp);
@@ -204,11 +239,16 @@ export function Game() {
     });
   }, [lobby, product, startSession]);
 
-  /** The meeting given up or failed: back in the lobby, free. */
+  /** The meeting given up or failed: back in the lobby, free; a stranger from the queue who never came puts this page back in it. */
   const endMatching = () => {
     matchLink.current?.close();
     matchLink.current = null;
+    const again = matching?.found && matching.error !== undefined;
     setMatching(undefined);
+    if (again) {
+      lobby?.queueAgain();
+      setShowOnline(true);
+    }
     lobby?.setMode('free');
   };
 
@@ -258,19 +298,33 @@ export function Game() {
     };
   }, [online]);
 
-  // The room has ended: Enter goes back to the roster on this keyboard, Escape to the title.
+  // The room has ended: Enter goes back to the roster on this keyboard, N to the next opponent, Escape to the title.
   useEffect(() => {
     if (!left) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.code !== 'Enter' && event.code !== 'Escape') return;
+      if (event.code !== 'Enter' && event.code !== 'Escape' && !(event.code === 'KeyN' && lobby)) return;
       event.stopPropagation();
       event.preventDefault();
       if (event.code === 'Enter') leaveOnline();
+      else if (event.code === 'KeyN') nextOpponent();
       else location.reload();
     };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
-  }, [left, leaveOnline]);
+  }, [left, leaveOnline, nextOpponent, lobby]);
+
+  // The match over in an online fight (the fight screen keeps Enter for the rematch and Escape for new champions): N for the next opponent.
+  useEffect(() => {
+    if (!online || !lobby || left) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.code !== 'KeyN' || event.repeat || screenRef.current.kind !== 'fight' || !matchOver()) return;
+      event.stopPropagation();
+      event.preventDefault();
+      nextOpponent();
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [online, lobby, left, nextOpponent]);
 
   /** The guest's two fighters as the hello names them: the ones built on the roster when they match, else built now from the specs. */
   const fightersFor = async (message: Hello, built: [BuiltFighter, BuiltFighter], pick: OnlinePick): Promise<[BuiltFighter, BuiltFighter]> => {
@@ -381,7 +435,13 @@ export function Game() {
         return (
           <>
             <Fight fighters={screen.fighters} stage={screen.stage} p2={screen.net ? 'keyboard' : p2} onBack={backToSelect} net={screen.net} />
-            <FightUi fighters={screen.fighters} p2={screen.net ? 'keyboard' : p2} assets={{ client: client.current!, races: loaded.races, portraits: loaded.portraits }} me={screen.net?.me} />
+            <FightUi
+              fighters={screen.fighters}
+              p2={screen.net ? 'keyboard' : p2}
+              assets={{ client: client.current!, races: loaded.races, portraits: loaded.portraits }}
+              me={screen.net?.me}
+              next={screen.net !== undefined && lobby !== undefined}
+            />
           </>
         );
     }
@@ -394,7 +454,7 @@ export function Game() {
         <Online lobby={lobby} name={name} onName={giveName} product={product} onReady={startSession} onClose={() => setShowOnline(false)} />
       )}
       {!showOnline && lobbyState.notice && !challenge && !matching && <div class="lobby-toast">{lobbyState.notice}</div>}
-      {matching && <Matching name={matching.name} error={matching.error} onCancel={endMatching} />}
+      {matching && <Matching name={matching.name} found={matching.found} error={matching.error} onCancel={endMatching} />}
       {challenge && <Challenge from={challenge.name} until={challenge.until} onAccept={() => lobby?.accept()} onDecline={() => lobby?.decline()} />}
       {left && (
         <div class="guide-backdrop">
@@ -402,6 +462,7 @@ export function Game() {
             <div class="body create-first">
               <p class="big">{left}</p>
               <p class="dim">The online match is over.</p>
+              {lobby && <button type="button" class="button" onClick={nextOpponent}>NEXT OPPONENT · N</button>}
               <button type="button" class="button" onClick={leaveOnline}>BACK TO THE ROSTER · ENTER</button>
               <button type="button" class="button" onClick={() => location.reload()}>THE TITLE · ESC</button>
             </div>
