@@ -191,7 +191,7 @@ export function Versus({ client, fighters, stages, screens, onFight, onBack }: V
         case 'ArrowRight': case 'KeyD': setCursor((c) => (c + 1) % count); break;
         case 'ArrowUp': case 'KeyW': setCursor((c) => (c - 8 + count * 8) % count); break;
         case 'ArrowDown': case 'KeyS': setCursor((c) => (c + 8) % count); break;
-        case 'Enter': case 'KeyJ': case 'Numpad1': case 'Comma': case 'Space': {
+        case 'Enter': case 'KeyJ': case 'Numpad1': case 'Comma': case 'Space': case 'Digit1': {
           event.preventDefault();
           const entry = entries[cursorRef.current];
           if (!entry) onFight({});

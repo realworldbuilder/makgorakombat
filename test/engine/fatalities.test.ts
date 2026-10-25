@@ -347,8 +347,11 @@ describe('the CPU', () => {
     let fumbles = 0;
     for (let seed = 1; seed <= 16; seed++) {
       const match = cpuFinish(seed, [MAGE, seed % 2 ? SHAMAN : 4]);
-      // The rigged finishing blow left every match on the same dice; roll them apart.
-      match.rng = (match.rng + seed * 2654435761) >>> 0;
+      // The rigged finishing blow left every match on the same dice; roll them apart, hashed so the
+      // seeds land all over the range rather than in a row a constant step apart.
+      let x = (match.rng ^ Math.imul(seed, 2654435761)) >>> 0;
+      x = Math.imul(x ^ (x >>> 16), 0x45d9f3b) >>> 0;
+      match.rng = (x ^ (x >>> 16)) >>> 0;
       let fails = 0;
       while (match.phase === 'finish') {
         tick(match, [inputs(), cpuInputs(match, 1)]);

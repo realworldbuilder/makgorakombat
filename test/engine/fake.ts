@@ -1,4 +1,5 @@
 import type { AnimationInfo } from '@mogshot/character/scene';
+import { PVP_DAMAGE, WEAPON_SKILL } from '../../src/engine/abilities';
 import { type Inputs, type Match, newMatch, noInputs, tick } from '../../src/engine/engine';
 import { type MoveTable, resolveMoves, type Wielding } from '../../src/engine/moves';
 import { INTRO_FRAMES } from '../../src/engine/stage';
@@ -30,8 +31,25 @@ export function fakeAnimations(names: readonly string[] = FULL_SET, durations: R
   });
 }
 
-export function fakeTable(names: readonly string[] = FULL_SET, wielding: Wielding = 'oneHand', durations: Record<string, number> = {}, classId: number = WARRIOR, shield = false): MoveTable {
-  return resolveMoves(fakeAnimations(names, durations), wielding, classId, shield);
+/**
+ * A table from a fake animation list. `exact` (the default) takes the class modifiers and the damage
+ * ranges out, so every blow deals its listed number and a test can name it; the balance runs use the real ones.
+ */
+export function fakeTable(names: readonly string[] = FULL_SET, wielding: Wielding = 'oneHand', durations: Record<string, number> = {}, classId: number = WARRIOR, shield = false, exact = true, body?: number): MoveTable {
+  if (!exact) return resolveMoves(fakeAnimations(names, durations), wielding, classId, shield, body);
+  const tuned = { ...PVP_DAMAGE };
+  const skill = { ...WEAPON_SKILL };
+  for (const key of Object.keys(PVP_DAMAGE)) PVP_DAMAGE[key] = 1;
+  for (const key of Object.keys(WEAPON_SKILL)) WEAPON_SKILL[key] = 1;
+  try {
+    const table = resolveMoves(fakeAnimations(names, durations), wielding, classId, shield, body);
+    table.weapon.spread = 0;
+    for (const a of table.kit.abilities) a.spread = 0;
+    return table;
+  } finally {
+    Object.assign(PVP_DAMAGE, tuned);
+    Object.assign(WEAPON_SKILL, skill);
+  }
 }
 
 /** Two warriors with one-handers, unless other classes are asked for. */

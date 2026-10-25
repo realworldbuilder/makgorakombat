@@ -7,8 +7,20 @@ export const TICK_MS = 1000 / 60;
 export const HALF = 5;
 /** Where the fighters start: P1 at -START_X facing +1, P2 at +START_X facing -1. */
 export const START_X = 2.2;
-/** Minimum distance between two bodies; the physics step pushes them apart below it. */
-export const BODY = 0.9;
+/** Minimum distance between two human bodies, feet to feet: they stand shoulder to shoulder, not inside each other. */
+export const BODY = 1.25;
+/** A human's head, standing, in yards: the size every other body is measured against. */
+export const HUMAN_HEAD = 1.85;
+
+/**
+ * The room a body takes in front of its feet, for a fighter `size` times a human's height whose head
+ * is `lean` yards ahead of its feet: a gnome needs a little less than a human, a tauren, hunched
+ * forward over his hooves, a good deal more. Depth grows slower than height.
+ */
+export function bodyRadius(size: number, lean = 0): number {
+  return (BODY / 2) * (0.5 + 0.5 * size) + 1.1 * Math.max(0, lean);
+}
+
 /** Ground speed per frame: a run forwards (4.2 yards a second), a backpedal away. */
 export const WALK = 0.07;
 export const BACK = 0.045;
@@ -27,7 +39,7 @@ export const CAMERA = {
   yaw: -Math.PI / 2,
   pitch: (7 * Math.PI) / 180,
   fov: (32 * Math.PI) / 180,
-  zoom: 1,
+  zoom: 1.12,
   panX: 0,
   panY: 0.1,
 };

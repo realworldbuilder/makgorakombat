@@ -48,7 +48,9 @@ export interface Ability {
   cast: number;
   range: number;
   minRange: number;
+  /** The average blow; each one rolls up to `spread` of it either side. A damage-over-time tick does not stray. */
   damage: number;
+  spread: number;
   /** Hits on both sides of the fighter, not only ahead. */
   both: boolean;
   /** Frames the target is stunned. */
@@ -91,6 +93,10 @@ export interface Kit {
   starts: number;
   /** Per frame. */
   regen: number;
+  /** The class's PvP damage modifier, already in the abilities' numbers; the weapon's swing takes it too. */
+  power: number;
+  /** How much of its weapon's damage the class's swing lands (`WEAPON_SKILL`). */
+  swing: number;
   abilities: [ResolvedAbility, ResolvedAbility, ResolvedAbility];
 }
 
@@ -111,7 +117,7 @@ export const ABILITY_MELEE_RANGE = 2.3;
 const S = 60;
 
 const DEFAULTS: Omit<Ability, 'id' | 'name' | 'short' | 'kind' | 'anims'> = {
-  cost: 0, cooldown: 0, gcd: true, cast: 0, range: ABILITY_MELEE_RANGE, minRange: 0, damage: 0, both: false,
+  cost: 0, cooldown: 0, gcd: true, cast: 0, range: ABILITY_MELEE_RANGE, minRange: 0, damage: 0, spread: 0.15, both: false,
   stun: 0, slow: 0, fear: 0, dot: undefined, heal: 0, absorb: 0, evasion: 0, interrupt: false, execute: false, gain: 0, holdAnims: undefined,
 };
 
@@ -123,6 +129,8 @@ function ability(spec: Spec): Ability {
     if (spec.kind === 'bolt' || spec.kind === 'spell') out.range = 8;
     if (spec.kind === 'charge') out.range = 9;
   }
+  // A spell's damage range is narrower than a weapon's: Frostbolt is 515 to 555, a sword 70 to 131.
+  if (spec.spread === undefined && (spec.kind === 'bolt' || spec.kind === 'spell')) out.spread = 0.08;
   if (spec.kind === 'charge' && spec.minRange === undefined) out.minRange = 2.5;
   return out;
 }
@@ -168,7 +176,7 @@ function classKits(twoHand: boolean): Record<number, { key: string; name: string
     3: {
       key: 'hunter', name: 'HUNTER', resource: 'focus',
       abilities: [
-        ability({ id: 'aimedShot', name: 'Aimed Shot', short: 'AIMED', kind: 'bolt', cost: 35, cast: 1.5 * S, damage: 18, anims: ['AttackBow', 'AttackRifle', 'AttackCrossbow', 'AttackThrown', ...SPELL], holdAnims: ['ReadyBow', 'ReadyRifle', 'ReadyCrossbow', ...CAST_HOLD] }),
+        ability({ id: 'aimedShot', name: 'Aimed Shot', short: 'AIMED', kind: 'bolt', cost: 35, cast: 1.5 * S, damage: 24, anims: ['AttackBow', 'AttackRifle', 'AttackCrossbow', 'AttackThrown', ...SPELL], holdAnims: ['ReadyBow', 'ReadyRifle', 'ReadyCrossbow', ...CAST_HOLD] }),
         ability({ id: 'disengage', name: 'Disengage', short: 'DISENGAGE', kind: 'leap', cooldown: 15 * S, gcd: false, anims: ['JumpStart', 'Jump', 'Dodge'] }),
         ability({ id: 'killShot', name: 'Kill Shot', short: 'KILL SHOT', kind: 'bolt', cost: 10, damage: 30, execute: true, anims: ['AttackBow', 'AttackRifle', 'AttackCrossbow', 'AttackThrown', ...SPELL] }),
       ],
@@ -184,8 +192,8 @@ function classKits(twoHand: boolean): Record<number, { key: string; name: string
     5: {
       key: 'priest', name: 'PRIEST', resource: 'mana',
       abilities: [
-        ability({ id: 'mindBlast', name: 'Mind Blast', short: 'MIND BLAST', kind: 'spell', cost: 25, cooldown: 8 * S, cast: 1 * S, damage: 15, anims: SPELL, holdAnims: CAST_HOLD }),
-        ability({ id: 'shadowWordPain', name: 'Shadow Word: Pain', short: 'SW: PAIN', kind: 'spell', cost: 20, dot: { damage: 5, ticks: 5 }, anims: SPELL }),
+        ability({ id: 'mindBlast', name: 'Mind Blast', short: 'MIND BLAST', kind: 'spell', cost: 25, cooldown: 4 * S, cast: 1 * S, damage: 22, anims: SPELL, holdAnims: CAST_HOLD }),
+        ability({ id: 'shadowWordPain', name: 'Shadow Word: Pain', short: 'SW: PAIN', kind: 'spell', cost: 20, dot: { damage: 7, ticks: 5 }, anims: SPELL }),
         ability({ id: 'powerWordShield', name: 'Power Word: Shield', short: 'PW: SHIELD', kind: 'self', cost: 25, cooldown: 10 * S, absorb: 25, anims: OMNI }),
       ],
     },
@@ -200,7 +208,7 @@ function classKits(twoHand: boolean): Record<number, { key: string; name: string
     7: {
       key: 'shaman', name: 'SHAMAN', resource: 'mana',
       abilities: [
-        ability({ id: 'lightningBolt', name: 'Lightning Bolt', short: 'LIGHTNING', kind: 'bolt', cost: 15, cast: 1.5 * S, damage: 14, anims: ['ShaSpellCastBothFront', ...SPELL], holdAnims: CAST_HOLD }),
+        ability({ id: 'lightningBolt', name: 'Lightning Bolt', short: 'LIGHTNING', kind: 'bolt', cost: 15, cast: 1.5 * S, damage: 19, anims: ['ShaSpellCastBothFront', ...SPELL], holdAnims: CAST_HOLD }),
         ability({ id: 'earthShock', name: 'Earth Shock', short: 'EARTH SHK', kind: 'spell', cost: 20, cooldown: 6 * S, range: 5, damage: 10, interrupt: true, anims: ['ShaSpellCastBothFront', ...SPELL] }),
         ability({ id: 'stormstrike', name: 'Stormstrike', short: 'STORMSTR', kind: 'melee', cost: 20, cooldown: 8 * S, damage: 16, anims: ['Stormstrike', ...strike] }),
       ],
@@ -208,23 +216,23 @@ function classKits(twoHand: boolean): Record<number, { key: string; name: string
     8: {
       key: 'mage', name: 'MAGE', resource: 'mana',
       abilities: [
-        ability({ id: 'frostbolt', name: 'Frostbolt', short: 'FROSTBOLT', kind: 'bolt', cost: 20, cast: 1.5 * S, damage: 14, slow: 4 * S, anims: ['MagSpellCastBothFront', ...SPELL], holdAnims: CAST_HOLD }),
-        ability({ id: 'fireBlast', name: 'Fire Blast', short: 'FIRE BLAST', kind: 'spell', cost: 25, cooldown: 8 * S, range: 6, damage: 12, anims: ['MagSpellCastBothFront', ...SPELL] }),
+        ability({ id: 'frostbolt', name: 'Frostbolt', short: 'FROSTBOLT', kind: 'bolt', cost: 20, cast: 1.5 * S, damage: 22, slow: 4 * S, anims: ['MagSpellCastBothFront', ...SPELL], holdAnims: CAST_HOLD }),
+        ability({ id: 'fireBlast', name: 'Fire Blast', short: 'FIRE BLAST', kind: 'spell', cost: 25, cooldown: 8 * S, range: 6, damage: 15, anims: ['MagSpellCastBothFront', ...SPELL] }),
         ability({ id: 'blink', name: 'Blink', short: 'BLINK', kind: 'blink', cost: 15, cooldown: 15 * S, anims: OMNI }),
       ],
     },
     9: {
       key: 'warlock', name: 'WARLOCK', resource: 'mana',
       abilities: [
-        ability({ id: 'shadowBolt', name: 'Shadow Bolt', short: 'SHADOW BLT', kind: 'bolt', cost: 20, cast: 1.5 * S, damage: 15, anims: ['LocSpellCastBothFront', ...SPELL], holdAnims: CAST_HOLD }),
-        ability({ id: 'corruption', name: 'Corruption', short: 'CORRUPTION', kind: 'spell', cost: 20, dot: { damage: 6, ticks: 5 }, anims: SPELL }),
+        ability({ id: 'shadowBolt', name: 'Shadow Bolt', short: 'SHADOW BLT', kind: 'bolt', cost: 20, cast: 1.5 * S, damage: 27, anims: ['LocSpellCastBothFront', ...SPELL], holdAnims: CAST_HOLD }),
+        ability({ id: 'corruption', name: 'Corruption', short: 'CORRUPTION', kind: 'spell', cost: 20, dot: { damage: 8, ticks: 5 }, anims: SPELL }),
         ability({ id: 'fear', name: 'Fear', short: 'FEAR', kind: 'spell', cost: 20, cooldown: 20 * S, cast: 1 * S, range: 6, fear: 150, anims: ['LocSpellCastBothFront', ...OMNI], holdAnims: CAST_HOLD }),
       ],
     },
     10: {
       key: 'monk', name: 'MONK', resource: 'energy',
       abilities: [
-        ability({ id: 'tigerPalm', name: 'Tiger Palm', short: 'TIGER PALM', kind: 'melee', cost: 25, damage: 10, anims: ['CombatUnarmed01', 'AttackUnarmed', 'SpecialUnarmed', ...STRIKE_1H] }),
+        ability({ id: 'tigerPalm', name: 'Tiger Palm', short: 'TIGER PALM', kind: 'melee', cost: 35, damage: 10, anims: ['CombatUnarmed01', 'AttackUnarmed', 'SpecialUnarmed', ...STRIKE_1H] }),
         ability({ id: 'risingSunKick', name: 'Rising Sun Kick', short: 'RISING SUN', kind: 'melee', cost: 30, cooldown: 8 * S, damage: 18, anims: ['RisingSunKick', 'FlyingKick', 'RoundHouseKick', 'Kick', ...STRIKE_1H] }),
         ability({ id: 'legSweep', name: 'Leg Sweep', short: 'LEG SWEEP', kind: 'melee', cost: 25, cooldown: 20 * S, damage: 6, stun: 120, anims: KICK }),
       ],
@@ -232,7 +240,7 @@ function classKits(twoHand: boolean): Record<number, { key: string; name: string
     11: {
       key: 'druid', name: 'DRUID', resource: 'mana',
       abilities: [
-        ability({ id: 'wrath', name: 'Wrath', short: 'WRATH', kind: 'bolt', cost: 15, cast: 1.5 * S, damage: 12, anims: SPELL, holdAnims: ['DruReadySpellCast', ...CAST_HOLD] }),
+        ability({ id: 'wrath', name: 'Wrath', short: 'WRATH', kind: 'bolt', cost: 15, cast: 1.5 * S, damage: 17, anims: SPELL, holdAnims: ['DruReadySpellCast', ...CAST_HOLD] }),
         ability({ id: 'moonfire', name: 'Moonfire', short: 'MOONFIRE', kind: 'spell', cost: 20, damage: 8, dot: { damage: 4, ticks: 4 }, anims: OMNI }),
         ability({ id: 'rake', name: 'Rake', short: 'RAKE', kind: 'melee', cost: 25, damage: 8, dot: { damage: 4, ticks: 3 }, anims: ['SpecialUnarmed', 'AttackUnarmed', ...STRIKE_1H] }),
       ],
@@ -240,20 +248,47 @@ function classKits(twoHand: boolean): Record<number, { key: string; name: string
     12: {
       key: 'demonhunter', name: 'DEMON HUNTER', resource: 'fury',
       abilities: [
-        ability({ id: 'chaosStrike', name: 'Chaos Strike', short: 'CHAOS STR', kind: 'melee', cost: 40, damage: 20, anims: ['CombatAbilityGlv01', 'CombatAbilityDualWield01', ...STRIKE_1H] }),
-        ability({ id: 'felRush', name: 'Fel Rush', short: 'FEL RUSH', kind: 'rush', cooldown: 10 * S, range: 4, damage: 10, gain: 10, anims: ['FelRushEnd', ...STRIKE_1H], holdAnims: ['FelRushLoop', 'DHCombatSprint', 'Sprint', 'Run', 'Walk'] }),
-        ability({ id: 'bladeDance', name: 'Blade Dance', short: 'BLADE DNC', kind: 'melee', cost: 35, cooldown: 9 * S, damage: 16, both: true, anims: ['DHBladeDance1', ...SPIN] }),
+        ability({ id: 'chaosStrike', name: 'Chaos Strike', short: 'CHAOS STR', kind: 'melee', cost: 30, damage: 20, anims: ['CombatAbilityGlv01', 'CombatAbilityDualWield01', ...STRIKE_1H] }),
+        ability({ id: 'felRush', name: 'Fel Rush', short: 'FEL RUSH', kind: 'rush', cooldown: 10 * S, range: 4, damage: 10, gain: 20, anims: ['FelRushEnd', ...STRIKE_1H], holdAnims: ['FelRushLoop', 'DHCombatSprint', 'Sprint', 'Run', 'Walk'] }),
+        ability({ id: 'bladeDance', name: 'Blade Dance', short: 'BLADE DNC', kind: 'melee', cost: 30, cooldown: 9 * S, damage: 16, both: true, anims: ['DHBladeDance1', ...SPIN] }),
       ],
     },
     13: {
       key: 'evoker', name: 'EVOKER', resource: 'mana',
       abilities: [
-        ability({ id: 'livingFlame', name: 'Living Flame', short: 'LIVING FLM', kind: 'bolt', cost: 15, cast: 1.5 * S, damage: 14, anims: SPELL, holdAnims: CAST_HOLD }),
+        ability({ id: 'livingFlame', name: 'Living Flame', short: 'LIVING FLM', kind: 'bolt', cost: 15, cast: 1.5 * S, damage: 19, anims: SPELL, holdAnims: CAST_HOLD }),
         ability({ id: 'fireBreath', name: 'Fire Breath', short: 'FIRE BRTH', kind: 'spell', cost: 25, cooldown: 12 * S, range: 3.5, damage: 16, dot: { damage: 3, ticks: 3 }, anims: ['ChannelCastDirected', ...SPELL] }),
         ability({ id: 'hover', name: 'Hover', short: 'HOVER', kind: 'leap', cooldown: 15 * S, gcd: false, anims: ['JumpStart', 'Jump', 'Dodge'] }),
       ],
     },
   };
+}
+
+/**
+ * Each class's PvP damage modifier: everything it deals, swings and spells alike, is scaled by it,
+ * the way the game tunes specs against each other in PvP without changing what their spells do.
+ * The kits keep their character (a mage's slow big bolts, a rogue's quick light strikes, a priest's
+ * damage over time); these even out how hard each hits overall. They come from playing every class
+ * against every other, the computer on both sides: BALANCE=1 pnpm test prints the table.
+ */
+export const PVP_DAMAGE: Record<string, number> = {
+  warrior: 0.9, paladin: 0.85, hunter: 0.85, rogue: 0.8, priest: 1.4, deathknight: 0.85, shaman: 1.1,
+  mage: 1.1, warlock: 1.15, monk: 0.8, druid: 1.15, demonhunter: 1.05, evoker: 1.2,
+};
+
+/**
+ * How much of a weapon's damage a class's swing lands: all of it for the fighters, a little over half
+ * for a mage or a priest, whose strength is in their spells, as a caster's white hits are in the game.
+ */
+export const WEAPON_SKILL: Record<string, number> = {
+  warrior: 1, paladin: 1, hunter: 1, rogue: 1, priest: 0.8, deathknight: 1, shaman: 0.85,
+  mage: 0.6, warlock: 0.6, monk: 1, druid: 0.75, demonhunter: 1, evoker: 0.7,
+};
+
+/** An ability with the class's modifier in its damage; a tick of damage over time stays a whole number. */
+function tuned(a: Ability, power: number): Ability {
+  if (power === 1) return a;
+  return { ...a, damage: a.damage * power, dot: a.dot ? { ...a.dot, damage: Math.max(1, Math.round(a.dot.damage * power)) } : undefined };
 }
 
 /** Rage, fury and runic power start at nothing; the rest start full. Regeneration per frame. */
@@ -263,7 +298,7 @@ const RESOURCES: Record<ResourceKind, { starts: number; regen: number }> = {
   runic: { starts: 0, regen: 0 },
   energy: { starts: MAX_RESOURCE, regen: 10 / 60 },
   focus: { starts: MAX_RESOURCE, regen: 5 / 60 },
-  mana: { starts: MAX_RESOURCE, regen: 3 / 60 },
+  mana: { starts: MAX_RESOURCE, regen: 4 / 60 },
 };
 
 export const RESOURCE_COLOURS: Record<ResourceKind, string> = {
@@ -295,7 +330,8 @@ export function kitSpec(classId: number | undefined, wielding: Wielding = 'oneHa
   const twoHand = wielding === 'twoHand' || wielding === 'long';
   const spec = classKits(twoHand)[classFor(classId, wielding)]!;
   const legend = classId === undefined || !classKits(false)[classId];
-  return { classKey: legend ? 'champion' : spec.key, className: legend ? 'CHAMPION' : spec.name, resource: spec.resource, abilities: spec.abilities };
+  const power = PVP_DAMAGE[spec.key] ?? 1;
+  return { classKey: legend ? 'champion' : spec.key, className: legend ? 'CHAMPION' : spec.name, resource: spec.resource, abilities: spec.abilities.map((a) => tuned(a, power)) };
 }
 
 /** The kit a class plays with, resolved to the animations the model has; `idle` fills in for a missing one. */
@@ -305,7 +341,9 @@ export function resolveKit(classId: number | undefined, wielding: Wielding, find
   const spec = classKits(twoHand)[id]!;
   const legend = classId === undefined || !classKits(false)[classId];
   const resource = RESOURCES[spec.resource];
-  const abilities = spec.abilities.map((a) => {
+  const power = PVP_DAMAGE[spec.key] ?? 1;
+  const abilities = spec.abilities.map((spec) => {
+    const a = tuned(spec, power);
     const move = moveFrom(find, a.id, a.anims, false, idle);
     const hold = a.holdAnims ? moveFrom(find, `${a.id}Hold`, a.holdAnims, true, idle) : { ...move, name: `${a.id}Hold`, loop: true };
     return { ...a, move, hold };
@@ -316,8 +354,15 @@ export function resolveKit(classId: number | undefined, wielding: Wielding, find
     resource: spec.resource,
     starts: resource.starts,
     regen: resource.regen,
+    power,
+    swing: WEAPON_SKILL[spec.key] ?? 1,
     abilities,
   };
+}
+
+/** The least and most a blow of average `damage` can roll, before a crit or a block. */
+export function damageRange(damage: number, spread: number): [number, number] {
+  return [Math.max(1, Math.round(damage * (1 - spread))), Math.max(1, Math.round(damage * (1 + spread)))];
 }
 
 /** The name the HUD shows for a kit's resource. */

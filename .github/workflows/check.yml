@@ -1,7 +1,9 @@
 name: Check
 
 on:
+  # ready_for_review and unlabeled too, so a draft marked ready or a PR taken off hold runs again and Ship sees it.
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, unlabeled]
 
 jobs:
   check:

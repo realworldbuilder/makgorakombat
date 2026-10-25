@@ -2,7 +2,7 @@ import { BRAND } from '../engine/brand';
 import type { FloatingText, Match } from '../engine/engine';
 import { directionOf, type FatalityEffect, impactFrame, type SequenceToken, STEP_FRAMES } from '../engine/fatalities';
 import { actionLabel, type InputSource } from '../engine/input';
-import { FINISH_FRAMES, HALF, HP, ROUND_FRAMES } from '../engine/stage';
+import { FINISH_FRAMES, HALF, HP, HUMAN_HEAD, ROUND_FRAMES } from '../engine/stage';
 import { type AnchorAt, ATTACH } from './fx';
 import { drawSpells } from './fx2d';
 
@@ -22,14 +22,12 @@ const SERIF = "'Cinzel', 'Palatino', serif";
 const HEAVY = "'Metal Mania', 'Impact', sans-serif";
 const GOLD = '#ffd100';
 const BONE = '#f4f1e6';
-/** Where the engine floats words over a fighter: this far above the feet, as for a human. */
-const TEXT_Z = 2.3;
-/** A human male's head, standing: the heights the engine uses (a spark at the chest, a word over the head) are his. */
-const HUMAN_HEAD = 1.85;
 /** A nameplate sits this far above the head, for a human; more for a bigger body. */
 const PLATE_ABOVE = 0.45;
 /** The highest a nameplate goes, in HUD units: under the unit frames, as the game keeps a plate on screen when its head is not. */
 const PLATE_TOP = 175;
+/** Each of the fatality's letterbox bars, as a fraction of the screen's height. */
+export const LETTERBOX = 0.085;
 
 export interface HudOptions {
   /** Which fighters a person plays: a blow they take floats red, as the game shows damage taken. Both by default. */
@@ -106,7 +104,7 @@ export function drawHud(ctx: CanvasRenderingContext2D, width: number, height: nu
   sparks(ctx, match, at, bodies);
   drawSpells(ctx, match, at, options.anchor ?? (() => undefined));
   fatalityEffects(ctx, w, h, match, at, bodies);
-  floatingTexts(ctx, match, at, human, bodies);
+  floatingTexts(ctx, match, at, human, bodies, w);
   sequencePrompt(ctx, w, h, match, sources);
   cinematic(ctx, w, h, match);
   banner(ctx, w, h, match);
@@ -268,34 +266,58 @@ function sparks(ctx: CanvasRenderingContext2D, match: Match, at: (p: readonly [n
   }
 }
 
-/** Spells in flight glow; arrows and shots streak. */
 /** The words of the hit table and the status effects, in white small caps; a crit in yellow. */
 const WHITE = '#f4f1e6';
 const RED = '#ff3b3b';
+/** The face the game floats damage in (skurri.ttf), read from the install; the heavy face without it. */
+const DAMAGE_FONT = `'WoW Skurri', ${HEAVY}`;
+
+/** Spell damage in its school's colour, as the game's combat text colours it; a swing stays white. */
+const SCHOOL_COLOURS = {
+  holy: '#ffe680',
+  fire: '#ff8a1e',
+  nature: '#6dff5a',
+  frost: '#86f0ff',
+  shadow: '#a58cff',
+  arcane: '#ff8cff',
+} as const;
+const SCHOOLS: Record<string, keyof typeof SCHOOL_COLOURS> = {
+  crusaderStrike: 'holy', hammerOfJustice: 'holy',
+  fireBlast: 'fire', livingFlame: 'fire', fireBreath: 'fire',
+  lightningBolt: 'nature', earthShock: 'nature', stormstrike: 'nature', wrath: 'nature',
+  frostbolt: 'frost', icyTouch: 'frost',
+  shadowBolt: 'shadow', corruption: 'shadow', shadowWordPain: 'shadow', mindBlast: 'shadow', deathCoil: 'shadow',
+  moonfire: 'arcane',
+};
 
 interface TextStyle {
   size: number;
   colour: string;
   font: string;
-  /** A word, drawn in the serif small caps; a number in the heavy face. */
+  /** A word, drawn in the serif small caps; a number in the damage face. */
   word: boolean;
 }
 
 /**
- * How a floating text looks: numbers are white when dealt by a player's fighter, red when a
- * player's fighter takes them from the computer, yellow and large for a crit; words are white.
+ * How a floating text looks: numbers are white when dealt by a player's fighter (a spell's in its
+ * school's colour), red when a player's fighter takes them from the computer, large for a crit and
+ * a little larger the harder the blow; words are white.
  */
 function styleOf(text: FloatingText, human: [boolean, boolean]): TextStyle {
   const incoming = human[text.side] && !human[text.from];
+  const school = text.spell ? SCHOOLS[text.spell] : undefined;
+  const dealt = school ? SCHOOL_COLOURS[school] : WHITE;
+  // A 25-point blow stands a quarter taller than a 5-point one.
+  const weight = 0.9 + 0.3 * Math.min(1, (Number(text.text) || 0) / 25);
   switch (text.kind) {
     case 'damage':
-      return { size: 26, colour: incoming ? RED : WHITE, font: HEAVY, word: false };
+      return { size: 28 * weight, colour: incoming ? RED : dealt, font: DAMAGE_FONT, word: false };
     case 'crit':
-      return { size: 40, colour: incoming ? RED : GOLD, font: HEAVY, word: false };
+      return { size: 42 * weight, colour: incoming ? RED : school ? dealt : GOLD, font: DAMAGE_FONT, word: false };
     case 'dot':
-      return { size: 18, colour: incoming ? RED : WHITE, font: HEAVY, word: false };
+      return { size: 21, colour: incoming ? RED : dealt, font: DAMAGE_FONT, word: false };
     case 'heal':
-      return { size: 26, colour: '#7bd88f', font: HEAVY, word: false };
+      return { size: 28, colour: '#7bd88f', font: DAMAGE_FONT, word: false };
     case 'absorb':
     case 'block':
       return { size: 18, colour: WHITE, font: SERIF, word: true };
@@ -311,49 +333,81 @@ function styleOf(text: FloatingText, human: [boolean, boolean]): TextStyle {
   }
 }
 
+/** Each text's lane in its fighter's spray, kept from the frame it first shows so it never jumps. */
+const lanes = new WeakMap<FloatingText, number>();
+/** A lane is free again once the text in it has flown this many frames clear. */
+const LANE_BUSY = 26;
+
+function laneOf(match: Match, text: FloatingText): number {
+  let lane = lanes.get(text);
+  if (lane !== undefined) return lane;
+  const taken = new Set<number>();
+  for (const other of match.texts) {
+    if (other === text || other.side !== text.side || other.t >= LANE_BUSY) continue;
+    const l = lanes.get(other);
+    if (l !== undefined) taken.add(l);
+  }
+  lane = 0;
+  while (taken.has(lane)) lane++;
+  lanes.set(text, lane);
+  return lane;
+}
+
 /**
- * Numbers and words rise off the head of the fighter they concern, above the nameplate, fanning a
- * little left and right so hits that land together do not overlap, and fade over 1.2 s. A crit
- * arrives large and bounces into place.
+ * Numbers and words come off the fighter they concern the way the game's combat text does: they
+ * appear in the air beside the head, on the far side from the other fighter so they never sit in
+ * the tangle between the two, and arc up and outward as they fade. Blows that land together take
+ * lanes down the body and fan wider, so a flurry reads as a spray of numbers rather than a pile.
+ * A crit punches in large, holds a beat, then flies.
  */
-function floatingTexts(ctx: CanvasRenderingContext2D, match: Match, at: (p: readonly [number, number, number]) => [number, number] | undefined, human: [boolean, boolean], bodies: Bodies): void {
+function floatingTexts(ctx: CanvasRenderingContext2D, match: Match, at: (p: readonly [number, number, number]) => [number, number] | undefined, human: [boolean, boolean], bodies: Bodies, w: number): void {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  // Texts born on the same frame over the same fighter stack up instead of overlapping.
-  const stack: Record<string, number> = {};
   for (const text of match.texts) {
     // The refusals (NOT ENOUGH RAGE, OUT OF RANGE) are the DOM layer's to show, from the view's `notice`.
     if (text.kind === 'info') continue;
+    const side = text.side;
+    const f = match.fighters[side];
+    const o = match.fighters[side === 0 ? 1 : 0];
     const style = styleOf(text, human);
-    const key = `${text.side}:${text.t}`;
-    const slot = stack[key] ?? 0;
-    stack[key] = slot + 1;
-    // The engine floats a word at a human's head; it rises off this fighter's nameplate instead.
-    const raw = at([text.x, 0, text.z - TEXT_Z + bodies.plate(text.side)]);
-    if (!raw) continue;
-    // Off a nameplate kept on screen, the words start from where the plate is drawn.
-    const p: [number, number] = [raw[0], Math.max(PLATE_TOP, raw[1])];
-    const born = match.frame - text.t;
-    // The fan: each text takes a lane from -2 to 2 by its birth frame, so a stream of hits spreads out.
-    const lane = ((born * 7 + slot * 3) % 5) - 2;
-    const rise = text.t * 0.85;
-    const x = p[0] + lane * 16;
-    const y = p[1] - 30 - rise - slot * 22;
-    const fade = Math.min(1, (text.life - text.t) / 18);
+    const lane = laneOf(match, text);
+    // Away from the other fighter; the engine's x is where the text was born, the fighter may have moved on.
+    let out: 1 | -1 = f.x > o.x ? 1 : f.x < o.x ? -1 : f.facing === 1 ? -1 : 1;
+    const size = bodies.size(side);
+    const head = bodies.head(side);
+    // Beside the head, a lane further down the body for each text already rising.
+    const z = f.z + head * (0.92 - 0.13 * Math.min(lane, 3));
+    let start = at([f.x + out * 0.6 * size, 0, z]);
+    if (!start) continue;
+    // Too near the edge to fly outward: fly inward over the head instead.
+    if ((out > 0 && start[0] > w - 150) || (out < 0 && start[0] < 150)) {
+      out = out > 0 ? -1 : 1;
+      start = at([f.x + out * 0.2 * size, 0, z]) ?? start;
+    }
+    // A crit holds where it lands for 14 frames before it flies.
+    const hold = text.kind === 'crit' ? 14 : 0;
+    const u = Math.max(0, text.t - hold) / (text.life - hold);
+    const eased = 1 - (1 - u) * (1 - u);
+    const spread = 1 + 0.35 * (lane % 3);
+    const x = start[0] + out * (14 + 58 * spread * eased);
+    // Under the unit frames, as the game keeps a plate on screen when its head is not.
+    const y = Math.max(PLATE_TOP + 20, start[1]) - 78 * eased + 12 * u * u;
+    const fade = Math.min(1, (text.life - text.t) / 18, (text.t + 1) / 3);
     let scale = 1;
     if (text.kind === 'crit') {
-      // Arrives at 1.7×, lands by frame 5, dips to 0.9× and settles by frame 10.
-      scale = text.t < 5 ? 1.7 - 0.14 * text.t : text.t < 10 ? 1 - 0.1 * Math.sin(((text.t - 5) / 5) * Math.PI) : 1;
-    } else if (text.kind === 'damage' || text.kind === 'heal') {
-      scale = text.t < 4 ? 1.25 - 0.0625 * text.t : 1;
+      // Arrives at 1.8×, lands by frame 5, dips to 0.92× and settles by frame 10.
+      scale = text.t < 5 ? 1.8 - 0.16 * text.t : text.t < 10 ? 1 - 0.08 * Math.sin(((text.t - 5) / 5) * Math.PI) : 1;
+    } else if (!style.word) {
+      scale = text.t < 4 ? 1.3 - 0.075 * text.t : 1;
     }
     ctx.save();
     ctx.globalAlpha = fade;
     ctx.translate(x, y);
     ctx.scale(scale, scale);
-    ctx.font = style.word ? `700 ${style.size}px ${style.font}` : `${style.size}px ${style.font}`;
-    ctx.lineWidth = style.size > 30 ? 6 : 4;
-    ctx.strokeStyle = 'rgba(20, 5, 5, 0.9)';
+    ctx.font = style.word ? `700 ${style.size}px ${style.font}` : `${Math.round(style.size)}px ${style.font}`;
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = style.size > 34 ? 6 : 4;
+    ctx.strokeStyle = 'rgba(10, 4, 4, 0.92)';
     ctx.strokeText(text.text, 0, 0);
     ctx.fillStyle = style.colour;
     ctx.fillText(text.text, 0, 0);
@@ -520,7 +574,7 @@ function cinematic(ctx: CanvasRenderingContext2D, w: number, h: number, match: M
   glow.addColorStop(1, `rgba(120, 0, 0, ${strength})`);
   ctx.fillStyle = glow;
   ctx.fillRect(0, 0, w, h);
-  const bar = h * 0.085 * inset;
+  const bar = h * LETTERBOX * inset;
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, w, bar);
   ctx.fillRect(0, h - bar, w, bar);
