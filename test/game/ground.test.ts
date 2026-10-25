@@ -3,6 +3,7 @@ import { identity } from '@mogshot/math/mat4';
 import { PLACE_VERTEX_SIZE, type PlaceScene } from '@mogshot/world/place';
 import { floorAt, floorProfile } from '../../src/game/ground';
 import { existsSync } from 'node:fs';
+import { editionOf } from '../../src/game/edition';
 import { STAGES, stagesFor } from '../../src/game/stages';
 
 /** A sheet of ground over x, y in [-10, 10] at the height `z(x)`, as a place's terrain mesh. */
@@ -51,14 +52,17 @@ describe('the stages', () => {
   });
 
   it('are offered by the maps on disk and the game the install is', () => {
-    const classic = stagesFor([0, 1], 'wow_classic_beta').map((s) => s.slug);
+    const world = (product: string, version: string) => editionOf(product, version).world;
+    const classic = stagesFor([0, 1], world('wow_classic_beta', '1.60.1.70205')).map((s) => s.slug);
     expect(classic).toContain('valley-of-heroes');
     expect(classic).toContain('gurubashi');
-    const retail = stagesFor([0, 1, 530, 571], 'wow').map((s) => s.slug);
+    // WoW Forever's live client stands on the 2004 ground too.
+    expect(stagesFor([0, 1], world('wowf', '1.60.1.70532')).map((s) => s.slug)).toContain('valley-of-heroes');
+    const retail = stagesFor([0, 1, 530, 571], world('wow', '12.1.5.70575')).map((s) => s.slug);
     expect(retail).toContain('thunder-bluff');
     expect(retail).not.toContain('valley-of-heroes');
     // A map the install lacks takes its stages with it.
-    expect(stagesFor([1], 'wow').map((s) => s.slug)).not.toContain('gurubashi');
+    expect(stagesFor([1], 'retail').map((s) => s.slug)).not.toContain('gurubashi');
     // The obstructed and the cut ones stay out.
     for (const gone of ['valley-of-trials', 'sentinel-hill', 'dalaran', 'ring-of-trials', 'icecrown']) expect(retail).not.toContain(gone);
   });

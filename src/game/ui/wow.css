@@ -449,6 +449,134 @@
   color: var(--wow-gold);
 }
 
+/* ---- editions ------------------------------------------------------------------------------ */
+
+/*
+ * CHOOSE YOUR CHAMPION dressed as the open game's login screen (edition.ts): one of its loading
+ * screens behind everything, its logo under ours, its colours on the panel. Retail's Midnight is
+ * void violet and light, WoW Forever the warm bronze of its crest with the ring's teal, Classic
+ * keeps the ring's own blood red.
+ */
+
+.screen.select {
+  --edition-ink: #f4e3b5;
+  --edition-glow: rgba(200, 18, 28, 0.55);
+  --edition-rim: #5c5c66;
+}
+
+.screen.select.edition-retail {
+  --edition-ink: #e4d8ff;
+  --edition-glow: rgba(138, 92, 255, 0.75);
+  --edition-rim: #6d58a8;
+  background: radial-gradient(ellipse at 50% 30%, #22123a 0%, #0a0612 60%, #000 100%);
+}
+
+.screen.select.edition-forever {
+  --edition-ink: #f6e7c4;
+  --edition-glow: rgba(63, 182, 201, 0.7);
+  --edition-rim: #8a6a3e;
+  background: radial-gradient(ellipse at 50% 30%, #2b2014 0%, #0e0a06 60%, #000 100%);
+}
+
+.select .edition-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-size: cover;
+  background-position: center;
+  opacity: 0.6;
+  pointer-events: none;
+  animation: edition-in 1.2s ease-out both;
+}
+
+/* Darker at the rim and under the panels, so the champions and the words stay clear of the art. */
+.select .edition-backdrop::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 60% 70% at 50% 45%, rgba(0, 0, 0, 0.15) 0%, rgba(0, 0, 0, 0.55) 70%, rgba(0, 0, 0, 0.85) 100%),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.35) 0%, transparent 25%, transparent 60%, rgba(0, 0, 0, 0.85) 100%);
+}
+
+@keyframes edition-in {
+  from {
+    opacity: 0;
+    transform: scale(1.04);
+  }
+}
+
+.select .edition-mark {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: -0.4vh 0 0.2vh;
+  line-height: 1;
+}
+
+.select .edition-mark img {
+  height: clamp(48px, 10vh, 112px);
+  width: auto;
+  filter: drop-shadow(0 0.3em 0.8em rgba(0, 0, 0, 0.85));
+}
+
+.select .edition-mark span {
+  margin-top: 0.15em;
+  font-family: var(--friz);
+  font-size: clamp(0.7rem, 1.5vh, 0.95rem);
+  letter-spacing: 0.32em;
+  color: var(--edition-ink);
+  text-shadow: 0 0 0.9em var(--edition-glow), 1px 1px 0 #000;
+}
+
+.select .middle:not(.legends-only) .edition-mark img {
+  height: 44px;
+}
+
+.select .grid {
+  border-color: var(--edition-rim);
+}
+
+.select .controls .switch-edition {
+  font: inherit;
+  letter-spacing: inherit;
+  color: var(--edition-ink);
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid var(--edition-rim);
+  border-radius: 0.3em;
+  padding: 0.1em 0.6em;
+  cursor: pointer;
+  text-shadow: inherit;
+}
+
+.select .controls .switch-edition:hover {
+  box-shadow: 0 0 0.6em var(--edition-glow);
+}
+
+/* The title screen's question when the folder holds more than one game. */
+.title .choose-edition {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  max-width: 34em;
+  text-align: center;
+}
+
+.title .choose-edition p {
+  margin: 0;
+}
+
+.title .choose-edition .big {
+  font-family: var(--friz);
+  font-size: 1.3rem;
+  letter-spacing: 0.12em;
+  color: var(--wow-gold);
+  text-shadow: 1px 1px 0 #000;
+}
+
 /* ---- the versus screen ------------------------------------------------------------------- */
 
 .versus .plate .title {

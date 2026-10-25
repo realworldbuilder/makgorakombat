@@ -48,10 +48,9 @@ export const STAGES: Stage[] = [
   { slug: 'thunder-bluff', name: 'Thunder Bluff', where: 'Mulgore', map: 1, x: -1300, y: 30, facing: 0, reach: REACH, why: 'The high rise: tents, totems and a drop on every side.' },
 ];
 
-/** The stages an install can draw: those whose map it has on disk, and whose ground its game still has. */
-export function stagesFor(maps: readonly number[], product: string): Stage[] {
-  const classic = product.startsWith('wow_classic');
-  return STAGES.filter((stage) => maps.includes(stage.map) && (!stage.only || (stage.only === 'classic') === classic));
+/** The stages an install can draw: those whose map it has on disk, and whose ground its game (see edition.ts) still has. */
+export function stagesFor(maps: readonly number[], world: 'classic' | 'retail'): Stage[] {
+  return STAGES.filter((stage) => maps.includes(stage.map) && (!stage.only || stage.only === world));
 }
 
 /** The thumbnail shipped for a stage, rendered once through Mogshot's command line. */
