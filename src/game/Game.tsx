@@ -95,6 +95,8 @@ export function Game() {
   const matchLink = useRef<Link>(null);
   /** The lobby's match being met now; given up or replaced, its late callbacks change nothing. */
   const matchOn = useRef<object>(null);
+  /** The VS screen a fight was started from, so its late or repeated Enter starts no second one. */
+  const fightFrom = useRef<Screen>(null);
   // A stable handler: Fight rebuilds the whole match when its props change, and dragging a file
   // across the window re-renders Game (the title's drop state), which must not restart a fight.
   const backToSelect = useCallback(() => {
@@ -405,8 +407,9 @@ export function Game() {
     if (hello.product !== product) notes.push(`The host plays from ${hello.product} and you from ${product}: the fight keeps the host's timing, drawn with your own animations.`);
     const message = hello;
     link.forget('hello');
+    const from = screenRef.current;
     void fightersFor(message, fighters, pick)
-      .then((ready) => setScreen({ kind: 'fight', fighters: ready, stage: ground, net: { link, me: 1, host: false, hello: message, notes } }))
+      .then((ready) => from === screenRef.current && setScreen({ kind: 'fight', fighters: ready, stage: ground, net: { link, me: 1, host: false, hello: message, notes } }))
       .catch((cause: unknown) => setLeft(`The host's champions could not be built here: ${messageOf(cause)}`));
   };
 
@@ -481,7 +484,13 @@ export function Game() {
             fighters={screen.fighters}
             stages={loaded.stages}
             screens={loaded.screens}
-            onFight={(ground) => startFight(screen.fighters, ground, screen.pick)}
+            onFight={(ground) => {
+              // Once per VS screen, and only while it is still up: a ground still rising when the player
+              // left, or a second Enter, would otherwise start a fight from the roster or send a second hello.
+              if (screenRef.current !== screen || fightFrom.current === screen) return;
+              fightFrom.current = screen;
+              startFight(screen.fighters, ground, screen.pick);
+            }}
             onBack={backToSelect}
             online={screen.pick ? versusOnline : undefined}
             start={screen.pick && online?.role === 'guest' ? hello?.stage : undefined}
