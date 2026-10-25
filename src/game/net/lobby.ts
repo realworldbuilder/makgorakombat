@@ -317,7 +317,8 @@ export class Lobby {
       } catch {
         return;
       }
-      const wasQueued = this.state.queued;
+      // Matched the moment it came back with requeue=1, the page never heard it was queued: it was, all the same.
+      const wasQueued = this.state.queued || this.wantQueue;
       this.set(fold(this.state, message, performance.now()));
       if (message.t === 'queued') this.wantQueue = true;
       else if (message.t === 'unqueued' || message.t === 'challenging' || message.t === 'fight') this.wantQueue = false;

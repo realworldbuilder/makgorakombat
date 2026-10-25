@@ -149,8 +149,12 @@ describe('the lobby socket', () => {
     vi.advanceTimersByTime(1000);
     expect(FakeSocket.made[2]!.url).toContain('&requeue=1');
     FakeSocket.made[2]!.open();
-    // Matched: the next socket is a plain one.
+    // Matched the moment it came back, before any word of the queue: still a match from the queue.
+    const queued: boolean[] = [];
+    lobby.onMatch((match) => queued.push(match.queued));
     FakeSocket.made[2]!.say({ t: 'fight', code: 'BCDFGH', role: 'guest', with: { id: 'will-0001', name: 'Will' } });
+    expect(queued).toEqual([true]);
+    // Matched: the next socket is a plain one.
     lobby.setMode('off');
     lobby.setMode('free');
     expect(FakeSocket.made[3]!.url).not.toContain('requeue');
