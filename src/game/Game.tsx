@@ -12,7 +12,7 @@ import { pictureUrl } from './pixels';
 import { LEGENDS, legendTiles, type Tile } from './roster';
 import { loadSaved, type SavedChampion, storeSaved } from './saved';
 import { type OnlinePick, Select, type Source } from './Select';
-import { championOf, type Hello, localize, mismatch, sameStage, stageKeyOf } from './net/handshake';
+import { championOf, decode, encode, type Hello, localize, mismatch, sameStage, stageKeyOf } from './net/handshake';
 import { Lobby, saveName, savedName } from './net/lobby';
 import type { Link } from './net/relay';
 import { VERSION } from './net/version';
@@ -306,7 +306,10 @@ export function Game() {
         tables: [tableOf(fighters[0]), tableOf(fighters[1])],
       };
       link.send(message);
-      setScreen({ kind: 'fight', fighters, stage: ground, net: { link, me: 0, host: true, hello: message, notes: pick.notes } });
+      // The host fights on the same hello the guest receives: the tables as JSON made them, not the live
+      // objects, so nothing JSON cannot carry (an undefined in an array, a NaN) can differ between the two.
+      const sent = decode(encode(message)) as Hello;
+      setScreen({ kind: 'fight', fighters, stage: ground, net: { link, me: 0, host: true, hello: sent, notes: pick.notes } });
       return;
     }
     if (!hello) return;

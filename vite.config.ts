@@ -16,7 +16,8 @@ export default defineConfig({
   // Only the game's own page is scanned: the submodule's pages pull in things the game does not use.
   optimizeDeps: { entries: ['index.html'] },
   resolve: { alias: { '@mogshot': mogshot } },
-  server: { fs: { allow: ['.', mogshot] } },
+  // Other checkouts of this repository under .worktrees must not reload the page: Vite watches the whole root.
+  server: { fs: { allow: ['.', mogshot] }, watch: { ignored: ['**/.worktrees/**'] } },
   test: {
     include: ['test/**/*.test.ts'],
     alias: { '@mogshot': mogshot },
