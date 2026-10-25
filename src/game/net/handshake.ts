@@ -83,10 +83,12 @@ export interface Back {
   t: 'back';
 }
 
-/** The relay's word that the other player came or went. */
+/** The relay's word that the other player came or went, or that their socket dropped and the room keeps their seat (`away`) until they are `back`. */
 export interface Peer {
   t: 'peer';
   joined: boolean;
+  away?: boolean;
+  back?: boolean;
 }
 
 export type Message = Meet | Hello | RosterMessage | StageMessage | Rematch | Back | Peer;
