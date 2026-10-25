@@ -1,4 +1,5 @@
 import { DurableObject } from 'cloudflare:workers';
+import { Board, type Fighter, type Result, type Span, type Standings } from './board';
 import { type Env, openRoom } from './index';
 
 /*
@@ -16,7 +17,13 @@ import { type Env, openRoom } from './index';
  * Nothing is kept in memory: the players are the sockets and what is attached to them, and the
  * open challenges, the queue and the rooms' head counts are in storage, so the lobby can sleep
  * between messages. The pages close their socket here for the fight itself, so who is fighting is
- * counted from the rooms, which tell the lobby whenever somebody comes in or goes.
+ * counted from the rooms, which tell the lobby whenever somebody comes in or goes. The rooms also
+ * tell it how each match ended, for the board (board.ts), and everyone here is listed with what
+ * they have won and lost tonight.
+ *
+ * The rooms the lobby made are listed while both players are in them, with the two names and
+ * the code, so anyone here can pick one to watch (the room's role=watch). A room made with a code
+ * between two friends is not the lobby's, and is not listed.
  */
 
 /** How long a challenge waits for its answer. */
@@ -29,12 +36,16 @@ export const LOBBY = 'lobby';
 export const QUEUE_MS = 10 * 60 * 1000;
 /** A room that has said nothing for this long is no longer counted, whatever it last said. */
 export const ROOM_STALE_MS = 6 * 60 * 60 * 1000;
+/** A room the lobby made that nobody has come into this long is forgotten: the room itself has closed. */
+export const ROOM_UNUSED_MS = 10 * 60 * 1000;
 
 export type Status = 'free' | 'busy';
 export interface Player {
   id: string;
   name: string;
   status: Status;
+  /** Tonight's wins and losses, for a player who has fought tonight. */
+  night?: [number, number];
 }
 /** What a socket here carries. */
 interface Seat {
@@ -54,10 +65,24 @@ interface Waiting {
   id: string;
   at: number;
 }
-/** How many are in a room, as it last said, and when. */
+/** How many are in a room, as it last said, and when; and for a room the lobby made, who it was made for. */
 interface Heads {
   n: number;
   at: number;
+  /** The host's and the guest's names and ids, as they were when the lobby matched them. */
+  names?: [string, string];
+  ids?: [string, string];
+  /** When both were first in. */
+  since?: number;
+}
+/** A fight on now, for anyone who wants to watch it. */
+export interface FightNow {
+  code: string;
+  /** The host's name, then the guest's. */
+  names: [string, string];
+  ids: [string, string];
+  /** When both came in, by the relay's clock. */
+  since: number;
 }
 /** The lobby's numbers, with every list of who is here and at GET /lobby/stats. */
 export interface Counts {
@@ -67,6 +92,11 @@ export interface Counts {
   waiting: number;
   /** In a room with their opponent: picking, on the VS screen or fighting. */
   fighting: number;
+}
+/** The numbers and the fights on now, as every list of who is here and GET /lobby/stats give them. */
+export interface Stats extends Counts {
+  /** The lobby's rooms with both players in, longest going first. */
+  fights: FightNow[];
 }
 
 /** A display name as the lobby shows it: letters, digits and single spaces, 2 to 16 of them; undefined when it is not one. */
@@ -99,9 +129,12 @@ function parse(message: string | ArrayBuffer): Incoming | undefined {
 }
 
 export class Lobby extends DurableObject<Env> {
+  private readonly board: Board;
+
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
+    this.board = new Board(ctx.storage.sql);
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -182,8 +215,19 @@ export class Lobby extends DurableObject<Env> {
   }
 
   /** The numbers alone, for GET /lobby/stats. */
-  async stats(): Promise<Counts> {
+  async stats(): Promise<Stats> {
     return this.counts(this.seats(this.live()));
+  }
+
+  /** A match fought to its end, as its room tells it: onto the board, and everyone here sees the new records. */
+  async result(result: Result, now = Date.now()): Promise<void> {
+    this.board.record(result, now);
+    if (this.live().length > 0) await this.beat();
+  }
+
+  /** The board for GET /lobby/board. */
+  async standings(span: Span, id?: string, now = Date.now()): Promise<Standings> {
+    return this.board.standings(span, id, now);
   }
 
   /** A room's head count, which it sends whenever somebody comes in or goes; an empty room is forgotten. */
@@ -191,9 +235,12 @@ export class Lobby extends DurableObject<Env> {
     const rooms = await this.rooms();
     const before = this.fighting(rooms);
     const now = Date.now();
-    if (n > 0) rooms[code] = { n, at: now };
+    const prior = rooms[code];
+    if (n > 0) rooms[code] = { ...prior, n, at: now, since: prior?.since ?? (n >= 2 ? now : undefined) };
     else delete rooms[code];
-    for (const [other, room] of Object.entries(rooms)) if (now - room.at >= ROOM_STALE_MS) delete rooms[other];
+    for (const [other, room] of Object.entries(rooms)) {
+      if (now - room.at >= ROOM_STALE_MS || (room.n === 0 && now - room.at >= ROOM_UNUSED_MS)) delete rooms[other];
+    }
     await this.ctx.storage.put('rooms', rooms);
     if (this.fighting(rooms) !== before && this.live().length > 0) await this.beat();
   }
@@ -269,11 +316,14 @@ export class Lobby extends DurableObject<Env> {
    */
   private async match(host: string, guest: string, waiting?: string): Promise<void> {
     const pair = [host, guest];
+    // The room is made with both names, as they are now; the seats are read again once it is back.
+    const before = pair.map((id) => this.seatById(id));
+    const fighter = (seat: Seat): Fighter => ({ id: seat.id, name: seat.name });
     // Making the room is a call to another object, and while it is out this one takes other
     // messages: either player may leave, take the queue back, or be matched with someone else.
     let code: string | undefined;
     try {
-      code = await openRoom(this.env, this.ctx.id.name ?? LOBBY);
+      code = before[0] && before[1] ? await openRoom(this.env, this.ctx.id.name ?? LOBBY, { host: fighter(before[0]), guest: fighter(before[1]) }) : undefined;
     } catch {
       code = undefined;
     }
@@ -290,6 +340,10 @@ export class Lobby extends DurableObject<Env> {
       }
       return;
     }
+    // The room is listed under these two names once both are in it.
+    const rooms = await this.rooms();
+    rooms[code] = { ...rooms[code], n: rooms[code]?.n ?? 0, at: rooms[code]?.at ?? Date.now(), names: [hostSeat.name, guestSeat.name], ids: [host, guest] };
+    await this.ctx.storage.put('rooms', rooms);
     // Busy before anything else can come in, so neither can be matched twice.
     for (const ws of pair.flatMap((id) => this.socketsOf(id))) {
       const seat = ws.deserializeAttachment() as Seat;
@@ -332,7 +386,13 @@ export class Lobby extends DurableObject<Env> {
   private async beat(gone?: WebSocket): Promise<void> {
     const sockets = this.live().filter((ws) => ws !== gone);
     const seats = this.seats(sockets);
-    const players: Player[] = seats.map((seat) => ({ id: seat.id, name: seat.name, status: seat.busy ? 'busy' : 'free' }));
+    const records = this.board.tonight(seats.map((seat) => seat.id));
+    const players: Player[] = seats.map((seat) => {
+      const player: Player = { id: seat.id, name: seat.name, status: seat.busy ? 'busy' : 'free' };
+      const night = records.get(seat.id);
+      if (night) player.night = night;
+      return player;
+    });
     const here = JSON.stringify({ t: 'here', players, ...(await this.counts(seats)) });
     for (const ws of sockets) ws.send(here);
     await this.ctx.storage.put('beat', Date.now() + BEAT_MS);
@@ -350,10 +410,22 @@ export class Lobby extends DurableObject<Env> {
     return [...seen.values()].sort((a, b) => a.at - b.at);
   }
 
-  private async counts(seats: Seat[]): Promise<Counts> {
+  private async counts(seats: Seat[]): Promise<Stats> {
     const free = new Set(seats.filter((seat) => !seat.busy).map((seat) => seat.id));
     const waiting = (await this.queue()).filter((w) => free.has(w.id)).length;
-    return { online: seats.length, waiting, fighting: this.fighting(await this.rooms()) };
+    const rooms = await this.rooms();
+    return { online: seats.length, waiting, fighting: this.fighting(rooms), fights: this.fights(rooms) };
+  }
+
+  /** The lobby's rooms with both players in, longest going first. */
+  private fights(rooms: Record<string, Heads>): FightNow[] {
+    const now = Date.now();
+    const list: FightNow[] = [];
+    for (const [code, room] of Object.entries(rooms)) {
+      if (room.n < 2 || now - room.at >= ROOM_STALE_MS || !room.names || !room.ids) continue;
+      list.push({ code, names: room.names, ids: room.ids, since: room.since ?? room.at });
+    }
+    return list.sort((a, b) => a.since - b.since);
   }
 
   /** Players in rooms with both in them; a room silent for hours has lost its word and is left out. */

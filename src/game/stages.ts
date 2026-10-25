@@ -1,6 +1,7 @@
 import type { Image } from '@mogshot/formats/blp';
 import type { LoadingScreen } from '@mogshot/worker/api';
 import type { PlaceScene } from '@mogshot/world/place';
+import { sameStage, type StageKey } from './net/handshake';
 
 /*
  * The stages: spots in the game world, drawn around the fighters from the install's own map
@@ -51,6 +52,46 @@ export const STAGES: Stage[] = [
 /** The stages an install can draw: those whose map it has on disk, and whose ground its game (see edition.ts) still has. */
 export function stagesFor(maps: readonly number[], world: 'classic' | 'retail'): Stage[] {
   return STAGES.filter((stage) => maps.includes(stage.map) && (!stage.only || stage.only === world));
+}
+
+/**
+ * Whose world another install's stages stand in, from its product name alone, which is all the
+ * meeting tells. Retail and WoW Forever are sure; classic era is the 2004 ground; the progression
+ * classic clients have crossed Cataclysm's rebuild by now or not, and only their version would say.
+ */
+export function worldOfProduct(product: string): 'classic' | 'retail' | undefined {
+  if (product.startsWith('wowf') || product.startsWith('wow_classic_era')) return 'classic';
+  if (product.startsWith('wow_classic') || product.startsWith('wow_anniversary')) return undefined;
+  return 'retail';
+}
+
+/** The stages of this install the other one can draw too: a stage of one world only goes in when the other is surely of that world. */
+export function sharedStages(mine: readonly Stage[], theirProduct: string): Stage[] {
+  const theirs = worldOfProduct(theirProduct);
+  return mine.filter((stage) => !stage.only || stage.only === theirs);
+}
+
+/** A number in [0, n) from a seed, stirred so that the seeds of one rematch after another land far apart. */
+function drawn(seed: number, n: number): number {
+  let h = Math.imul((seed >>> 0) ^ 0x9e3779b9, 0x85ebca6b);
+  h ^= h >>> 13;
+  h = Math.imul(h, 0xc2b2ae35);
+  h ^= h >>> 16;
+  return (h >>> 0) % n;
+}
+
+/**
+ * The ground of an online match, drawn by the host from the hello's seed, so the same seed always
+ * gives the same ground: one of the stages both installs have, else one of the host's loading
+ * screens, else none. `last`, the ground just fought on, is left out of a rematch's draw when there
+ * is anything else to draw.
+ */
+export function drawGround(stages: readonly Stage[], screens: readonly { id: number }[], seed: number, last?: StageKey): StageKey {
+  const pool: StageKey[] =
+    stages.length > 0 ? stages.map((stage) => ({ kind: 'stage', slug: stage.slug })) : screens.map((screen) => ({ kind: 'screen', id: screen.id }));
+  const fresh = last ? pool.filter((key) => !sameStage(key, last)) : pool;
+  const from = fresh.length > 0 ? fresh : pool;
+  return from.length > 0 ? from[drawn(seed, from.length)]! : { kind: 'none' };
 }
 
 /** The thumbnail shipped for a stage, rendered once through Mogshot's command line. */

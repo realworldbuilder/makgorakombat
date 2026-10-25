@@ -40,6 +40,13 @@ describe('the lobby, on the page', () => {
     expect(state.queued).toBe(false);
   });
 
+  it('keeps the fights on now from each list, and none from a lobby that lists none', () => {
+    const fight = { code: 'BCDFGH', names: ['Chris', 'Will'] as [string, string], ids: ['chris-0001', 'will-00002'] as [string, string], since: 5 };
+    const state = fold(EMPTY, { t: 'here', players: [], online: 0, waiting: 0, fighting: 2, fights: [fight] }, 0);
+    expect(state.fights).toEqual([fight]);
+    expect(fold(state, { t: 'here', players: [] }, 0).fights).toEqual([]);
+  });
+
   it('keeps the numbers, and the time the queue began for the count-up', () => {
     let state = fold(EMPTY, { t: 'here', players: [], online: 5, waiting: 1, fighting: 2 }, 0);
     expect(state.counts).toEqual({ online: 5, waiting: 1, fighting: 2 });

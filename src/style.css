@@ -1433,6 +1433,65 @@ code {
   color: var(--gold);
 }
 
+/* ---- next stage: the ground drawn for an online match ----------------------------------- */
+
+.guide .body.next-stage-card {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 24px 24px 28px;
+  text-align: center;
+}
+
+.next-stage-card p {
+  margin: 0;
+}
+
+.next-stage-card .label {
+  font-family: var(--warcraft);
+  font-size: 1.6rem;
+  letter-spacing: 0.08em;
+  color: var(--gold);
+}
+
+.next-stage-card .picture {
+  width: min(480px, 80vw);
+  aspect-ratio: 16 / 9;
+  border: 1px solid #5c5c66;
+  background: #000;
+  overflow: hidden;
+}
+
+.next-stage-card .picture img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.next-stage-card .big {
+  font-family: var(--serif);
+  font-weight: 700;
+  font-size: 1.3rem;
+  color: var(--gold);
+}
+
+.next-stage-card .names {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  margin-top: 8px;
+  font-family: var(--friz);
+  font-size: 1.1rem;
+  letter-spacing: 0.04em;
+}
+
+.next-stage-card .names .vs {
+  font-family: var(--warcraft);
+  font-size: 1.5rem;
+  color: var(--gold);
+}
+
 /* ---- report an issue ------------------------------------------------------------------ */
 
 /* The bug tab, pinned to the top of the screen as the beta pins its reporter: there on every
@@ -1775,6 +1834,145 @@ code {
   letter-spacing: 0.12em;
 }
 
+/* Tonight's record beside a name under WHO'S HERE: "3-1". */
+.guide.online .players .record {
+  margin-left: 10px;
+  color: var(--dim);
+  font-family: inherit;
+  font-weight: 400;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+/* The switch for the browser's notification when a fight comes. */
+.guide.online .notify {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.guide.online .notify input {
+  accent-color: var(--gold);
+}
+
+/* TOP TEN: tonight or all time, the player's own row lit and, out of the ten, pinned under it. */
+.guide .body.online-board {
+  padding: 18px 24px 22px;
+}
+
+.guide .board {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  text-align: center;
+}
+
+.guide .board .spans {
+  display: flex;
+  gap: 6px;
+}
+
+.guide .board .spans button {
+  padding: 5px 14px;
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--dim);
+  font-family: var(--serif);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+}
+
+.guide .board .spans button.here {
+  color: var(--gold);
+  border-color: var(--gold);
+}
+
+.guide .board table {
+  width: 100%;
+  border-collapse: collapse;
+  border-top: 1px solid var(--line);
+}
+
+.guide .board td {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+
+.guide .board .rank {
+  width: 2.2em;
+  color: var(--gold);
+  font-family: var(--serif);
+  font-weight: 700;
+  text-align: right;
+}
+
+.guide .board .name {
+  color: var(--text);
+  font-family: var(--serif);
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+
+.guide .board .record {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.guide .board .streak {
+  color: var(--dim);
+  font-size: 0.85rem;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.guide .board tr.me {
+  background: rgba(255, 209, 0, 0.06);
+}
+
+.guide .board tr.me td:first-child {
+  box-shadow: inset 3px 0 0 var(--gold);
+}
+
+.guide .board tr.me .name {
+  color: var(--gold);
+}
+
+.guide .board tr.gap td {
+  padding: 2px;
+  color: var(--dim);
+  text-align: center;
+}
+
+/* Under the title's presence line: the way to the board. */
+.board-line {
+  flex-basis: 100%;
+  margin: 2px 0 0;
+  text-align: center;
+  position: relative;
+  z-index: 1;
+}
+
+.board-line .link {
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--dim);
+  font: inherit;
+  font-size: 0.8rem;
+  letter-spacing: 0.06em;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.board-line .link:hover {
+  color: var(--gold);
+}
+
 /* A match from the queue: FOUND over the stranger's name. */
 .guide.online .found {
   color: var(--gold);
@@ -1923,6 +2121,39 @@ code {
   color: var(--text);
   font: inherit;
   font-size: 0.9rem;
+}
+
+/* Over a fight being watched: whose it is, under the clock. */
+.fight .watch-banner {
+  position: absolute;
+  left: 50%;
+  top: 112px;
+  z-index: 5;
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  transform: translateX(-50%);
+  padding: 6px 18px;
+  background: rgba(10, 6, 7, 0.72);
+  border: 1px solid var(--gold-dark);
+  border-radius: 6px;
+  color: var(--dim);
+  font-family: var(--serif);
+  font-size: 0.95rem;
+  letter-spacing: 0.12em;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.fight .watch-banner b {
+  color: var(--gold);
+  letter-spacing: 0.04em;
+}
+
+.fight .watch-banner span {
+  font-family: system-ui, sans-serif;
+  font-size: 0.75rem;
+  letter-spacing: 0;
 }
 
 /* Over the fight: the wait for the other player's inputs, a desync, and the notes on how this install draws the fight. */

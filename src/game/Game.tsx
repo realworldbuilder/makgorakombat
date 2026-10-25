@@ -3,10 +3,11 @@ import type { ClassEntry, Race } from '@mogshot/character/appearance';
 import type { Image } from '@mogshot/formats/blp';
 import type { LoadingScreen } from '@mogshot/worker/api';
 import { DataClient } from '@mogshot/worker/client';
+import { callToFight } from './call';
 import { type Edition, editionOf, playableProducts } from './edition';
 import { type EditionArt, loadEditionArt } from './editionArt';
 import { Fight, type NetFight, tableOf } from './Fight';
-import { chosenRules } from './Settings';
+import { chosenRules, picksStageOnline } from './Settings';
 import { type BuiltFighter, Fighters } from './fighters';
 import { messageOf, useFolder } from './folder';
 import { LEVEL, music } from './music';
@@ -15,35 +16,43 @@ import { setWhere } from './report';
 import { LEGENDS, legendTiles, type Tile } from './roster';
 import { loadSaved, type SavedChampion, storeSaved } from './saved';
 import { type OnlinePick, Select, type Source } from './Select';
-import { championOf, decode, encode, type Hello, localize, mismatch, sameStage, stageKeyOf } from './net/handshake';
-import { Lobby, saveName, savedName } from './net/lobby';
+import { championOf, decode, encode, type Hello, localize, mismatch, resultOf, sameStage, type StageKey, stageKeyOf } from './net/handshake';
+import { Lobby, type LobbyFight, saveName, savedName } from './net/lobby';
 import type { Link } from './net/relay';
 import { VERSION } from './net/version';
 import { Challenge, enterRoom, Matching, Online, type Session, useLobby } from './Online';
 import { Title } from './Title';
 import { loadGameFonts } from './ui/fonts';
 import { FightUi } from './ui/FightUi';
-import { type Stage, stagesFor, type Ground } from './stages';
+import { drawGround, type Ground, sharedStages, type Stage, stagesFor } from './stages';
+import { NextStage } from './NextStage';
 import { Versus } from './Versus';
+import { Watch } from './Watch';
 
 /*
  * The screens: the title with the folder drop, CHOOSE YOUR CHAMPION, the VS screen with the
- * stage pick, and the fight. Everything the game knows about the open folder is loaded once
- * here and handed down, with the edition (edition.ts): which of the folder's games is open.
+ * stage pick (online, the NEXT STAGE card with the stage the host drew), and the fight.
+ * Everything the game knows about the open folder is loaded once here and handed down, with the
+ * edition (edition.ts): which of the folder's games is open.
  */
 
 /** How long a match from the queue shows FOUND and the opponent's name before the roster. */
 const FOUND_MS = 2000;
 
+/** What the fight screen shows of itself through window.mk: the live match, and the lockstep's match number online. */
+type Shown = { match?: () => Parameters<typeof resultOf>[0] | undefined; net?: () => { game: number } | undefined };
+const shown = () => (window as unknown as { mk?: Shown }).mk;
+
 /** The fight on screen has ended its match, as the fight screen shows it through window.mk. */
 function matchOver(): boolean {
-  const mk = (window as unknown as { mk?: { match?: () => { phase: string } | undefined } }).mk;
-  return mk?.match?.()?.phase === 'matchEnd';
+  return shown()?.match?.()?.phase === 'matchEnd';
 }
 
 type Screen =
   | { kind: 'select' }
   | { kind: 'versus'; fighters: [BuiltFighter, BuiltFighter]; pick?: OnlinePick }
+  /** Online, the stage drawn at random: `sent` is the host's hello; the guest's comes as `hello`. No `pick` on a rematch, whose fighters are built. */
+  | { kind: 'next'; fighters: [BuiltFighter, BuiltFighter]; pick?: OnlinePick; sent?: Hello }
   | { kind: 'fight'; fighters: [BuiltFighter, BuiltFighter]; stage: Ground; net?: NetFight };
 
 interface Loaded {
@@ -93,6 +102,17 @@ export function Game() {
   // A match the lobby made, while both pages find each other in its room; `found` when the queue made it.
   const [matching, setMatching] = useState<{ name: string; found?: boolean; error?: string }>();
   const matchLink = useRef<Link>(null);
+  // Somebody else's fight, picked on the panel to watch.
+  const [watching, setWatching] = useState<LobbyFight>();
+  const watchFight = useCallback((fight: LobbyFight) => {
+    setShowOnline(false);
+    setWatching(fight);
+  }, []);
+  /** Done watching: back to the panel it was picked from. */
+  const stopWatching = useCallback(() => {
+    setWatching(undefined);
+    setShowOnline(true);
+  }, []);
   /** The lobby's match being met now; given up or replaced, its late callbacks change nothing. */
   const matchOn = useRef<object>(null);
   /** The VS screen a fight was started from, so its late or repeated Enter starts no second one. */
@@ -112,20 +132,45 @@ export function Game() {
     setOnline(session);
     setScreen({ kind: 'select' });
   }, []);
+  /**
+   * An online match over on the fight screen: this page's word on it to the room, once, for the
+   * board. The room counts it when the other page says the same.
+   */
+  const reported = useRef<string>(null);
+  const report = useCallback(() => {
+    if (!online || online.link.closed || screenRef.current.kind !== 'fight') return;
+    const mk = shown();
+    const match = mk?.match?.();
+    const id = lobbyRef.current?.id;
+    const result = match && resultOf(match, mk?.net?.()?.game ?? 0, id && name ? { id, name } : undefined);
+    if (!result) return;
+    const key = `${online.code} ${result.game} ${result.ticks}`;
+    if (reported.current === key) return;
+    reported.current = key;
+    online.link.send(result);
+  }, [online, name]);
+  useEffect(() => {
+    if (!online || screen.kind !== 'fight') return;
+    const timer = setInterval(report, 250);
+    return () => clearInterval(timer);
+  }, [online, screen.kind, report]);
+
   /** Leaves the room for the roster on this keyboard alone. */
   const leaveOnline = useCallback(() => {
+    report();
     online?.link.close();
     setOnline(undefined);
     setHello(undefined);
     setLeft(undefined);
     setScreen({ kind: 'select' });
-  }, [online]);
+  }, [online, report]);
   /**
    * NEXT OPPONENT, at the end of an online match or when the other has gone: out of the room and
    * back into the lobby's queue, the panel up with the wait counting, so a stranger can play one
    * after another without touching the mouse.
    */
   const nextOpponent = useCallback(() => {
+    report();
     lobbyRef.current?.queueAgain();
     online?.link.close();
     setOnline(undefined);
@@ -133,7 +178,7 @@ export function Game() {
     setLeft(undefined);
     setScreen({ kind: 'select' });
     setShowOnline(true);
-  }, [online]);
+  }, [online, report]);
   const rosterOnline = useMemo(() => (online ? { me: online.me, link: online.link, code: online.code } : undefined), [online]);
   const versusOnline = useMemo(() => (online ? { host: online.role === 'host', link: online.link } : undefined), [online]);
 
@@ -216,8 +261,8 @@ export function Game() {
   const records = useMemo(() => (phase.kind === 'ready' ? phase.records : []), [phase]);
   const product = phase.kind === 'ready' ? phase.opened.info.product : '';
 
-  // The lobby's socket: closed until the roster is up and while a fight is on, busy in an online match.
-  const fighting = screen.kind === 'fight';
+  // The lobby's socket: closed until the roster is up and while a fight is on (its NEXT STAGE card too) or watched, busy in an online match.
+  const fighting = screen.kind === 'fight' || screen.kind === 'next' || watching !== undefined;
   useEffect(() => {
     lobby?.setMode(!loaded || fighting ? 'off' : online ? 'busy' : 'free');
   }, [lobby, loaded, fighting, online]);
@@ -227,6 +272,9 @@ export function Game() {
   useEffect(() => {
     if (!lobby) return;
     return lobby.onMatch((match) => {
+      // The queue found someone, NEXT OPPONENT did, or a challenge this page made was taken up: call the player back.
+      // One who has just accepted is looking already.
+      if (match.queued || match.role === 'host') callToFight(match.queued ? `Found: ${match.with.name}. To the ring!` : `${match.with.name} accepted. To the ring!`);
       setShowOnline(false);
       setMatching({ name: match.with.name, found: match.queued });
       matchLink.current = null;
@@ -372,46 +420,117 @@ export function Game() {
     return Promise.all([one(0), one(1)]);
   };
 
+  /** The host's hello on the wire, and the same hello as the guest will read it, for the host to fight on. */
+  const sendHello = (message: Hello): Hello => {
+    const { link } = online!;
+    // The roster's and the VS screen's last messages are spent; the next roster starts afresh.
+    link.forget('roster');
+    link.forget('stage');
+    link.send(message);
+    // The host fights on the same hello the guest receives: the tables as JSON made them, not the live
+    // objects, so nothing JSON cannot carry (an undefined in an array, a NaN) can differ between the two.
+    return decode(encode(message)) as Hello;
+  };
+  const helloFor = (fighters: [BuiltFighter, BuiltFighter], pick: OnlinePick, stage: StageKey, seed: number, drawn?: boolean): Hello => ({
+    t: 'hello',
+    version: VERSION,
+    product,
+    rules: chosenRules(),
+    seed,
+    game: 1,
+    stage,
+    ...(drawn ? { drawn } : {}),
+    fighters: pick.specs,
+    tables: [tableOf(fighters[0]), tableOf(fighters[1])],
+  });
+  const newSeed = () => crypto.getRandomValues(new Uint32Array(1))[0]!;
+  /** The stages both installs have, for the host's draw. */
+  const shared = () => sharedStages(loaded!.stages, online!.theirProduct);
+
   /** Into the ring from the VS screen: offline at once; online the host sends its hello and goes, the guest goes on the hello's terms. */
   const startFight = (fighters: [BuiltFighter, BuiltFighter], ground: Ground, pick: OnlinePick | undefined) => {
     if (!online || !pick) {
       setScreen({ kind: 'fight', fighters, stage: ground });
       return;
     }
-    const { link } = online;
-    // The roster's and the VS screen's last messages are spent; the next roster starts afresh.
-    link.forget('roster');
-    link.forget('stage');
     if (online.role === 'host') {
-      const message: Hello = {
-        t: 'hello',
-        version: VERSION,
-        product,
-        rules: chosenRules(),
-        seed: crypto.getRandomValues(new Uint32Array(1))[0]!,
-        game: 1,
-        stage: stageKeyOf(ground),
-        fighters: pick.specs,
-        tables: [tableOf(fighters[0]), tableOf(fighters[1])],
-      };
-      link.send(message);
-      // The host fights on the same hello the guest receives: the tables as JSON made them, not the live
-      // objects, so nothing JSON cannot carry (an undefined in an array, a NaN) can differ between the two.
-      const sent = decode(encode(message)) as Hello;
-      setScreen({ kind: 'fight', fighters, stage: ground, net: { link, me: 0, host: true, hello: sent, notes: pick.notes } });
+      const sent = sendHello(helloFor(fighters, pick, stageKeyOf(ground), newSeed()));
+      setScreen({ kind: 'fight', fighters, stage: ground, net: { link: online.link, me: 0, host: true, hello: sent, notes: pick.notes } });
       return;
     }
-    if (!hello) return;
-    const notes = [...pick.notes];
-    if (!sameStage(stageKeyOf(ground), hello.stage)) notes.push('The host chose ground your folder does not have, so you fight on none.');
-    if (hello.product !== product) notes.push(`The host plays from ${hello.product} and you from ${product}: the fight keeps the host's timing, drawn with your own animations.`);
-    const message = hello;
+    if (hello) guestFight(fighters, ground, pick, hello);
+  };
+
+  /** The guest into the ring on the host's hello; `pick` is the roster's, absent on a rematch drawn anew, whose fighters are already the host's. */
+  const guestFight = (fighters: [BuiltFighter, BuiltFighter], ground: Ground, pick: OnlinePick | undefined, message: Hello) => {
+    const { link } = online!;
+    link.forget('roster');
+    link.forget('stage');
+    const notes = [...(pick?.notes ?? [])];
+    if (!sameStage(stageKeyOf(ground), message.stage)) notes.push('The host chose ground your folder does not have, so you fight on none.');
+    if (pick && message.product !== product) notes.push(`The host plays from ${message.product} and you from ${product}: the fight keeps the host's timing, drawn with your own animations.`);
     link.forget('hello');
     const from = screenRef.current;
-    void fightersFor(message, fighters, pick)
+    void (pick ? fightersFor(message, fighters, pick) : Promise.resolve(fighters))
       .then((ready) => from === screenRef.current && setScreen({ kind: 'fight', fighters: ready, stage: ground, net: { link, me: 1, host: false, hello: message, notes } }))
       .catch((cause: unknown) => setLeft(`The host's champions could not be built here: ${messageOf(cause)}`));
   };
+
+  /** Both locked online: the host draws the ground and sends its hello at once, unless it picks by hand; the guest waits on the host's word. */
+  const lockedOnline = (fighters: [BuiltFighter, BuiltFighter], pick: OnlinePick) => {
+    if (online!.role === 'guest') setScreen({ kind: 'next', fighters, pick });
+    else if (picksStageOnline()) setScreen({ kind: 'versus', fighters, pick });
+    else {
+      const seed = newSeed();
+      const sent = sendHello(helloFor(fighters, pick, drawGround(shared(), loaded!.screens, seed), seed, true));
+      setScreen({ kind: 'next', fighters, pick, sent });
+    }
+  };
+
+  /** The NEXT STAGE card done: into the ring on the drawn ground. */
+  const fightDrawn = (next: Extract<Screen, { kind: 'next' }>, ground: Ground) => {
+    if (left) return;
+    if (next.sent) setScreen({ kind: 'fight', fighters: next.fighters, stage: ground, net: { link: online!.link, me: 0, host: true, hello: next.sent, notes: next.pick?.notes ?? [] } });
+    else if (hello) guestFight(next.fighters, ground, next.pick, hello);
+  };
+
+  // The guest: the host's hello settles which screen. A drawn ground shows the card (on a rematch too, from the fight);
+  // a hello without one while the card waits means the host picked by hand, and the VS screen takes it into the ring.
+  useEffect(() => {
+    if (!online || online.role !== 'guest' || !hello) return;
+    const now = screenRef.current;
+    if (hello.drawn && now.kind === 'versus') setScreen({ kind: 'next', fighters: now.fighters, pick: now.pick });
+    else if (hello.drawn && now.kind === 'fight' && now.net && hello.game !== now.net.hello.game) setScreen({ kind: 'next', fighters: now.fighters });
+    else if (!hello.drawn && now.kind === 'next' && now.pick) setScreen({ kind: 'versus', fighters: now.fighters, pick: now.pick });
+  }, [online, hello, screen.kind]);
+
+  // The guest's card, waiting: the host's cursor on the VS screen means the host picks by hand, so the guest watches it there.
+  useEffect(() => {
+    if (!online || online.role !== 'guest' || screen.kind !== 'next' || !screen.pick || hello?.drawn) return;
+    const { fighters, pick } = screen;
+    return online.link.listen((message) => {
+      if (message.t === 'stage') setScreen({ kind: 'versus', fighters, pick });
+    });
+  }, [online, screen, hello]);
+
+  // The host's rematch online, unless it picks by hand: a new hello with the next game and a ground drawn anew from the
+  // rematch's seed, and the card again, in place of the fight screen's own rematch on the same ground.
+  useEffect(() => {
+    if (!online || online.role !== 'host' || left) return;
+    const onKey = (event: KeyboardEvent) => {
+      const now = screenRef.current;
+      if (event.code !== 'Enter' || event.repeat || now.kind !== 'fight' || !now.net || !matchOver() || picksStageOnline()) return;
+      event.stopPropagation();
+      event.preventDefault();
+      const last = now.net.hello;
+      const game = last.game + 1;
+      const seed = (last.seed + game) >>> 0;
+      const sent = sendHello({ ...last, game, seed, stage: drawGround(shared(), loaded!.screens, seed, last.stage), drawn: true });
+      setScreen({ kind: 'next', fighters: now.fighters, sent });
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [online, left, loaded]);
 
   useEffect(() => {
     document.body.classList.toggle('ingame', phase.kind === 'ready' && loaded !== undefined);
@@ -428,7 +547,7 @@ export function Game() {
     const names = screen.kind === 'select' ? undefined : screen.fighters.map((f) => `${f.champion.name} (${f.champion.title})`).join(' vs ') + `, player 2: ${p2}`;
     const ground = screen.kind === 'fight' ? screen.stage : undefined;
     const stage = ground && (ground.stage ? `${ground.stage.name}, ${ground.stage.where}` : ground.screen ? `loading screen ${ground.screen.fileId}` : 'none');
-    const screenName = { select: 'Choose your champion', versus: 'VS screen', fight: 'The fight' }[screen.kind];
+    const screenName = { select: 'Choose your champion', versus: 'VS screen', next: 'Next stage card', fight: 'The fight' }[screen.kind];
     setWhere({ screen: screenName, edition, fighters: names, stage });
   }, [phase.kind, loaded, loadError, screen, p2]);
 
@@ -438,15 +557,37 @@ export function Game() {
   const wantOnline = (yes: boolean) => {
     onlineNext.current = yes;
   };
+  // A challenge come in, while it would show: the gong, the title, and the notification for a player who asked for one.
+  const calling = loaded && !online && !matching && screen.kind !== 'fight' && !watching ? lobbyState.incoming : undefined;
+  const callingKey = calling && `${calling.id} ${calling.until}`;
+  useEffect(() => {
+    if (calling) callToFight(`${calling.name} challenges you to Mak'gora.`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [callingKey]);
+
   if (phase.kind === 'choose') return <Title phase={phase} dragging={dragging} onPick={onPick} onChoose={(product) => void openFolder(phase.files, product)} onCreate={wantCreate} onOnline={wantOnline} />;
   if (phase.kind !== 'ready') return <Title phase={phase} dragging={dragging} onPick={onPick} onCreate={wantCreate} onOnline={wantOnline} />;
   if (loadError) return <Title phase={{ kind: 'error', message: loadError }} dragging={false} onPick={onPick} onCreate={wantCreate} onOnline={wantOnline} />;
   if (!loaded) return <Title phase={{ kind: 'opening', message: 'Summoning the roster…' }} dragging={false} onPick={onPick} onCreate={wantCreate} onOnline={wantOnline} />;
 
   // A challenge shows over any screen but a fight, unless this page is already in a match.
-  const challenge = !online && !matching && screen.kind !== 'fight' ? lobbyState.incoming : undefined;
+  const challenge = !online && !matching && screen.kind !== 'fight' && !watching ? lobbyState.incoming : undefined;
 
   const view = (() => {
+    if (watching) {
+      return (
+        <Watch
+          fight={watching}
+          client={client.current!}
+          fighters={loaded.fighters}
+          legends={loaded.legends}
+          stages={loaded.stages}
+          screens={loaded.screens}
+          assets={{ client: client.current!, races: loaded.races, portraits: loaded.portraits }}
+          onBack={stopWatching}
+        />
+      );
+    }
     switch (screen.kind) {
       case 'select':
         return (
@@ -469,7 +610,8 @@ export function Game() {
             onP2={setP2}
             onReady={(fighters, pick) => {
               createNext.current = false;
-              setScreen({ kind: 'versus', fighters, pick });
+              if (online && pick) lockedOnline(fighters, pick);
+              else setScreen({ kind: 'versus', fighters, pick });
             }}
             onBack={online ? leaveOnline : () => location.reload()}
             online={rosterOnline}
@@ -493,7 +635,20 @@ export function Game() {
             }}
             onBack={backToSelect}
             online={screen.pick ? versusOnline : undefined}
-            start={screen.pick && online?.role === 'guest' ? hello?.stage : undefined}
+            start={screen.pick && online?.role === 'guest' && !hello?.drawn ? hello?.stage : undefined}
+          />
+        );
+      case 'next':
+        return (
+          <NextStage
+            client={client.current!}
+            fighters={screen.fighters}
+            stages={loaded.stages}
+            screens={loaded.screens}
+            ground={screen.sent ? screen.sent.stage : hello?.drawn ? hello.stage : undefined}
+            onFight={(ground) => fightDrawn(screen, ground)}
+            onBack={backToSelect}
+            link={online!.link}
           />
         );
       case 'fight':
@@ -516,7 +671,15 @@ export function Game() {
     <>
       {view}
       {showOnline && (
-        <Online lobby={lobby} name={name} onName={giveName} product={product} onReady={startSession} onClose={() => setShowOnline(false)} />
+        <Online
+          lobby={lobby}
+          name={name}
+          onName={giveName}
+          product={product}
+          onReady={startSession}
+          onClose={() => setShowOnline(false)}
+          onWatch={online ? undefined : watchFight}
+        />
       )}
       {!showOnline && lobbyState.notice && !challenge && !matching && <div class="lobby-toast">{lobbyState.notice}</div>}
       {matching && <Matching name={matching.name} found={matching.found} error={matching.error} onCancel={endMatching} />}
