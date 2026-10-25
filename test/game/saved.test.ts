@@ -1,11 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import type { ClassEntry, Race } from '@mogshot/character/appearance';
 import {
+  BUILTIN_CHAMPIONS,
+  championRow,
   cleanName,
   defaultName,
+  fullName,
+  isBuiltin,
   loadSaved,
   madeKey,
   newSavedId,
+  parseSaved,
   SAVED_STORAGE,
   type SavedChampion,
   savedChampion,
@@ -15,7 +20,7 @@ import {
   withoutSaved,
   withSaved,
 } from '../../src/game/saved';
-import { CREATE_TILE, factionOf, randomTile } from '../../src/game/roster';
+import { CREATE_TILE, factionOf, randomTile, type Tile } from '../../src/game/roster';
 
 const race = (id: number, name: string, faction: Race['faction']): Race => ({ id, name, key: name.toLowerCase(), file: name, faction, order: id, sexes: [0, 1] } as unknown as Race);
 const RACES = [race(4, 'Night Elf', 'alliance'), race(2, 'Orc', 'horde')];
@@ -129,5 +134,47 @@ describe('the creator\'s question mark', () => {
     for (const draw of [0, 0.3, 0.6, 0.99]) expect(randomTile(tiles, () => draw)?.kind).toBe('saved');
     expect(randomTile([CREATE_TILE], () => 0.5)).toBeUndefined();
     expect(factionOf(CREATE_TILE)).toBe('');
+  });
+});
+
+describe('the built-in champions', () => {
+  const cassidy = BUILTIN_CHAMPIONS[0]!;
+
+  it('read as saved entries do, with their ids and the name rules kept', () => {
+    expect(cassidy.id).toBe('builtin:cassidy');
+    expect(isBuiltin(cassidy.id)).toBe(true);
+    expect(isBuiltin(thraka.id)).toBe(false);
+    for (const builtin of BUILTIN_CHAMPIONS) expect(parseSaved(JSON.parse(JSON.stringify(builtin)))).toEqual(builtin);
+    expect(cleanName(cassidy.name)).toBe(cassidy.name);
+    expect(cleanName(cassidy.surname!)).toBe(cassidy.surname);
+    expect(fullName(cassidy)).toBe('Cassidy Darkstar');
+    expect(cassidy).toMatchObject({ raceId: 4, sex: 0, classId: 11, armour: 'Chronicle' });
+  });
+
+  it('fight under the full name as a night elf druid', () => {
+    const champion = savedChampion(cassidy, RACES[0]!, CLASSES);
+    expect(champion.name).toBe('CASSIDY DARKSTAR');
+    expect(champion.title).toBe('NIGHT ELF DRUID');
+    expect(champion.key).toBe(madeKey(4, 0, 11, cassidy.choices, cassidy.gear));
+  });
+
+  it('stand after the legends, ahead of the question mark and the player\'s own', () => {
+    // A race tile stands in for a legend: the row only places what it is handed.
+    const legend: Tile = { kind: 'race', id: 'legend-stand-in', race: RACES[1]! };
+    const elf: SavedChampion = { ...thraka, id: 'def', name: 'Leafy', raceId: 4, classId: 11 };
+    const row = championRow([legend], [thraka, elf], RACES);
+    expect(row.map((tile) => tile.id)).toEqual(['legend-stand-in', 'saved:builtin:cassidy', 'create', 'saved:def', 'saved:abc']);
+    expect(championRow([], [], RACES).map((tile) => tile.id)).toEqual(['saved:builtin:cassidy', 'create']);
+  });
+
+  it('are never written to storage, nor read back from it, nor saved over or deleted', () => {
+    const store = memory();
+    expect(storeSaved([cassidy, thraka], store)).toBe(true);
+    expect(JSON.parse(store.data.get(SAVED_STORAGE)!).map((entry: SavedChampion) => entry.id)).toEqual(['abc']);
+    store.data.set(SAVED_STORAGE, JSON.stringify([cassidy, thraka]));
+    expect(loadSaved(store)).toEqual([thraka]);
+    expect(withSaved([thraka], { ...cassidy, name: 'Renamed' })).toEqual([thraka]);
+    expect(withoutSaved([thraka], cassidy.id)).toEqual([thraka]);
+    expect(BUILTIN_CHAMPIONS[0]).toBe(cassidy);
   });
 });

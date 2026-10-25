@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { BRAND } from '../../engine/brand';
+import { RULES } from '../../engine/rules';
 import type { Ability } from '../../engine/abilities';
 import type { Match } from '../../engine/engine';
 import type { MoveTable, Weapon } from '../../engine/moves';
@@ -26,6 +27,8 @@ export interface FightUiProps {
   fighters: [BuiltFighter, BuiltFighter];
   p2: Source;
   assets: UiAssets;
+  /** Online: which fighter this machine plays. Its bar shows player 1's keys, the one played over the wire none. */
+  me?: 0 | 1;
 }
 
 interface Frame {
@@ -42,6 +45,8 @@ interface Frame {
   cinematic: boolean;
   /** Each side's ability ids in slot order, for the sequence's icons. */
   kits: [string[], string[]];
+  /** The rules the fight is fought under. */
+  rules: Match['rules'];
 }
 
 /** Status effects whose icons are wanted before they appear. */
@@ -67,7 +72,7 @@ function specsOf(table: MoveTable): Map<string, Ability> {
 }
 
 /** What the sequence strip shows, during the finish while the winner enters the fatality's keys. */
-function sequenceOf(match: Match, p2: Source): SequenceView | undefined {
+function sequenceOf(match: Match, p2: Source, me: 0 | 1 | undefined): SequenceView | undefined {
   const s = match.sequence;
   const winner = match.roundWinner;
   if (match.phase !== 'finish' || !s || winner === undefined) return undefined;
@@ -82,13 +87,14 @@ function sequenceOf(match: Match, p2: Source): SequenceView | undefined {
     windowT: s.windowT,
     penaltyT: s.penaltyT,
     phaseT: match.phaseT,
-    source: winner === 0 ? 'keyboard' : p2,
+    source: winner === 0 || me !== undefined ? 'keyboard' : p2,
+    keys: me === undefined ? winner : 0,
   };
 }
 
 const liveMatch = (): Match | undefined => (window as unknown as { mk?: { match?: () => Match } }).mk?.match?.();
 
-export function FightUi({ fighters, p2, assets }: FightUiProps) {
+export function FightUi({ fighters, p2, assets, me }: FightUiProps) {
   const icons = useMemo(() => new Icons(assets), [assets]);
   const [frame, setFrame] = useState<Frame>();
   const [abilityIcons, setAbilityIcons] = useState<[Map<string, string>, Map<string, string>]>([new Map(), new Map()]);
@@ -109,9 +115,10 @@ export function FightUi({ fighters, p2, assets }: FightUiProps) {
         phase: match.phase,
         weapons: [match.tables[0].weapon, match.tables[1].weapon],
         specs: [specsOf(match.tables[0]), specsOf(match.tables[1])],
-        sequence: sequenceOf(match, p2),
+        sequence: sequenceOf(match, p2, me),
         cinematic: match.fatality !== undefined && (match.phase === 'fatality' || match.phase === 'ko'),
         kits: [match.tables[0].kit.abilities.map((a) => a.id), match.tables[1].kit.abilities.map((a) => a.id)],
+        rules: match.rules,
       });
       if (!loaded.current) {
         loaded.current = true;
@@ -170,7 +177,9 @@ export function FightUi({ fighters, p2, assets }: FightUiProps) {
     if (weapon) map.set('attack', weapon);
     return map;
   };
-  const human: [boolean, boolean] = [true, p2 !== 'cpu'];
+  const human: [boolean, boolean] = [true, me !== undefined || p2 !== 'cpu'];
+  /** Whose keys a side's bar shows: its own player's, or online player 1's for this machine's fighter and none for the other. */
+  const keysOf = (i: 0 | 1): 0 | 1 | null => (me === undefined ? i : i === me ? 0 : null);
   return (
     <div class={`wowui ${frame.cinematic ? 'cinematic' : ''}`}>
       {frame.sequence && <SequenceStrip view={frame.sequence} icons={tokenIcons(frame.sequence.winner)} />}
@@ -188,18 +197,20 @@ export function FightUi({ fighters, p2, assets }: FightUiProps) {
       </div>
       {frame.phase === 'matchEnd' && (
         <div class="hint end">
-          <b>ENTER</b> rematch · <b>ESC</b> new champions
+          {me === 1 ? <>the host calls the rematch · <b>ESC</b> new champions</> : <><b>ENTER</b> rematch · <b>ESC</b> new champions</>}
         </div>
       )}
       <div class="bottom">
         {([0, 1] as const).map((i) => (
           <div class={`bar-stack p${i + 1}`} key={i}>
-            <FightBar side={i} view={frame.views[i]} icons={abilityIcons[i]} specs={frame.specs[i]} weapon={frame.weapons[i]} />
+            <FightBar side={i} view={frame.views[i]} icons={abilityIcons[i]} specs={frame.specs[i]} weapon={frame.weapons[i]} keys={keysOf(i)} />
             {frame.phase === 'intro' && frame.round === 1 && (
               <div class="hint">
-                {human[i] ? (
+                {keysOf(i) === null ? (
+                  'YOUR OPPONENT'
+                ) : human[i] ? (
                   <>
-                    <b>{keyLabel(i, 'left')}</b> <b>{keyLabel(i, 'right')}</b> move · <b>{keyLabel(i, 'jump')}</b> jump · <b>{keyLabel(i, 'attack')}</b> attack · hover or hold a key for what it does
+                    {RULES[frame.rules].word} rules · <b>{keyLabel(keysOf(i)!, 'left')}</b> <b>{keyLabel(keysOf(i)!, 'right')}</b> move{frame.rules === 'kombat' ? ', back blocks, twice dashes' : ''} · <b>{keyLabel(keysOf(i)!, 'jump')}</b> jump · <b>{keyLabel(keysOf(i)!, 'attack')}</b> attack · hover or hold a key for what it does
                   </>
                 ) : (
                   'COMPUTER'

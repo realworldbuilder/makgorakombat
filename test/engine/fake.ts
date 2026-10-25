@@ -2,6 +2,7 @@ import type { AnimationInfo } from '@mogshot/character/scene';
 import { PVP_DAMAGE, WEAPON_SKILL } from '../../src/engine/abilities';
 import { type Inputs, type Match, newMatch, noInputs, tick } from '../../src/engine/engine';
 import { type MoveTable, resolveMoves, type Wielding } from '../../src/engine/moves';
+import type { RulesName } from '../../src/engine/rules';
 import { INTRO_FRAMES } from '../../src/engine/stage';
 
 /** A retail-like animation list, every sequence 1000 ms unless overridden by name. */
@@ -52,9 +53,9 @@ export function fakeTable(names: readonly string[] = FULL_SET, wielding: Wieldin
   }
 }
 
-/** Two warriors with one-handers, unless other classes are asked for. */
-export function fakeMatch(seed = 1, classes: [number, number] = [WARRIOR, WARRIOR], shields: [boolean, boolean] = [false, false]): Match {
-  return newMatch([fakeTable(FULL_SET, 'oneHand', {}, classes[0], shields[0]), fakeTable(FULL_SET, 'oneHand', {}, classes[1], shields[1])], seed);
+/** Two warriors with one-handers, unless other classes are asked for, under the Warcraft rules unless KOMBAT is. */
+export function fakeMatch(seed = 1, classes: [number, number] = [WARRIOR, WARRIOR], shields: [boolean, boolean] = [false, false], rules: RulesName = 'warcraft'): Match {
+  return newMatch([fakeTable(FULL_SET, 'oneHand', {}, classes[0], shields[0]), fakeTable(FULL_SET, 'oneHand', {}, classes[1], shields[1])], seed, ['P1', 'P2'], rules);
 }
 
 export function inputs(partial: Partial<Omit<Inputs, 'abilities'>> & { abilities?: [boolean, boolean, boolean]; ability?: number } = {}): Inputs {

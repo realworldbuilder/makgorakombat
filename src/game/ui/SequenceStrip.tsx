@@ -23,6 +23,8 @@ export interface SequenceView {
   /** Frames into the finish. */
   phaseT: number;
   source: InputSource;
+  /** Whose keys label the slots: the winner's own player's, or online this keyboard's player 1. */
+  keys: 0 | 1;
 }
 
 export function SequenceStrip({ view, icons }: { view: SequenceView; icons: ReadonlyMap<string, string> }) {
@@ -47,7 +49,7 @@ export function SequenceStrip({ view, icons }: { view: SequenceView; icons: Read
               ) : icon ? (
                 <img src={icon} alt="" draggable={false} />
               ) : null}
-              {!direction && <span class="key">{actionLabel(view.winner, view.source, token as Exclude<SequenceToken, 'back' | 'forward'>)}</span>}
+              {!direction && <span class="key">{actionLabel(view.keys, view.source, token as Exclude<SequenceToken, 'back' | 'forward'>)}</span>}
               {current && view.windowT > 0 && <span class="ring" style={{ '--t': view.windowT / STEP_FRAMES }} />}
               {wrong && <span class="penalty" style={{ '--t': view.penaltyT / PENALTY_FRAMES }} />}
             </div>

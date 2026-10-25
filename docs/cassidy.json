@@ -1,0 +1,36 @@
+{
+  "out": "cassidy.png",
+  "race": "Night Elf",
+  "sex": "male",
+  "choices": {
+    "Skin Color": {
+      "id": 699
+    },
+    "Face": {
+      "id": 721
+    },
+    "Hair Style": {
+      "id": 739
+    },
+    "Hair Color": {
+      "id": 753
+    },
+    "Facial Hair": {
+      "id": 78910
+    },
+    "Eyebrows": {
+      "id": 8083
+    }
+  },
+  "gear": {
+    "chest": 7063,
+    "shoulder": 11884,
+    "mainHand": 12182
+  },
+  "pose": "Ready",
+  "size": {
+    "width": 960,
+    "height": 540
+  },
+  "backdrop": "Slate"
+}

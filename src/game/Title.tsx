@@ -15,6 +15,8 @@ interface TitleProps {
   onChoose?: (product: string) => void;
   /** CREATE YOUR CHAMPION is open (or closed): a folder chosen meanwhile opens the roster on the creator's question mark. */
   onCreate: (open: boolean) => void;
+  /** PLAY ONLINE is open (or closed): a folder chosen meanwhile opens the online panel over the roster. */
+  onOnline: (open: boolean) => void;
 }
 
 /** What each edition brings to the ring, for the slot's tooltip before anything is read. */
@@ -69,11 +71,12 @@ export function LogoArt({ small }: { small?: boolean }) {
   );
 }
 
-export function Title({ phase, dragging, onPick, onChoose, onCreate }: TitleProps) {
+export function Title({ phase, dragging, onPick, onChoose, onCreate, onOnline }: TitleProps) {
   const [guide, setGuidePage] = useState<GuidePage>();
   const setGuide = (page: GuidePage | undefined) => {
     setGuidePage(page);
     onCreate(page === 'create');
+    onOnline(page === 'online');
   };
   const [settings, setSettings] = useState(false);
   const picker = useRef<HTMLInputElement>(null);
@@ -84,7 +87,7 @@ export function Title({ phase, dragging, onPick, onChoose, onCreate }: TitleProp
   }, [opening]);
 
   // The action bar's hotkeys: 1 opens the folder picker (a key press counts as the click the
-  // browser wants), 2 how to play, 3 CREATE YOUR CHAMPION, 4 the source, 5 the settings.
+  // browser wants), 2 how to play, 3 CREATE YOUR CHAMPION, 4 the source, 5 the settings, 6 PLAY ONLINE.
   useEffect(() => {
     // A folder with several games takes the digits for its WHICH WORLD? slots instead.
     if (opening || phase.kind === 'choose') return;
@@ -96,6 +99,7 @@ export function Title({ phase, dragging, onPick, onChoose, onCreate }: TitleProp
         case 'Digit3': case 'Numpad3': setGuide('create'); break;
         case 'Digit4': case 'Numpad4': window.open(SOURCE, '_blank', 'noreferrer'); break;
         case 'Digit5': case 'Numpad5': setSettings(true); break;
+        case 'Digit6': case 'Numpad6': setGuide('online'); break;
         default: return;
       }
       event.preventDefault();
@@ -204,7 +208,18 @@ export function Title({ phase, dragging, onPick, onChoose, onCreate }: TitleProp
                 onClick: () => setSettings(true),
                 tip: [
                   { left: 'Settings', kind: 'name', hue: 'common' },
-                  { left: 'Use: The sound, the music and which keys the two players hold. Remembered in this browser.', hue: 'green' },
+                  { left: 'Use: The sound, the music, which keys the two players hold and the relay for online play. Remembered in this browser.', hue: 'green' },
+                ],
+              },
+              {
+                key: '6',
+                label: 'PLAY ONLINE',
+                icon: GLYPHS.globe,
+                onClick: () => setGuide('online'),
+                tip: [
+                  { left: 'Play Online', kind: 'name', hue: 'legendary' },
+                  { left: 'Binds when used' },
+                  { left: 'Use: Fight a friend on another computer: give a name, then challenge them by theirs or wait for anyone with QUICK MATCH. Each needs their own World of Warcraft folder; drop it first.', hue: 'green' },
                 ],
               },
             ]}
