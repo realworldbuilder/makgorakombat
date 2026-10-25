@@ -1,4 +1,5 @@
 import { DurableObject } from 'cloudflare:workers';
+import { Board, type Fighter, type Result, type Span, type Standings } from './board';
 import { type Env, openRoom } from './index';
 
 /*
@@ -16,7 +17,9 @@ import { type Env, openRoom } from './index';
  * Nothing is kept in memory: the players are the sockets and what is attached to them, and the
  * open challenges, the queue and the rooms' head counts are in storage, so the lobby can sleep
  * between messages. The pages close their socket here for the fight itself, so who is fighting is
- * counted from the rooms, which tell the lobby whenever somebody comes in or goes.
+ * counted from the rooms, which tell the lobby whenever somebody comes in or goes. The rooms also
+ * tell it how each match ended, for the board (board.ts), and everyone here is listed with what
+ * they have won and lost tonight.
  */
 
 /** How long a challenge waits for its answer. */
@@ -35,6 +38,8 @@ export interface Player {
   id: string;
   name: string;
   status: Status;
+  /** Tonight's wins and losses, for a player who has fought tonight. */
+  night?: [number, number];
 }
 /** What a socket here carries. */
 interface Seat {
@@ -99,9 +104,12 @@ function parse(message: string | ArrayBuffer): Incoming | undefined {
 }
 
 export class Lobby extends DurableObject<Env> {
+  private readonly board: Board;
+
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
+    this.board = new Board(ctx.storage.sql);
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -186,6 +194,17 @@ export class Lobby extends DurableObject<Env> {
     return this.counts(this.seats(this.live()));
   }
 
+  /** A match fought to its end, as its room tells it: onto the board, and everyone here sees the new records. */
+  async result(result: Result, now = Date.now()): Promise<void> {
+    this.board.record(result, now);
+    if (this.live().length > 0) await this.beat();
+  }
+
+  /** The board for GET /lobby/board. */
+  async standings(span: Span, id?: string, now = Date.now()): Promise<Standings> {
+    return this.board.standings(span, id, now);
+  }
+
   /** A room's head count, which it sends whenever somebody comes in or goes; an empty room is forgotten. */
   async roomHeads(code: string, n: number): Promise<void> {
     const rooms = await this.rooms();
@@ -266,14 +285,15 @@ export class Lobby extends DurableObject<Env> {
   /** A room for two, both told, both busy, and anything else either had open called off. */
   private async match(host: string, guest: string): Promise<void> {
     const pair = [host, guest];
-    const code = await openRoom(this.env, this.ctx.id.name ?? LOBBY);
+    const seats = pair.map((id) => this.seatById(id)!);
+    const fighter = (seat: Seat): Fighter => ({ id: seat.id, name: seat.name });
+    const code = await openRoom(this.env, this.ctx.id.name ?? LOBBY, { host: fighter(seats[0]!), guest: fighter(seats[1]!) });
     if (!code) {
       for (const id of pair) this.tell(id, { t: 'error', message: 'The relay has no free room; try again.' });
       return;
     }
     await this.withdraw((c) => pair.includes(c.from) || pair.includes(c.to), 'busy');
     await this.setQueue((await this.queue()).filter((w) => !pair.includes(w.id)));
-    const seats = pair.map((id) => this.seatById(id)!);
     for (const ws of pair.flatMap((id) => this.socketsOf(id))) {
       const seat = ws.deserializeAttachment() as Seat;
       ws.serializeAttachment({ ...seat, busy: true });
@@ -313,7 +333,13 @@ export class Lobby extends DurableObject<Env> {
   private async beat(gone?: WebSocket): Promise<void> {
     const sockets = this.live().filter((ws) => ws !== gone);
     const seats = this.seats(sockets);
-    const players: Player[] = seats.map((seat) => ({ id: seat.id, name: seat.name, status: seat.busy ? 'busy' : 'free' }));
+    const records = this.board.tonight(seats.map((seat) => seat.id));
+    const players: Player[] = seats.map((seat) => {
+      const player: Player = { id: seat.id, name: seat.name, status: seat.busy ? 'busy' : 'free' };
+      const night = records.get(seat.id);
+      if (night) player.night = night;
+      return player;
+    });
     const here = JSON.stringify({ t: 'here', players, ...(await this.counts(seats)) });
     for (const ws of sockets) ws.send(here);
     await this.ctx.storage.put('beat', Date.now() + BEAT_MS);

@@ -1,6 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
+import type { Fighter, Span } from './board';
 import { isCode, newCode } from './code';
-import { LOBBY, type Lobby } from './lobby';
+import { cleanName, isPlayerId, LOBBY, type Lobby } from './lobby';
 
 export { Lobby } from './lobby';
 
@@ -12,6 +13,13 @@ export { Lobby } from './lobby';
  * only the wire between them. A room nobody has been in for ten minutes is forgotten. The lobby
  * (lobby.ts) is where two players find each other and are handed a room; every room tells it how
  * many are in whenever that changes, so the lobby can say how many are fighting.
+ *
+ * The one message a room reads is a page's word that a match is over: {t:'result'}, with the match
+ * number, the winner's part (host or guest), the rounds and the ticks. Both pages say it, each from
+ * its own run of the same lockstep fight, and only when the two agree does the room pass the result
+ * to the lobby's board, under the ids and names the lobby matched (or, in a room made by code, the
+ * ones each page gives for itself). A match one of them left before the end is never said by both,
+ * and counts for nothing.
  */
 
 export interface Env {
@@ -45,16 +53,54 @@ function corsHeaders(origin: string | null): Record<string, string> {
   };
 }
 
-/** Makes a room under a fresh code and answers it; undefined when no free code turned up. The room tells `lobby` who is in it. */
-export async function openRoom(env: Env, lobby = LOBBY): Promise<string | undefined> {
+/** The two players the lobby put in a room. */
+export type Pair = Record<Role, Fighter>;
+
+/**
+ * Makes a room under a fresh code and answers it; undefined when no free code turned up. The room
+ * tells `lobby` who is in it and how its matches end, `players` being who the lobby matched.
+ */
+export async function openRoom(env: Env, lobby = LOBBY, players?: Pair): Promise<string | undefined> {
   for (let attempt = 0; attempt < 8; attempt++) {
     const code = newCode();
-    if (await env.ROOMS.getByName(code).open(code, lobby)) return code;
+    if (await env.ROOMS.getByName(code).open(code, lobby, players)) return code;
   }
   return undefined;
 }
 
 const peer = (joined: boolean) => JSON.stringify({ t: 'peer', joined });
+
+/** A page's word that a match is over. */
+export interface Report {
+  t: 'result';
+  /** The match number in the room's run of rematches. */
+  game: number;
+  winner: Role;
+  rounds: number;
+  ticks: number;
+  /** Who the page is, for a room the lobby did not make. */
+  me?: Fighter;
+}
+
+/** A report from the wire, or undefined for text that is not one. Everything else a page sends goes through unread. */
+export function readReport(text: string): Report | undefined {
+  if (!text.startsWith('{') || !text.includes('"result"')) return undefined;
+  let value: Partial<Report>;
+  try {
+    value = JSON.parse(text) as Partial<Report>;
+  } catch {
+    return undefined;
+  }
+  if (value.t !== 'result' || (value.winner !== 'host' && value.winner !== 'guest')) return undefined;
+  const whole = (n: unknown): n is number => typeof n === 'number' && Number.isInteger(n) && n >= 0;
+  if (!whole(value.game) || !whole(value.rounds) || !whole(value.ticks)) return undefined;
+  const report: Report = { t: 'result', game: value.game, winner: value.winner, rounds: value.rounds, ticks: value.ticks };
+  const name = cleanName(typeof value.me?.name === 'string' ? value.me.name : null);
+  if (name && isPlayerId(typeof value.me?.id === 'string' ? value.me.id : null)) report.me = { id: value.me!.id, name };
+  return report;
+}
+
+const same = (a: Report, b: Report) => a.game === b.game && a.winner === b.winner && a.rounds === b.rounds && a.ticks === b.ticks;
 
 export class Room extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
@@ -63,10 +109,10 @@ export class Room extends DurableObject<Env> {
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
   }
 
-  /** Opens the room under its code, to report to the lobby named; false when the code is taken. */
-  async open(code: string, lobby = LOBBY): Promise<boolean> {
+  /** Opens the room under its code, to report to the lobby named, for the players it matched; false when the code is taken. */
+  async open(code: string, lobby = LOBBY, players?: Pair): Promise<boolean> {
     if ((await this.ctx.storage.get<number>('opened')) !== undefined) return false;
-    await this.ctx.storage.put({ opened: Date.now(), code, lobby });
+    await this.ctx.storage.put({ opened: Date.now(), code, lobby, ...(players ? { players } : {}) });
     await this.ctx.storage.setAlarm(Date.now() + IDLE_MS);
     return true;
   }
@@ -95,6 +141,8 @@ export class Room extends DurableObject<Env> {
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
     const role = this.roleOf(ws);
     if (!role) return;
+    const report = typeof message === 'string' ? readReport(message) : undefined;
+    if (report) return this.reported(role, report);
     for (const to of this.live(other(role))) to.send(message);
   }
 
@@ -123,6 +171,36 @@ export class Room extends DurableObject<Env> {
     const still = this.live().filter((s) => s !== ws).length;
     if (still === 0) await this.ctx.storage.setAlarm(Date.now() + IDLE_MS);
     await this.report(still);
+  }
+
+  /**
+   * One page's word on a match. Kept until the other page's comes; when it does and the two agree, the
+   * result goes to the lobby. Two that disagree are both dropped; a word on another match number
+   * replaces the one kept, which the other page never matched.
+   */
+  private async reported(role: Role, report: Report): Promise<void> {
+    const reports = (await this.ctx.storage.get<Partial<Record<Role, Report>>>('reports')) ?? {};
+    const theirs = reports[other(role)];
+    if (!theirs || theirs.game !== report.game) {
+      await this.ctx.storage.put('reports', { [role]: report });
+      return;
+    }
+    await this.ctx.storage.delete('reports');
+    if (!same(theirs, report)) {
+      console.warn('The two pages told different ends of one match:', theirs, report);
+      return;
+    }
+    const [players, lobby] = await Promise.all([this.ctx.storage.get<Pair>('players'), this.ctx.storage.get<string>('lobby')]);
+    const both: Record<Role, Report> = role === 'host' ? { host: report, guest: theirs } : { host: theirs, guest: report };
+    const host = players?.host ?? both.host.me;
+    const guest = players?.guest ?? both.guest.me;
+    if (!host || !guest) return;
+    const [winner, loser] = report.winner === 'host' ? [host, guest] : [guest, host];
+    try {
+      await this.env.LOBBY.getByName(lobby ?? LOBBY).result({ t: 'result', winner, loser, rounds: report.rounds, ticks: report.ticks });
+    } catch (cause) {
+      console.warn('The lobby did not take the result:', cause);
+    }
   }
 
   /** Tells the lobby how many are in; a lobby that cannot be reached just has an old count, and the room goes on. */
@@ -175,7 +253,15 @@ export default {
       return Response.json(counts, { headers: { ...cors, 'Cache-Control': 'no-store' } });
     }
 
-    if (url.pathname === '/') return new Response('makgora-relay: GET /lobby/ws?name=&id=[&busy=1|&requeue=1], GET /lobby/stats; or POST /rooms, then GET /rooms/:code/ws?role=host|guest', { headers: cors });
+    // The board: the top twenty tonight or of all time, and the asking player's own row when they give their id.
+    if (url.pathname === '/lobby/board' && request.method === 'GET') {
+      const span: Span = url.searchParams.get('span') === 'all' ? 'all' : 'night';
+      const id = url.searchParams.get('id');
+      const standings = await env.LOBBY.getByName(LOBBY).standings(span, isPlayerId(id) ? id : undefined);
+      return Response.json(standings, { headers: { ...cors, 'Cache-Control': 'no-store' } });
+    }
+
+    if (url.pathname === '/') return new Response('makgora-relay: GET /lobby/ws?name=&id=[&busy=1|&requeue=1], GET /lobby/stats, GET /lobby/board?span=night|all[&id=]; or POST /rooms, then GET /rooms/:code/ws?role=host|guest', { headers: cors });
     return new Response('Not found', { status: 404, headers: cors });
   },
 } satisfies ExportedHandler<Env>;

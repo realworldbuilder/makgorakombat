@@ -18,7 +18,7 @@ and tells each of them its code and whether they host. Nobody reads a code out.
   and keeps, so a reload or a second tab takes the old place instead of making a second player.
   `&busy=1` is a page in an online match coming back between fights; `&busy=0&requeue=1` a page
   back from one that wants the next opponent, and goes straight into the queue.
-- Everyone hears `{"t":"here","players":[{"id","name","status":"free"|"busy"}],"online","waiting","fighting"}`
+- Everyone hears `{"t":"here","players":[{"id","name","status":"free"|"busy","night"?:[wins,losses]}],"online","waiting","fighting"}`
   whenever somebody comes, goes, joins or leaves the queue or starts a match, and every 20
   seconds besides. `online` is the players here, `waiting` those in the queue, `fighting` the
   players in a room with their opponent (the pages leave the lobby for the fight itself, so the
@@ -44,6 +44,20 @@ and tells each of them its code and whether they host. Nobody reads a code out.
   quick match the one who waited longer. Both are busy until their lobby sockets come back.
 - `ping` is answered `pong`, as in a room.
 
+## The board
+
+- When a match ends, both pages say so to their room (below); the room passes the result to the
+  lobby, which keeps in its storage, per player id, the name last seen, wins, losses, the longest
+  run of wins and the run going now, and the same for the night. A night runs from 4 AM to 4 AM
+  in New York. A match one page left before the end, or that the two pages tell differently,
+  counts for nothing; so does a browser fighting itself.
+- `GET /lobby/board?span=night|all[&id=<id>]` answers
+  `{"span","night":"2026-10-24","rows":[{"rank","name","wins","losses","best","streak","me"?}],"mine"?}`:
+  the top twenty, most wins first, then the longest run, then the run now, then the fewest
+  losses. With the asking player's id, their row is marked `me` and also given alone as `mine`,
+  whether or not it is in the twenty. No ids go out on the board. `night` is the default span.
+- Everyone in the lobby is listed with tonight's `night:[wins,losses]` once they have fought tonight.
+
 ## The room
 
 - `POST /rooms` makes a room and answers `{"code":"HXBXDC"}`.
@@ -53,6 +67,10 @@ and tells each of them its code and whether they host. Nobody reads a code out.
   `{"t":"peer","joined":true}`; when they leave, `{"t":"peer","joined":false}`.
 - `ping` is answered `pong` by the room itself without waking it: a keep-alive, and a way to
   time the wire.
+- `{"t":"result","game","winner":"host"|"guest","rounds","ticks","me"?:{id,name}}` is a page's
+  word that match number `game` is over: the room keeps it until the other page's comes, and
+  when the two agree it tells the lobby who won, under the ids and names the lobby matched, or in
+  a room made by code the `me` each page gives. It is not passed on.
 - Every other message goes to the other player unchanged.
 
 Pages on `https://realworldbuilder.github.io`, `https://makgora.clawdioslave.com` and `http://localhost:*` (or `127.0.0.1`) may use
@@ -77,7 +95,7 @@ must use the same relay.
 
 ## Working on it
 
-- `pnpm test` runs the room's and the lobby's tests inside the Workers runtime (`@cloudflare/vitest-plugin`).
+- `pnpm test` runs the room's, the lobby's and the board's tests inside the Workers runtime (`@cloudflare/vitest-plugin`).
 - `pnpm build` type-checks it.
 - `pnpm dev` serves it on `http://localhost:8787`.
 - `node scripts/probe.mjs [url] [rounds]` makes a room on a deployed relay, joins it twice and
