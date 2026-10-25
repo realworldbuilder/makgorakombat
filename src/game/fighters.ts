@@ -41,7 +41,8 @@ export interface BuiltFighter {
   fx: () => Promise<FighterFx>;
 }
 
-const KEEP = 8;
+/** How many built fighters are kept. */
+export const KEEP = 8;
 
 export class Fighters {
   private readonly built = new Map<string, Promise<BuiltFighter>>();
