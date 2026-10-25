@@ -9,6 +9,7 @@ import type { BuiltFighter } from './fighters';
 import { ATTACH, type FighterFx, poseFx } from './fx';
 import { drawHud, LETTERBOX } from './hud';
 import { seedOf } from './pixels';
+import { isReporting } from './report';
 import { LEVEL, music, stageCue } from './music';
 import { isMuted, Mixer, toggleMute } from './sound';
 import type { Source } from './Select';
@@ -194,7 +195,8 @@ export function Fight({ fighters, stage, p2, onBack }: FightProps) {
     const loop = (now: number) => {
       frame = requestAnimationFrame(loop);
       const current = match.current!;
-      owed = held ? 0 : owed + Math.min(now - last, 250);
+      // Held by a script, or standing still while a report is written.
+      owed = held || isReporting() ? 0 : owed + Math.min(now - last, 250);
       last = now;
       let steps = 0;
       const t0 = performance.now();

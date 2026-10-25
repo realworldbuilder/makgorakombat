@@ -10,6 +10,7 @@ import { type BuiltFighter, Fighters } from './fighters';
 import { messageOf, useFolder } from './folder';
 import { LEVEL, music } from './music';
 import { pictureUrl } from './pixels';
+import { setWhere } from './report';
 import { LEGENDS, legendTiles, type Tile } from './roster';
 import { loadSaved, type SavedChampion, storeSaved } from './saved';
 import { Select, type Source } from './Select';
@@ -144,6 +145,21 @@ export function Game() {
   useEffect(() => {
     document.body.classList.toggle('ingame', phase.kind === 'ready' && loaded !== undefined);
   }, [phase.kind, loaded]);
+
+  // Where the player is, for a report sent from the game (Reporter.tsx).
+  useEffect(() => {
+    const edition = loaded ? `${loaded.edition.game} ${loaded.edition.version} (${loaded.edition.product})` : undefined;
+    if (phase.kind !== 'ready' || !loaded) {
+      const screenName = loadError ? `Title, the folder could not be read: ${loadError}` : phase.kind === 'ready' ? 'Title, opening the folder' : `Title (${phase.kind})`;
+      setWhere({ screen: screenName, edition });
+      return;
+    }
+    const names = screen.kind === 'select' ? undefined : screen.fighters.map((f) => `${f.champion.name} (${f.champion.title})`).join(' vs ') + `, player 2: ${p2}`;
+    const ground = screen.kind === 'fight' ? screen.stage : undefined;
+    const stage = ground && (ground.stage ? `${ground.stage.name}, ${ground.stage.where}` : ground.screen ? `loading screen ${ground.screen.fileId}` : 'none');
+    const screenName = { select: 'Choose your champion', versus: 'VS screen', fight: 'The fight' }[screen.kind];
+    setWhere({ screen: screenName, edition, fighters: names, stage });
+  }, [phase.kind, loaded, loadError, screen, p2]);
 
   const wantCreate = (yes: boolean) => {
     createNext.current = yes;
