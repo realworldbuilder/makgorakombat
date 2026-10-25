@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import type { BuildInfoEntry } from '@mogshot/casc/build-info';
 import { BRAND } from '../engine/brand';
 import { ActionBar, GLYPHS, type Slot } from './ActionBar';
-import { BoardPanel } from './Board';
+import { BoardPanel, BoardTable } from './Board';
 import { editionOf, type EditionKey } from './edition';
 import { lastProduct, type Phase } from './folder';
 import { Guide, type GuidePage } from './Guide';
@@ -116,7 +116,7 @@ export function Title({ phase, dragging, onPick, onChoose, onCreate, onOnline }:
     onOnline(page === 'online');
   };
   const [settings, setSettings] = useState(false);
-  // TOP TEN, from the small line under the presence line, or B.
+  // TOP TEN in full, from the board on the title, or B.
   const [board, setBoard] = useState(false);
   const picker = useRef<HTMLInputElement>(null);
   const opening = phase.kind === 'opening';
@@ -266,11 +266,13 @@ export function Title({ phase, dragging, onPick, onChoose, onCreate, onOnline }:
             ]}
           />
           <Presence online="6" />
-          <p class="board-line">
+          <section class="title-board" aria-label="The board">
+            <h2>THE BOARD</h2>
+            <BoardTable keys={false} top={innerHeight < 900 ? 3 : 5} brief />
             <button type="button" class="link" onClick={() => setBoard(true)}>
-              the board · B
+              the top ten · B
             </button>
-          </p>
+          </section>
           <p class="hint">
             <b>Drop your World of Warcraft folder</b> anywhere on this page, or press 1 to choose it. It is in <code>Applications</code> on a
             Mac. Your game files are read here in the browser and never leave your computer.

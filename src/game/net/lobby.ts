@@ -161,9 +161,9 @@ export async function lobbyBoard(span: Span, id?: string, base = relayUrl()): Pr
 /** How many the panel shows. */
 export const TOP = 10;
 
-/** The rows the TOP TEN panel shows, and this player's own row under them when it is not among them. */
-export function topTen(standings: Standings): { rows: BoardRow[]; pinned?: BoardRow } {
-  const rows = standings.rows.slice(0, TOP);
+/** The rows the TOP TEN panel shows (or the first `top`), and this player's own row under them when it is not among them. */
+export function topTen(standings: Standings, top = TOP): { rows: BoardRow[]; pinned?: BoardRow } {
+  const rows = standings.rows.slice(0, top);
   const pinned = standings.mine && !rows.some((row) => row.me) ? standings.mine : undefined;
   return pinned ? { rows, pinned } : { rows };
 }
@@ -171,17 +171,23 @@ export function topTen(standings: Standings): { rows: BoardRow[]; pinned?: Board
 /** A record as WHO'S HERE shows it: "3-1". */
 export const recordText = ([wins, losses]: [number, number]) => `${wins}-${losses}`;
 
+/** A fresh id; randomUUID is only there on https and localhost, not on a dev server reached by its address. */
+function newId(): string {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID();
+  return Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+}
+
 let visitId: string | undefined;
 /** The random id this browser keeps, made the first time it is asked for. */
 export function playerId(): string {
   try {
     const kept = localStorage.getItem(ID);
     if (kept && /^[A-Za-z0-9-]{8,40}$/.test(kept)) return kept;
-    const made = crypto.randomUUID();
+    const made = newId();
     localStorage.setItem(ID, made);
     return made;
   } catch {
-    visitId ??= crypto.randomUUID();
+    visitId ??= newId();
     return visitId;
   }
 }

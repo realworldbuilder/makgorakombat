@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'preact/hooks';
-import { type BoardRow, lobbyBoard, playerId, type Span, type Standings, topTen } from './net/lobby';
+import { type BoardRow, lobbyBoard, playerId, type Span, type Standings, TOP, topTen } from './net/lobby';
 
 /*
  * TOP TEN: the relay's board of who has won most, tonight (from four in the morning in New York)
  * or of all time, with the player's own row under the ten when they are not in it. The same table
- * in its own panel from the title (B) and as a tab of PLAY ONLINE beside WHO'S HERE. The relay
+ * on the title itself (its top five), in its own panel from the title (B) and as a tab of PLAY ONLINE
+ * beside WHO'S HERE. The relay
  * keeps it from both pages' word on each match that ends; see relay/src/board.ts.
  */
 
@@ -41,8 +42,11 @@ function Line({ row }: { row: BoardRow }) {
   );
 }
 
-/** The table and its two spans; ← → (or T) turn between them while `keys` is on. */
-export function BoardTable({ keys = true }: { keys?: boolean }) {
+/**
+ * The table and its two spans; ← → (or T) turn between them while `keys` is on. `top` rows are
+ * shown, the player's own row pinned under them when it is lower; `brief` drops the small print.
+ */
+export function BoardTable({ keys = true, top = TOP, brief = false }: { keys?: boolean; top?: number; brief?: boolean }) {
   const [span, setSpanState] = useState<Span>(keptSpan);
   const [standings, setStandings] = useState<Standings>();
   const [error, setError] = useState<string>();
@@ -80,7 +84,7 @@ export function BoardTable({ keys = true }: { keys?: boolean }) {
     return () => window.removeEventListener('keydown', onKey, true);
   });
 
-  const shown = standings ? topTen(standings) : undefined;
+  const shown = standings ? topTen(standings, top) : undefined;
   return (
     <div class="board">
       <div class="spans" role="tablist">
@@ -113,9 +117,11 @@ export function BoardTable({ keys = true }: { keys?: boolean }) {
           </tbody>
         </table>
       )}
-      <p class="dim small">
-        {span === 'night' ? 'Tonight runs from 4 AM to 4 AM, New York time. ' : ''}Wins in online matches fought to the end; most wins first, then the longest run. ← → turn.
-      </p>
+      {!brief && (
+        <p class="dim small">
+          {span === 'night' ? 'Tonight runs from 4 AM to 4 AM, New York time. ' : ''}Wins in online matches fought to the end; most wins first, then the longest run. ← → turn.
+        </p>
+      )}
     </div>
   );
 }
