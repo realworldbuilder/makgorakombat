@@ -122,6 +122,7 @@ function headHeight(fighter: BuiltFighter): number {
 
 export function Fight({ fighters, stage, p2, onBack, net }: FightProps) {
   const canvas = useRef<HTMLCanvasElement>(null);
+  const arena = useRef<Arena>(null);
   const overlay = useRef<HTMLCanvasElement>(null);
   const stageElement = useRef<HTMLDivElement>(null);
   const [debug, setDebug] = useState(false);
@@ -136,7 +137,8 @@ export function Fight({ fighters, stage, p2, onBack, net }: FightProps) {
   const [notes, setNotes] = useState<string[]>(net?.notes ?? []);
 
   useEffect(() => {
-    const ring = new Arena(canvas.current!);
+    // One ring for the screen, kept if the fight starts over on it: its canvas has one context to give.
+    const ring = (arena.current ??= new Arena(canvas.current!));
     ring.setFighters(fighters);
     // The spells' models join the ring once both fighters' are read: one more upload, at the start.
     let fxs: (FighterFx | undefined)[] = [undefined, undefined];
@@ -323,6 +325,15 @@ export function Fight({ fighters, stage, p2, onBack, net }: FightProps) {
       window.removeEventListener('keydown', onKey);
     };
   }, [fighters, stage, p2, onBack, net]);
+
+  // The ring's context goes with the screen, so the next fight's does not push the browser past its few.
+  useEffect(
+    () => () => {
+      arena.current?.dispose();
+      arena.current = null;
+    },
+    [],
+  );
 
   // The notes on how this install draws the fight go after a while.
   useEffect(() => {

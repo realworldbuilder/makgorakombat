@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'preact/hooks';
 import { type Camera, CharacterRenderer, DEFAULT_CAMERA } from '@mogshot/render/renderer';
+import { releaseRenderer } from './arena';
 import type { BuiltFighter } from './fighters';
 
 /*
@@ -73,6 +74,16 @@ export function Preview({ fighter, locked, side }: PreviewProps) {
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
   }, [side]);
+
+  // The renderer's context goes with the canvas, so the next screen's do not push the browser past its few.
+  useEffect(() => {
+    const element = canvas.current!;
+    return () => {
+      if (renderer.current) releaseRenderer(renderer.current, element);
+      renderer.current = null;
+      shown.current = null;
+    };
+  }, []);
 
   return <canvas class={`preview ${side}`} ref={canvas} />;
 }
