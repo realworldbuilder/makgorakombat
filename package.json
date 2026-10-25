@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "deploy:site": "VITE_BASE=/ pnpm build && pnpm --dir relay exec wrangler deploy --config ../site/wrangler.jsonc"
   },
   "devDependencies": {
     "@preact/preset-vite": "^2.10.6",

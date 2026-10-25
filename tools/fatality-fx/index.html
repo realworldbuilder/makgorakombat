@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Fatality FX</title>
+    <style>
+      body { margin: 0; background: #111; color: #ddd; font: 13px monospace; }
+      #stage { position: relative; width: 1280px; height: 720px; }
+      #stage canvas { position: absolute; left: 0; top: 0; }
+      #bar { padding: 6px 8px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+      #sheet { display: block; margin-top: 6px; }
+    </style>
+  </head>
+  <body>
+    <div id="bar">
+      <select id="cls"></select>
+      <button id="play">pause</button>
+      <input id="scrub" type="range" min="0" max="400" value="0" style="width: 420px" />
+      <span id="info"></span>
+    </div>
+    <div id="stage"><canvas id="bg" width="1280" height="720"></canvas><canvas id="hud" width="1280" height="720"></canvas></div>
+    <canvas id="sheet" width="1280" height="720" hidden></canvas>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

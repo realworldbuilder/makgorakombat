@@ -1,9 +1,10 @@
-import { ABILITY_MELEE_RANGE, ABILITY_SLOTS, DOT_TICK_FRAMES, EXECUTE_BELOW, GCD_FRAMES, MAX_RESOURCE, RESOURCE_NAMES, type ResolvedAbility, type SlotIndex } from './abilities';
+import { ABILITY_MELEE_RANGE, ABILITY_SLOTS, DOT_TICK_FRAMES, EXECUTE_BELOW, MAX_RESOURCE, RESOURCE_NAMES, type ResolvedAbility, type SlotIndex } from './abilities';
 import { BRAND } from './brand';
 import { type Beat, directionOf, impactFrame, PENALTY_FRAMES, type SequenceToken, STEP_FRAMES } from './fatalities';
 import { type Move, type MoveRef, type MoveTable, variationOf } from './moves';
+import { type Rules, RULES, type RulesName } from './rules';
 import {
-  BACK, BODY, FINISH_FRAMES, GRAVITY, HALF, HP, INTRO_FRAMES, JUMP_V, KO_SLOWMO, ROUND_END_FRAMES, ROUND_FRAMES,
+  BODY, FINISH_FRAMES, GRAVITY, HALF, HP, INTRO_FRAMES, JUMP_V, KO_SLOWMO, ROUND_END_FRAMES, ROUND_FRAMES,
   ROUNDS_TO_WIN, START_X, TICK_MS, WALK,
 } from './stage';
 
@@ -12,7 +13,8 @@ import {
  * target is in reach, abilities on a global cooldown and their own cooldowns paid for in rage,
  * energy, mana, focus, runic power or fury, casts with a bar that damage interrupts, and every
  * blow rolled on the hit table: miss, dodge, parry, block, crit or a plain hit. Sixty ticks a
- * second, no DOM, the same seed and inputs always giving the same fight.
+ * second, no DOM, the same seed and inputs always giving the same fight. The KOMBAT rules
+ * (rules.ts) fight the same fighters as a fighting game; whatever differs is read from there.
  */
 
 /** What a fighter is doing, coarser than the move it plays. */
@@ -26,8 +28,12 @@ export type FighterState =
   | 'cast'
   /** Charging or rushing at the target. */
   | 'dash'
+  /** KOMBAT's double tap: a run at the opponent, a hop back from them. */
+  | 'run' | 'backdash'
   | 'dodge' | 'parry'
-  /** Flinching from a blow; still free to act. */
+  /** KOMBAT: a blow taken on the guard. */
+  | 'block'
+  /** Flinching from a blow; free to act once any hitstun is over. */
   | 'hit'
   | 'knockdown' | 'stun' | 'fear' | 'dazed' | 'death' | 'finisher' | 'intro' | 'win';
 
@@ -123,6 +129,34 @@ export interface Fighter {
   absorb: number;
   absorbT: number;
   dots: ActiveDot[];
+  /** The way the movement keys point this tick: -1, 0 or +1 along x. Holding away from a blow blocks it under KOMBAT. */
+  held: -1 | 0 | 1;
+  /** KOMBAT's string: which of its blows the current swing is, from 0. */
+  chain: number;
+  /** The last tap came during a swing or just after one, so the next swing continues the string. */
+  chainPress: boolean;
+  /** Frames left in which a tap still continues the string. */
+  chainT: number;
+  /** The current swing hit or was blocked: it may run straight into the string's next blow. */
+  connected: boolean;
+  /** Swings started, so one can be told from the next. */
+  swings: number;
+  /** Frames this fighter cannot act after a blow landed on them. */
+  hitstun: number;
+  /** Frames this fighter cannot act after blocking a blow or landing out of a jumping attack. */
+  lag: number;
+  /** The double tap: frames the current direction has been held, and the direction just tapped and let go with the frames since. */
+  holdT: number;
+  tapDir: -1 | 0 | 1;
+  tapT: number;
+  /** A double tap waiting for the fighter to be free, kept a few frames; 0 for none. */
+  dashWant: -1 | 0 | 1;
+  dashWantT: number;
+  /** The run or backdash under way: which way along x and frames into it. */
+  dashDir: -1 | 1;
+  dashT: number;
+  /** This jump's attack has been thrown; the landing costs a few frames. */
+  airAttack: boolean;
 }
 
 export interface Projectile {
@@ -165,7 +199,7 @@ export interface SpellEvent {
   t: number;
 }
 
-export type TextKind = 'damage' | 'crit' | 'dot' | 'heal' | 'absorb' | 'miss' | 'dodge' | 'parry' | 'block' | 'immune' | 'status' | 'info';
+export type TextKind = 'damage' | 'crit' | 'dot' | 'heal' | 'absorb' | 'miss' | 'dodge' | 'parry' | 'block' | 'immune' | 'status' | 'info' | 'combo';
 
 /** Floating combat text: a number or a word that rises over a fighter. */
 export interface FloatingText {
@@ -240,9 +274,24 @@ export interface CpuMemory {
   held: Inputs;
   /** Frame of the next decision. */
   next: number;
+  /** KOMBAT: the opponent's swings already weighed for a block, and the frame the guard is held until. */
+  seen: number;
+  guardUntil: number;
+  /** The CPU's own swing already followed up with the string's next press. */
+  chained: number;
+  /** Frames left of a double tap being keyed in. */
+  dash: number;
+  /** The attack key was down in the last inputs given, so the next press must let go first. */
+  pressed: boolean;
+}
+
+export function newCpuMemory(): CpuMemory {
+  return { held: noInputs(), next: 0, seen: 0, guardUntil: 0, chained: 0, dash: 0, pressed: false };
 }
 
 export interface Match {
+  /** Which rules the fight is fought under; their numbers are RULES[rules]. */
+  rules: RulesName;
   tables: [MoveTable, MoveTable];
   names: [string, string];
   fighters: [Fighter, Fighter];
@@ -271,6 +320,8 @@ export interface Match {
   sequence: SequenceEntry | undefined;
   /** The fatality playing, from its first beat until the round resets. */
   fatality: FatalityRun | undefined;
+  /** Blows each side has landed in a row while the other was still in hitstun; KOMBAT's 2 HITS. */
+  combo: [number, number];
 }
 
 export function noInputs(): Inputs {
@@ -300,6 +351,8 @@ const ABILITY_RECOVER = 0.45;
 const DODGE_RECOVER = 0.4;
 /** Reach beyond the ability's range once it is already swinging. */
 const REACH_SLACK = 0.4;
+/** How far behind them a jumping attack still reaches a target passed under. */
+const AIR_UNDER = 0.5;
 const DASH_SPEED = 0.3;
 /** A charge stops this far short of contact. */
 /**
@@ -319,15 +372,11 @@ const LEAP_V = 0.16;
 const LEAP_VX = 0.12;
 const SLOW_FACTOR = 0.5;
 const BLOCK_FACTOR = 0.6;
-/** A melee crit doubles; a spell crit is half again, as in the game. */
-const CRIT_FACTOR = { melee: 2, spell: 1.5 } as const;
-/** Swings and strikes play faster than the model's clip, so a blow reads as a blow. */
-const ATTACK_RATE = 1.35;
 /** Speed given to the target by a blow; it decays by 0.82 a frame, so the distance is about 5.5 times this. The game has none; a nudge sells the impact. */
 const PUSHBACK = { swing: 0.035, ability: 0.07, spell: 0.03, bolt: 0.05, charge: 0.2 } as const;
 
-/** The hit table. Parry only from the front, block only with a shield, none of them against a helpless target. */
-export const HIT_TABLE = { miss: 0.05, dodge: 0.06, evasion: 0.5, parry: 0.06, block: 0.1, crit: 0.15, spellMiss: 0.03 } as const;
+/** The game's hit table, as the WARCRAFT rules roll it. */
+export const HIT_TABLE = RULES.warcraft.hitTable;
 
 /** Rage, fury and runic power earned when a swing lands, and rage when a blow is taken. */
 const GAIN_ON_SWING = { oneHand: 10, twoHand: 17 } as const;
@@ -377,6 +426,22 @@ function newFighter(side: 0 | 1, table: MoveTable): Fighter {
     absorb: 0,
     absorbT: 0,
     dots: [],
+    held: 0,
+    chain: 0,
+    chainPress: false,
+    chainT: 0,
+    connected: false,
+    swings: 0,
+    hitstun: 0,
+    lag: 0,
+    holdT: 0,
+    tapDir: 0,
+    tapT: 0,
+    dashWant: 0,
+    dashWantT: 0,
+    dashDir: 1,
+    dashT: 0,
+    airAttack: false,
   };
 }
 
@@ -396,12 +461,21 @@ function resetRound(match: Match): void {
   match.roundWinner = undefined;
   match.sequence = undefined;
   match.fatality = undefined;
+  match.combo = [0, 0];
+  // The fighters' swing counts start again; so does what the CPU remembers of them.
+  for (const memory of match.cpu) {
+    memory.seen = 0;
+    memory.chained = 0;
+    memory.guardUntil = 0;
+    memory.dash = 0;
+  }
   setPhase(match, 'intro');
   showBanner(match, BRAND.round(match.round));
 }
 
-export function newMatch(tables: [MoveTable, MoveTable], seed: number, names: [string, string] = ['P1', 'P2']): Match {
+export function newMatch(tables: [MoveTable, MoveTable], seed: number, names: [string, string] = ['P1', 'P2'], rules: RulesName = 'warcraft'): Match {
   const match: Match = {
+    rules,
     tables,
     names,
     fighters: [newFighter(0, tables[0]), newFighter(1, tables[1])],
@@ -419,12 +493,18 @@ export function newMatch(tables: [MoveTable, MoveTable], seed: number, names: [s
     frame: 0,
     roundWinner: undefined,
     winner: undefined,
-    cpu: [{ held: noInputs(), next: 0 }, { held: noInputs(), next: 0 }],
+    cpu: [newCpuMemory(), newCpuMemory()],
     sequence: undefined,
     fatality: undefined,
+    combo: [0, 0],
   };
   showBanner(match, BRAND.round(1));
   return match;
+}
+
+/** The numbers of the rules the match is fought under. */
+export function rulesOf(match: Match): Rules {
+  return RULES[match.rules];
 }
 
 /** Advances the match's LCG and returns a number in [0, 1). */
@@ -479,16 +559,18 @@ function durationOf(match: Match, i: 0 | 1): number {
 /** Can this fighter start a new action this tick? */
 export function actionable(match: Match, i: 0 | 1): boolean {
   const f = match.fighters[i];
+  if (f.hitstun > 0 || f.lag > 0) return false;
   switch (f.state) {
     case 'idle':
     case 'walk':
     case 'back':
     case 'hit':
+    case 'block':
       return true;
-    case 'attack': {
-      const move = moveOf(match, i, f.move);
-      return f.t >= (move.hit?.recover ?? 1) * durationOf(match, i);
-    }
+    case 'attack':
+      // A jumping attack holds the fighter until they land.
+      if (f.airAttack) return false;
+      return f.t >= rulesOf(match).swingHit.recover * durationOf(match, i);
     case 'ability': {
       // A buff or a blink does not hold the fighter; a strike does, until it is half played.
       const kind = abilityOf(match, i, f.ability).kind;
@@ -642,6 +724,11 @@ function launch(match: Match, i: 0 | 1, ability: number, damage: number): void {
   });
 }
 
+/** Frames the ability's cast bar takes under the match's rules. */
+export function castFrames(match: Match, a: ResolvedAbility): number {
+  return Math.round(a.cast * rulesOf(match).cast);
+}
+
 /** Tries to use ability `n`; true when it started. A refused press says why over the fighter. */
 export function useAbility(match: Match, i: 0 | 1, n: number): boolean {
   const f = match.fighters[i];
@@ -653,12 +740,12 @@ export function useAbility(match: Match, i: 0 | 1, n: number): boolean {
     text(match, i, 'info', why);
     return false;
   }
-  if (a.gcd) f.gcd = GCD_FRAMES;
+  if (a.gcd) f.gcd = rulesOf(match).gcd;
   f.ability = n;
   f.queued = false;
   // A cast pays its cost and starts its cooldown only when it goes off.
   if (a.cast > 0) {
-    f.cast = { ability: n, t: 0, total: a.cast, delays: 0 };
+    f.cast = { ability: n, t: 0, total: castFrames(match, a), delays: 0 };
     play(f, 'cast', `cast${n as SlotIndex}`);
     return true;
   }
@@ -714,7 +801,33 @@ const BUFFER_FRAMES = 8;
  * The keys that must not be lost while the fighter is frozen or mid-move: the attack key, held or
  * tapped, and an ability press, kept for a few frames until the fighter can act.
  */
-function readKeys(f: Fighter, inputs: Inputs): void {
+function readKeys(match: Match, i: 0 | 1, inputs: Inputs): void {
+  const f = match.fighters[i];
+  const rules = rulesOf(match);
+  const dir: -1 | 0 | 1 = inputs.right === inputs.left ? 0 : inputs.right ? 1 : -1;
+  // KOMBAT's double tap: a direction tapped, let go and pressed again within the window dashes that way.
+  const dash = rules.dash;
+  if (dash) {
+    if (f.tapDir !== 0 && ++f.tapT > dash.window) f.tapDir = 0;
+    if (f.dashWantT > 0 && --f.dashWantT === 0) f.dashWant = 0;
+    if (dir !== f.held) {
+      if (dir !== 0 && dir === f.tapDir) {
+        f.dashWant = dir;
+        f.dashWantT = BUFFER_FRAMES;
+        f.tapDir = 0;
+      } else if (f.held !== 0 && f.holdT <= dash.tap) {
+        f.tapDir = f.held;
+        f.tapT = 0;
+      }
+      f.holdT = 0;
+    } else if (dir !== 0) {
+      f.holdT++;
+    }
+  }
+  f.held = dir;
+  // A tap during a swing, or within a few frames of its end, continues KOMBAT's string.
+  if (f.state === 'attack' && !f.airAttack) f.chainT = rules.chainGrace;
+  else if (f.chainT > 0) f.chainT--;
   // The attack key: held keeps the auto-attack on; a tap queues one swing.
   const tap = inputs.attack && !f.attackWas;
   f.attackWas = inputs.attack;
@@ -722,6 +835,7 @@ function readKeys(f: Fighter, inputs: Inputs): void {
   if (tap) {
     f.queued = true;
     f.attackSaid = false;
+    f.chainPress = f.chainT > 0;
   }
   const pressed = inputs.abilities.findIndex(Boolean);
   if (pressed >= 0) {
@@ -733,13 +847,86 @@ function readKeys(f: Fighter, inputs: Inputs): void {
   }
 }
 
+/**
+ * Starts a swing. Under the Warcraft rules it cycles the attack's variations and sets the swing
+ * timer; under KOMBAT a tap that came in time is the string's next blow, each blow its own variation.
+ */
+function swingAt(match: Match, i: 0 | 1): void {
+  const f = match.fighters[i];
+  const rules = rulesOf(match);
+  if (rules.chain.length > 1) {
+    f.chain = f.queued && f.chainPress && f.chain + 1 < rules.chain.length ? f.chain + 1 : 0;
+    f.variation = f.chain;
+  } else {
+    f.variation++;
+  }
+  f.chainPress = false;
+  f.connected = false;
+  f.swings++;
+  play(f, 'attack', 'swing');
+  if (rules.swingTimer) f.swingT = match.tables[i].weapon.speed;
+  f.queued = false;
+}
+
+/**
+ * KOMBAT's cancels, before a swing has recovered: an ability pressed once the swing is active cuts
+ * it short (the hit-confirm cancel), and a swing that connected runs straight into the string's next
+ * blow when the press for it came in time. True when one went.
+ */
+function cancels(match: Match, i: 0 | 1): boolean {
+  const f = match.fighters[i];
+  const rules = rulesOf(match);
+  if (f.state !== 'attack' || f.airAttack || match.phase !== 'fight' || actionable(match, i)) return false;
+  if (rules.cancel && f.buffered >= 0 && f.t >= rules.swingHit.from * durationOf(match, i)) {
+    const n = f.buffered;
+    if (!(abilityOf(match, i, n).gcd && f.gcd > 0)) {
+      f.buffered = -1;
+      f.bufferedT = 0;
+      return useAbility(match, i, n);
+    }
+  }
+  if (f.connected && f.queued && f.chainPress && f.chain + 1 < rules.chain.length) {
+    swingAt(match, i);
+    return true;
+  }
+  return false;
+}
+
+/** A frame of a run or a backdash. A run past its first few frames is cut short by a swing. */
+function dashStep(match: Match, i: 0 | 1): void {
+  const f = match.fighters[i];
+  const dash = rulesOf(match).dash!;
+  const run = f.state === 'run';
+  if (run && f.dashT >= dash.cancel && (f.queued || f.auto)) {
+    swingAt(match, i);
+    return;
+  }
+  f.dashT++;
+  f.x += f.dashDir * (run ? dash.speed : dash.backSpeed) * (f.slowT > 0 ? SLOW_FACTOR : 1);
+  if (f.dashT >= (run ? dash.frames : dash.backFrames)) play(f, 'idle', 'idle');
+}
+
 function applyInputs(match: Match, i: 0 | 1, inputs: Inputs): void {
   const f = match.fighters[i];
   const o = match.fighters[other(i)];
   const table = match.tables[i];
+  const rules = rulesOf(match);
   const dir = (inputs.right ? 1 : 0) - (inputs.left ? 1 : 0);
   // Moving or jumping cancels a cast.
   if (f.cast && f.state === 'cast' && (dir !== 0 || inputs.jump)) cancelCast(f);
+  if ((f.state === 'run' || f.state === 'backdash') && f.hitstun === 0) {
+    dashStep(match, i);
+    return;
+  }
+  // KOMBAT: a press in the air is a jumping attack, thrown from the top of the jump.
+  if (rules.airAttack && f.state === 'jump' && f.airborne && !f.airAttack && f.queued && match.phase === 'fight') {
+    if (f.vz > 0) return;
+    f.airAttack = true;
+    f.chainPress = false;
+    swingAt(match, i);
+    return;
+  }
+  if (cancels(match, i)) return;
   if (!actionable(match, i)) return;
 
   // The buffered ability press goes first; one waiting on the global cooldown stays queued.
@@ -753,13 +940,15 @@ function applyInputs(match: Match, i: 0 | 1, inputs: Inputs): void {
   }
   // The auto-attack goes when its timer is up and the target is in reach. In the finish only a fresh tap
   // swings: a key held through the knockdown must not drop the loser before the sequence can be entered.
+  // Under KOMBAT there is no swing timer and no reach to wait for: a press swings now, a held key again as soon as the last has recovered.
   const wantsSwing = match.phase === 'finish' ? f.queued : f.auto || f.queued;
+  if (wantsSwing && !rules.swingTimer) {
+    swingAt(match, i);
+    return;
+  }
   if (wantsSwing && f.swingT === 0) {
     if (inReach(match, f, o, table.weapon.range, false)) {
-      f.variation++;
-      play(f, 'attack', 'swing');
-      f.swingT = table.weapon.speed;
-      f.queued = false;
+      swingAt(match, i);
       return;
     }
     // A press that cannot reach says so, as the game does, the moment it is pressed.
@@ -767,6 +956,17 @@ function applyInputs(match: Match, i: 0 | 1, inputs: Inputs): void {
       f.attackSaid = true;
       text(match, i, 'info', 'OUT OF RANGE');
     }
+  }
+  // KOMBAT's double tap: a run at the opponent, or a hop back from them.
+  if (f.dashWant !== 0 && rules.dash && !f.airborne && match.phase === 'fight') {
+    const forward = f.dashWant === (o.x >= f.x ? 1 : -1);
+    f.dashDir = f.dashWant;
+    f.dashWant = 0;
+    f.dashWantT = 0;
+    f.dashT = 0;
+    if (forward) play(f, 'run', 'walk');
+    else play(f, 'backdash', 'dodge');
+    return;
   }
   if (inputs.jump && !f.airborne) {
     play(f, 'jump', 'jumpStart');
@@ -778,13 +978,13 @@ function applyInputs(match: Match, i: 0 | 1, inputs: Inputs): void {
     const forward = dir * f.facing > 0;
     const wanted: MoveRef = forward ? 'walk' : 'back';
     if (f.move !== wanted || f.state !== wanted) play(f, wanted, wanted);
-    f.x = stepTo(match, f, o, dir * (forward ? WALK : BACK) * (f.slowT > 0 ? SLOW_FACTOR : 1));
+    f.x = stepTo(match, f, o, dir * (forward ? rules.walk : rules.back) * (f.slowT > 0 ? SLOW_FACTOR : 1));
     return;
   }
   // Holding the attack with nowhere else to go follows the target into reach, as the game's follow does.
   if (f.auto && !table.weapon.ranged && !inReach(match, f, o, table.weapon.range, false) && Math.abs(o.z - f.z) < 1.2 && o.state !== 'death') {
     if (f.move !== 'walk' || f.state !== 'walk') play(f, 'walk', 'walk');
-    f.x = stepTo(match, f, o, f.facing * WALK * (f.slowT > 0 ? SLOW_FACTOR : 1));
+    f.x = stepTo(match, f, o, f.facing * rules.walk * (f.slowT > 0 ? SLOW_FACTOR : 1));
     return;
   }
   // A move past its recover point plays out unless something else is asked for.
@@ -796,7 +996,9 @@ function advanceMove(match: Match, i: 0 | 1): void {
   const f = match.fighters[i];
   const move = moveOf(match, i, f.move);
   const duration = variationOf(move, f.variation).duration;
-  const rate = f.state === 'attack' || f.state === 'ability' ? ATTACK_RATE : 1;
+  // Swings and strikes play faster than the model's clip, so a blow reads as a blow.
+  const rules = rulesOf(match);
+  const rate = f.state === 'attack' ? rules.swingRate : f.state === 'ability' ? rules.abilityRate : 1;
   f.t += TICK_MS * match.slowmo * rate;
   if (f.t < duration) return;
   // The dead stay down, whatever animation stands in for their death.
@@ -806,6 +1008,11 @@ function advanceMove(match: Match, i: 0 | 1): void {
   }
   if (move.loop) {
     f.t = duration > 0 ? f.t % duration : 0;
+    return;
+  }
+  // A jumping attack played out before the ground: back to the jump until landing.
+  if (f.state === 'attack' && f.airAttack && f.airborne) {
+    play(f, 'jump', 'jump');
     return;
   }
   switch (f.move) {
@@ -844,7 +1051,7 @@ function timers(match: Match, i: 0 | 1): void {
   if (f.lockoutT > 0) f.lockoutT--;
   if (f.absorbT > 0 && --f.absorbT === 0) f.absorb = 0;
   if (f.state === 'death' || f.state === 'dazed') return;
-  if (kit.regen > 0) f.resource = Math.min(MAX_RESOURCE, f.resource + kit.regen);
+  if (kit.regen > 0) f.resource = Math.min(MAX_RESOURCE, f.resource + kit.regen * (kit.resource === 'mana' ? rulesOf(match).manaRegen : 1));
   if (f.stunT > 0 && --f.stunT === 0 && f.state === 'stun') play(f, 'idle', 'idle');
   if (f.fearT > 0 && --f.fearT === 0 && f.state === 'fear') play(f, 'idle', 'idle');
   // A feared fighter runs from the opponent.
@@ -910,7 +1117,7 @@ function dashes(match: Match, i: 0 | 1): void {
   play(f, 'ability', `ability${n as SlotIndex}`);
   f.hitDone = true;
   if (inReach(match, f, o, ABILITY_MELEE_RANGE, true)) {
-    strike(match, i, ti, { damage: a.damage, roll: 'none', ability: a, pushback: PUSHBACK.charge, hitstop: 6 }, toward, o.x, 1.3 + o.z);
+    strike(match, i, ti, { damage: a.damage, roll: 'none', ability: a, pushback: PUSHBACK.charge, hitstop: 6, from: sideOf(o, f.x), contact: true, heavy: true }, toward, o.x, 1.3 + o.z);
   }
 }
 
@@ -924,6 +1131,18 @@ interface Blow {
   ability: ResolvedAbility | undefined;
   pushback: number;
   hitstop: number;
+  /** The side of the target it comes from, -1 or +1 along x, when it can be blocked; a spell cannot. */
+  from?: 1 | -1;
+  /** Struck by hand: a swing, a melee ability, a charge's arrival. */
+  contact?: boolean;
+  /** KOMBAT: the longer hitstun, for the string's last blow and an ability's. */
+  heavy?: boolean;
+  knockdown?: boolean;
+}
+
+/** The side of `target` that a blow from `x` comes from. */
+function sideOf(target: Fighter, x: number): 1 | -1 {
+  return x === target.x ? target.facing : x > target.x ? 1 : -1;
 }
 
 /** One draw on the hit table. */
@@ -931,6 +1150,7 @@ export function rollHit(match: Match, ai: 0 | 1, ti: 0 | 1, roll: Roll): Outcome
   if (roll === 'none') return 'hit';
   const attacker = match.fighters[ai];
   const target = match.fighters[ti];
+  const table = rulesOf(match).hitTable;
   const r = nextRandom(match);
   let edge = 0;
   const step = (chance: number): boolean => {
@@ -938,21 +1158,21 @@ export function rollHit(match: Match, ai: 0 | 1, ti: 0 | 1, roll: Roll): Outcome
     return r < edge;
   };
   if (roll === 'spell') {
-    if (step(HIT_TABLE.spellMiss)) return 'miss';
-    if (step(HIT_TABLE.crit)) return 'crit';
+    if (step(table.spellMiss)) return 'miss';
+    if (step(table.crit)) return 'crit';
     return 'hit';
   }
-  if (step(HIT_TABLE.miss)) return 'miss';
+  if (step(table.miss)) return 'miss';
   const canAvoid = !helpless(target) && target.state !== 'cast';
   if (canAvoid) {
-    if (step(HIT_TABLE.dodge + (target.evasionT > 0 ? HIT_TABLE.evasion : 0))) return 'dodge';
+    if (step(table.dodge + (target.evasionT > 0 ? table.evasion : 0))) return 'dodge';
     const facingAttacker = target.facing * (attacker.x - target.x) >= 0;
     if (roll === 'melee' && facingAttacker) {
-      if (step(HIT_TABLE.parry)) return 'parry';
-      if (match.tables[ti].weapon.shield && step(HIT_TABLE.block)) return 'block';
+      if (step(table.parry)) return 'parry';
+      if (match.tables[ti].weapon.shield && step(table.block)) return 'block';
     }
   }
-  if (step(HIT_TABLE.crit)) return 'crit';
+  if (step(table.crit)) return 'crit';
   return 'hit';
 }
 
@@ -1054,6 +1274,15 @@ function strike(match: Match, ai: 0 | 1, ti: 0 | 1, blow: Blow, dir: number, spa
     return blow.damage;
   }
 
+  // KOMBAT: a fighter who is down cannot be hit again until up; a blow held on the guard is only chip.
+  const rules = rulesOf(match);
+  if (!rules.hitsDown && target.state === 'knockdown') return 0;
+  // The first frames of a backdash slip any blow struck by hand.
+  if (rules.dash && blow.contact && target.state === 'backdash' && target.dashT <= rules.dash.invulnerable) return 0;
+  if (guarding(match, ti, blow.from)) return blocked(match, ai, ti, blow, dir, sparkX, sparkZ);
+  // Already reeling: this blow carries the combo on.
+  const reeling = target.hitstun > 0 || target.knockdownOnLand;
+
   let outcome = rollHit(match, ai, ti, blow.roll);
   // The riposte: the next melee ability after a parry cannot fail.
   if (a && a.kind === 'melee' && attacker.riposteT > 0) {
@@ -1086,7 +1315,8 @@ function strike(match: Match, ai: 0 | 1, ti: 0 | 1, blow: Blow, dir: number, spa
   let amount = blow.damage > 0 ? Math.max(1, Math.round(blow.damage * (1 + spread * (2 * nextRandom(match) - 1)))) : 0;
   let kind: 'damage' | 'crit' | 'block' = 'damage';
   if (outcome === 'crit') {
-    amount = Math.round(amount * (blow.roll === 'spell' ? CRIT_FACTOR.spell : CRIT_FACTOR.melee));
+    const crit = rulesOf(match).crit;
+    amount = Math.round(amount * (blow.roll === 'spell' ? crit.spell : crit.melee));
     kind = 'crit';
   } else if (outcome === 'block') {
     amount = Math.round(amount * BLOCK_FACTOR);
@@ -1101,6 +1331,7 @@ function strike(match: Match, ai: 0 | 1, ti: 0 | 1, blow: Blow, dir: number, spa
     spark(match, sparkX, sparkZ, outcome === 'block' ? 'block' : outcome === 'crit' ? 'crit' : blow.roll === 'spell' ? 'spell' : 'hit');
     if (target.airborne) target.knockdownOnLand = true;
     damage(match, ai, ti, amount, kind, a?.id);
+    if (rules.hitstun.light > 0) stagger(match, ai, ti, blow, outcome === 'crit', reeling);
   }
 
   // What the hit earns the attacker.
@@ -1139,6 +1370,58 @@ function strike(match: Match, ai: 0 | 1, ti: 0 | 1, blow: Blow, dir: number, spa
   }
   if (a.heal > 0 && a.kind !== 'self') heal(match, ai, a.heal);
   return amount;
+}
+
+/** Can `ti` take a blow from side `from` on the guard? Under KOMBAT: on the ground, holding away from it, free to act or already blocking. */
+function guarding(match: Match, ti: 0 | 1, from: 1 | -1 | undefined): boolean {
+  const t = match.fighters[ti];
+  if (!rulesOf(match).block || from === undefined || match.phase !== 'fight') return false;
+  if (t.airborne || t.hitstun > 0 || t.held !== -from) return false;
+  if (t.state === 'block') return true;
+  return t.lag === 0 && (t.state === 'idle' || t.state === 'walk' || t.state === 'back' || t.state === 'hit' || t.state === 'dodge' || t.state === 'parry');
+}
+
+/** A blow on the guard: a fifth of it gets through, the blocker is held a few frames in the block, and nothing else of it lands. */
+function blocked(match: Match, ai: 0 | 1, ti: 0 | 1, blow: Blow, dir: number, sparkX: number, sparkZ: number): number {
+  const attacker = match.fighters[ai];
+  const target = match.fighters[ti];
+  const guard = rulesOf(match).block!;
+  const chip = blow.damage > 0 ? Math.max(1, Math.round(blow.damage * guard.chip)) : 0;
+  target.vx = dir * blow.pushback * 0.5;
+  target.hitstop = Math.max(target.hitstop, blow.hitstop);
+  attacker.hitstop = Math.max(attacker.hitstop, blow.hitstop);
+  spark(match, sparkX, sparkZ, 'block');
+  if (blow.ability || blow.roll === 'ranged') spellEvent(match, ai, blow.ability ? blow.ability.id : 'shot', 'impact', sparkX, sparkZ);
+  play(target, 'block', 'parry');
+  target.lag = guard.stun;
+  if (chip > 0) damage(match, ai, ti, chip, 'block');
+  else text(match, ti, 'block', 'BLOCK', ai);
+  return Math.max(chip, 1);
+}
+
+/**
+ * KOMBAT's hitstun: a blow that lands holds the victim out of action, so the next one combos;
+ * the string's last knocks them down. Counts the combo and floats it over the attacker.
+ */
+function stagger(match: Match, ai: 0 | 1, ti: 0 | 1, blow: Blow, crit: boolean, reeling: boolean): void {
+  const target = match.fighters[ti];
+  const rules = rulesOf(match);
+  if (target.state === 'death' || target.state === 'dazed') return;
+  target.hitstun = blow.heavy ? rules.hitstun.heavy : rules.hitstun.light;
+  target.chainPress = false;
+  target.chainT = 0;
+  target.queued = false;
+  if (blow.knockdown) {
+    if (target.airborne) target.knockdownOnLand = true;
+    else play(target, 'knockdown', 'knockdown');
+  } else if (!target.airborne && target.state !== 'knockdown' && target.state !== 'stun' && target.state !== 'fear' && target.state !== 'dash' && target.state !== 'finisher') {
+    play(target, 'hit', crit ? 'crit' : 'hit');
+  }
+  const count = reeling ? match.combo[ai] + 1 : 1;
+  match.combo[ai] = count;
+  if (count < 2) return;
+  match.texts = match.texts.filter((t) => !(t.kind === 'combo' && t.side === ai));
+  text(match, ai, 'combo', `${count} HITS`, ai);
 }
 
 /** The knockout: slow motion, the round goes to `winner`. */
@@ -1230,6 +1513,7 @@ function startFatality(match: Match, winner: 0 | 1): void {
   w.airVx = 0;
   w.airborne = false;
   w.knockdownOnLand = false;
+  w.airAttack = false;
   w.hitstop = 0;
   w.cast = undefined;
   w.dash = undefined;
@@ -1359,8 +1643,8 @@ function attacks(match: Match, i: 0 | 1): void {
   const at = f.t / durationOf(match, i);
 
   if (f.state === 'attack') {
-    const hit = moveOf(match, i, f.move).hit;
-    if (!hit || at < hit.from) return;
+    const hit = rulesOf(match).swingHit;
+    if (at < hit.from) return;
     if (table.weapon.ranged) {
       f.hitDone = true;
       launch(match, i, -1, table.weapon.damage);
@@ -1370,9 +1654,30 @@ function attacks(match: Match, i: 0 | 1): void {
       f.hitDone = true;
       return;
     }
-    if (!inReach(match, f, target, table.weapon.range + REACH_SLACK, false)) return;
+    // A jumping attack reaches down: a target ahead, or just under, no higher than the attacker.
+    if (f.airAttack) {
+      const ahead = f.facing * (target.x - f.x);
+      if (ahead < -AIR_UNDER || ahead > table.weapon.range + REACH_SLACK || target.z > f.z + 0.5) return;
+    } else if (!inReach(match, f, target, table.weapon.range + REACH_SLACK, false)) {
+      return;
+    }
     f.hitDone = true;
-    strike(match, i, ti, { damage: table.weapon.damage, roll: 'melee', ability: undefined, pushback: PUSHBACK.swing, hitstop: 8 }, f.facing, target.x - f.facing * 0.3, 1.3 + target.z);
+    // The string's blows hit as hard as their share of the weapon; the last pushes twice as far and knocks down.
+    const rules = rulesOf(match);
+    const last = rules.chain.length > 1 && f.chain === rules.chain.length - 1;
+    const blow: Blow = {
+      // Unrounded: the blow is rolled in its range and rounded once, as every other blow is.
+      damage: table.weapon.damage * rules.chain[f.chain]!,
+      roll: 'melee',
+      ability: undefined,
+      pushback: PUSHBACK.swing * (last ? rules.chainEnd.pushback : 1),
+      hitstop: rules.swingHitstop,
+      from: sideOf(target, f.x),
+      contact: true,
+      heavy: last,
+      knockdown: last && rules.chainEnd.knockdown,
+    };
+    f.connected = strike(match, i, ti, blow, f.facing, target.x - f.facing * 0.3, 1.3 + target.z) > 0;
     return;
   }
 
@@ -1395,7 +1700,7 @@ function attacks(match: Match, i: 0 | 1): void {
   if (!inReach(match, f, target, a.range + REACH_SLACK, a.both)) return;
   f.hitDone = true;
   const dir = target.x >= f.x ? 1 : -1;
-  strike(match, i, ti, { damage: a.damage, roll: 'melee', ability: a, pushback: PUSHBACK.ability, hitstop: 12 }, dir, target.x - dir * 0.3, 1.3 + target.z);
+  strike(match, i, ti, { damage: a.damage, roll: 'melee', ability: a, pushback: PUSHBACK.ability, hitstop: 12, from: sideOf(target, f.x), contact: true, heavy: true }, dir, target.x - dir * 0.3, 1.3 + target.z);
 }
 
 function projectiles(match: Match): void {
@@ -1409,7 +1714,7 @@ function projectiles(match: Match): void {
     if (!gone && target.state !== 'death' && Math.abs(target.x - p.x) < PROJECTILE_HIT && target.z < 1.0) {
       const a = p.ability >= 0 ? abilityOf(match, p.owner, p.ability) : undefined;
       const dir = Math.sign(p.vx) || 1;
-      strike(match, p.owner, ti, { damage: p.damage, roll: a ? 'spell' : 'ranged', ability: a, pushback: a ? PUSHBACK.bolt : PUSHBACK.spell, hitstop: 5 }, dir, p.x, p.z);
+      strike(match, p.owner, ti, { damage: p.damage, roll: a ? 'spell' : 'ranged', ability: a, pushback: a ? PUSHBACK.bolt : PUSHBACK.spell, hitstop: 5, from: dir > 0 ? -1 : 1 }, dir, p.x, p.z);
       gone = true;
     }
     if (!gone) alive.push(p);
@@ -1436,6 +1741,8 @@ function physics(match: Match): void {
         f.vz = 0;
         f.airVx = 0;
         f.airborne = false;
+        const attacked = f.airAttack;
+        f.airAttack = false;
         if (f.state === 'death') {
           // Killed in the air: they land dead, not knocked down to get up again.
           f.knockdownOnLand = false;
@@ -1443,6 +1750,10 @@ function physics(match: Match): void {
           f.knockdownOnLand = false;
           if (f.stunT > 0) play(f, 'stun', 'dazed');
           else play(f, 'knockdown', 'knockdown');
+        } else if (attacked) {
+          // Out of a jumping attack the landing takes a moment to recover from.
+          play(f, 'idle', 'jumpEnd');
+          f.lag = rulesOf(match).airAttack?.recover ?? 0;
         } else if (f.state === 'jump') {
           play(f, 'idle', 'jumpEnd');
         }
@@ -1495,6 +1806,7 @@ function checkFinish(match: Match): void {
   l.airVx = 0;
   l.airborne = false;
   l.knockdownOnLand = false;
+  l.airAttack = false;
   l.hitstop = 0;
   l.cast = undefined;
   l.dash = undefined;
@@ -1516,7 +1828,10 @@ function checkFinish(match: Match): void {
   w.buffered = -1;
   w.bufferedT = 0;
   w.queued = false;
-  if (w.state === 'stun' || w.state === 'fear' || w.state === 'cast' || w.state === 'dash') play(w, 'idle', 'idle');
+  w.hitstun = 0;
+  w.lag = 0;
+  w.dashWant = 0;
+  if (w.state === 'stun' || w.state === 'fear' || w.state === 'cast' || w.state === 'dash' || w.state === 'run' || w.state === 'backdash') play(w, 'idle', 'idle');
   match.projectiles.length = 0;
   match.roundWinner = winner;
   // The sequence starts clean: a key held through the knockdown is not a press.
@@ -1621,7 +1936,7 @@ export function tick(match: Match, inputs: [Inputs, Inputs]): void {
     let given = acting ? inputs[i] : NO_INPUTS;
     if (match.phase === 'finish' && match.sequence && i === match.roundWinner) given = readSequence(match, i, given);
     // (3) The attack key and ability presses are read even when frozen, so a tap is never lost.
-    readKeys(f, given);
+    readKeys(match, i, given);
     // Hitstop freezes the fighter.
     if (f.hitstop > 0) {
       f.hitstop--;
@@ -1629,6 +1944,9 @@ export function tick(match: Match, inputs: [Inputs, Inputs]): void {
     }
     // The fatality poses both fighters itself.
     if (match.phase === 'fatality') continue;
+    // Hitstun and block stun run out; with the hitstun goes the combo against this fighter.
+    if (f.hitstun > 0 && --f.hitstun === 0) match.combo[other(i)] = 0;
+    if (f.lag > 0) f.lag--;
     // (4) Inputs only while fighting.
     applyInputs(match, i, given);
     // (5) Move clock and transitions.

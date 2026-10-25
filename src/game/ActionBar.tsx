@@ -107,6 +107,13 @@ export const GLYPHS = {
       <path d="M12 8l-8 8 8 8 2.5-2.5L9 16l5.5-5.5zM20 8l8 8-8 8-2.5-2.5L23 16l-5.5-5.5z" fill="currentColor" />
     </svg>
   ),
+  globe: (
+    <svg viewBox="0 0 32 32" aria-hidden="true">
+      <circle cx="16" cy="16" r="12" fill="none" stroke="currentColor" stroke-width="2.5" />
+      <ellipse cx="16" cy="16" rx="5" ry="12" fill="none" stroke="currentColor" stroke-width="2" />
+      <path d="M4.5 12h23M4.5 20h23" stroke="currentColor" stroke-width="2" />
+    </svg>
+  ),
   gear: (
     <svg viewBox="0 0 32 32" aria-hidden="true">
       <path

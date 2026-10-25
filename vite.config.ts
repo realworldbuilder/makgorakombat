@@ -1,5 +1,8 @@
 import preact from '@preact/preset-vite';
 import { execSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 
@@ -18,15 +21,33 @@ process.env.VITE_BUILD ??= (() => {
   }
 })();
 
+// The online version: a fingerprint of the code two machines must share to fight, the engine and the
+// wire. Any change to them makes a new one, so a page left open from before a deploy is told to reload
+// before the fight instead of parting from the other on a DESYNC; a change anywhere else leaves it be.
+process.env.VITE_NET_VERSION ??= (() => {
+  const hash = createHash('sha256');
+  const walk = (dir: string): string[] =>
+    readdirSync(dir, { withFileTypes: true })
+      .flatMap((entry) => (entry.isDirectory() ? walk(join(dir, entry.name)) : [join(dir, entry.name)]))
+      .sort();
+  for (const file of [...walk('src/engine'), ...walk('src/game/net')]) {
+    hash.update(file);
+    hash.update(readFileSync(file));
+  }
+  return hash.digest('hex').slice(0, 10);
+})();
+
 export default defineConfig({
-  // Served from https://realworldbuilder.github.io/makgorakombat/
-  base: '/makgorakombat/',
+  // Served from https://realworldbuilder.github.io/makgorakombat/; VITE_BASE=/ for a site of its own
+  // (pnpm run deploy:site, https://makgora.clawdioslave.com/).
+  base: process.env.VITE_BASE ?? '/makgorakombat/',
   plugins: [preact()],
   worker: { format: 'es' },
   // Only the game's own page is scanned: the submodule's pages pull in things the game does not use.
   optimizeDeps: { entries: ['index.html'] },
   resolve: { alias: { '@mogshot': mogshot } },
-  server: { fs: { allow: ['.', mogshot] } },
+  // Other checkouts of this repository under .worktrees must not reload the page: Vite watches the whole root.
+  server: { fs: { allow: ['.', mogshot] }, watch: { ignored: ['**/.worktrees/**'] } },
   test: {
     include: ['test/**/*.test.ts'],
     alias: { '@mogshot': mogshot },

@@ -1,0 +1,16 @@
+{
+  "$schema": "../relay/node_modules/wrangler/config-schema.json",
+  // The game on a site of its own, https://makgora.clawdioslave.com/: the built page and its
+  // files as static assets, no code. Built with VITE_BASE=/ and deployed by `pnpm run deploy:site`
+  // from the repository's root; the relay in ../relay is a Worker of its own.
+  "name": "makgora",
+  "compatibility_date": "2026-10-20",
+  "workers_dev": true,
+  "preview_urls": false,
+  "routes": [{ "pattern": "makgora.clawdioslave.com", "custom_domain": true }],
+  "assets": {
+    "directory": "../dist",
+    // Any path that is not a file is the page.
+    "not_found_handling": "single-page-application"
+  }
+}

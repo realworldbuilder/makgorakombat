@@ -1,17 +1,20 @@
 import { BRAND } from '../engine/brand';
 import type { FloatingText, Match } from '../engine/engine';
-import { directionOf, type FatalityEffect, impactFrame, type SequenceToken, STEP_FRAMES } from '../engine/fatalities';
+import { type Beat, directionOf, impactFrame, type SequenceToken, STEP_FRAMES } from '../engine/fatalities';
 import { actionLabel, type InputSource } from '../engine/input';
 import { FINISH_FRAMES, HP, HUMAN_HEAD, ROUND_FRAMES } from '../engine/stage';
+import { ANCHOR, ANCHORS, BOLTS, boltAt, FatalityFx, jitter, type Rig, SKY } from './fatalityFx';
 import { type AnchorAt, ATTACH } from './fx';
-import { drawSpells } from './fx2d';
+import { drawSpells, lightning } from './fx2d';
+import { drawParticles, type View } from './particles';
 
 /*
  * What is drawn over the ring and belongs to the world: the nameplates with their
  * slivers of health, cast bars and stun stars, the hit sparks, the spells in flight, the
  * numbers and words that float off a hit, and the words that slam in (ROUND 1, FIGHT!, K.O.);
  * during the finish the fatality's key sequence on the winner's side, and during the fatality
- * itself the class's effect over the pair, a flash at the blow, letterbox bars and a red vignette.
+ * itself the class's effect over the pair (particles from fatalityFx.ts, with the few shapes that
+ * still read best drawn whole), a flash at the blow, letterbox bars and a red vignette.
  * The unit frames, action bars and clock are the DOM layer's (ui/FightUi.tsx). Plain 2D canvas,
  * redrawn each frame.
  */
@@ -35,6 +38,8 @@ export interface HudOptions {
   debug?: string;
   /** What each player plays with, for the sequence prompt's key labels; the keyboard by default. */
   sources?: [InputSource, InputSource];
+  /** Whose keys each fighter's prompt shows: its own player's by default; online, both are this keyboard's player 1. */
+  keys?: [0 | 1, 0 | 1];
   /** The fighters' attachment points this frame (hands, chest), for the spells to start and land on. */
   anchor?: AnchorAt;
   /** Each fighter's head, standing, in yards above the feet at its own size; a human's when not given. */
@@ -102,9 +107,9 @@ export function drawHud(ctx: CanvasRenderingContext2D, width: number, height: nu
   nameplates(ctx, match, names, at, bodies);
   sparks(ctx, match, at, bodies);
   drawSpells(ctx, match, at, options.anchor ?? (() => undefined));
-  fatalityEffects(ctx, w, h, match, at, bodies);
+  fatalityEffects(ctx, match, at, bodies, options.anchor ?? (() => undefined));
   floatingTexts(ctx, match, at, human, bodies, w);
-  sequencePrompt(ctx, w, h, match, sources);
+  sequencePrompt(ctx, w, h, match, sources, options.keys ?? [0, 1]);
   cinematic(ctx, w, h, match);
   banner(ctx, w, h, match);
 
@@ -312,6 +317,8 @@ function styleOf(text: FloatingText, human: [boolean, boolean]): TextStyle {
       return { size: 18, colour: '#ffb347', font: SERIF, word: true };
     case 'info':
       return { size: 13, colour: '#ff8a8a', font: SERIF, word: true };
+    case 'combo':
+      return { size: 24, colour: GOLD, font: SERIF, word: true };
   }
 }
 
@@ -430,12 +437,6 @@ function banner(ctx: CanvasRenderingContext2D, w: number, h: number, match: Matc
 
 type At = (p: readonly [number, number, number]) => [number, number] | undefined;
 
-/** A repeatable jitter in [0, 1) from an integer, so effects flicker the same way on every frame count. */
-function jitter(n: number): number {
-  const x = Math.sin(n * 12.9898) * 43758.5453;
-  return x - Math.floor(x);
-}
-
 /** The glyph for a key of the sequence: an arrow for a direction the way the winner faces, else the player's key. */
 function glyphOf(token: SequenceToken, facing: 1 | -1, player: 0 | 1, source: InputSource): string {
   const direction = directionOf(token, facing);
@@ -449,7 +450,7 @@ function glyphOf(token: SequenceToken, facing: 1 | -1, player: 0 | 1, source: In
  * its 1.5 s down, every slot red while a wrong key's penalty runs, and a bar for the finish
  * window itself. The computer's sequence shows too, with player 2's keys.
  */
-function sequencePrompt(ctx: CanvasRenderingContext2D, w: number, h: number, match: Match, sources: [InputSource, InputSource]): void {
+function sequencePrompt(ctx: CanvasRenderingContext2D, w: number, h: number, match: Match, sources: [InputSource, InputSource], keys: [0 | 1, 0 | 1]): void {
   const s = match.sequence;
   const winner = match.roundWinner;
   if (match.phase !== 'finish' || !s || winner === undefined) return;
@@ -496,7 +497,7 @@ function sequencePrompt(ctx: CanvasRenderingContext2D, w: number, h: number, mat
     ctx.lineWidth = current ? 3 : 2;
     ctx.strokeStyle = wrong ? RED : lit ? '#fff1b0' : current ? `rgba(255, 209, 0, ${0.45 + 0.55 * pulse})` : 'rgba(244, 241, 230, 0.4)';
     ctx.stroke();
-    const label = glyphOf(token, fighter.facing, winner, sources[winner]);
+    const label = glyphOf(token, fighter.facing, keys[winner], sources[winner]);
     const arrow = label === '←' || label === '→';
     ctx.font = arrow ? 'bold 34px sans-serif' : `${label.length > 2 ? 16 : label.length > 1 ? 24 : 32}px ${HEAVY}`;
     ctx.fillStyle = lit ? '#2a0606' : wrong ? '#ffb0b0' : BONE;
@@ -562,286 +563,164 @@ function cinematic(ctx: CanvasRenderingContext2D, w: number, h: number, match: M
   ctx.fillRect(0, h - bar, w, bar);
 }
 
-/** The beat's effect, over the pair, in the class's colour. */
-function fatalityEffects(ctx: CanvasRenderingContext2D, w: number, h: number, match: Match, at: At, bodies: Bodies): void {
-  const run = match.fatality;
-  const winner = match.roundWinner;
-  if (!run || winner === undefined || match.phase !== 'fatality') return;
-  const spec = match.tables[winner].fatality.spec;
-  const beat = spec.beats[run.beat];
-  if (!beat?.effect) return;
-  const lf = match.fighters[winner === 0 ? 1 : 0];
-  const loser = winner === 0 ? 1 : 0;
-  // Each spot on the body itself: the eyes where the posed head is (Eye Beam, fire from the mouth), the chests, the top of the loser's head.
-  const spots = {
-    winner: at(bodies.chest(winner)),
-    head: at(bodies.eyes(winner)),
-    loser: at(bodies.chest(loser)),
-    feet: at([lf.x, 0, 0]),
-    top: at([lf.x, 0, lf.z + bodies.head(loser) + 0.3 * bodies.size(loser)]),
-  };
-  if (!spots.winner || !spots.head || !spots.loser || !spots.feet || !spots.top) return;
-  effect(ctx, w, h, beat.effect, spec.colour, run.t / beat.frames, match.frame, spots as Record<keyof typeof spots, [number, number]>);
-}
+/** The fatality's particles: the HUD's one pool, kept in step with the scene, and where its anchors are this frame. */
+const scene = new FatalityFx();
+const view: View = { spots: new Float64Array(ANCHORS * 2), dir: 1, yard: 60, tick: 0 };
 
-interface Spots {
-  winner: [number, number];
-  head: [number, number];
-  loser: [number, number];
-  feet: [number, number];
-  top: [number, number];
+/** Ticks of the scene so far: from the fatality's first, on through the knockout's slow motion after it while what it threw settles. */
+function sceneTick(match: Match): number | undefined {
+  const run = match.fatality;
+  if (!run) return undefined;
+  if (match.phase === 'fatality') return run.total;
+  if (match.phase === 'ko') return run.total + match.phaseT - 1;
+  return undefined;
 }
 
 /**
- * The effects: a shockwave from the loser's feet, lightning from the sky, frost shards that grow
- * and then shatter, shadow tendrils and smoke, a fel beam from the winner's eyes, blood off the
- * loser, moonlight and falling stars, a pillar of light, a volley of arrows, a cone of fire.
- * `s` is how far through the beat; `frame` drives the flicker. All in HUD units.
+ * The fatality over the pair, in the class's colours: what still reads best drawn whole (the
+ * bolts, the beam, the ice, a pillar of light), and the particles the scene throws over it.
  */
-function effect(ctx: CanvasRenderingContext2D, w: number, h: number, kind: FatalityEffect, colour: string, s: number, frame: number, p: Spots): void {
+function fatalityEffects(ctx: CanvasRenderingContext2D, match: Match, at: At, bodies: Bodies, anchor: AnchorAt): void {
+  const run = match.fatality;
+  const winner = match.roundWinner;
+  const T = sceneTick(match);
+  if (!run || winner === undefined || T === undefined) return;
+  const loser = winner === 0 ? 1 : 0;
+  const spec = match.tables[winner].fatality.spec;
+  const wf = match.fighters[winner];
+  const lf = match.fighters[loser];
+  const rig: Rig = { chest: 1.3 * bodies.size(loser), top: bodies.head(loser) + 0.3 * bodies.size(loser), winnerChest: 1.3 * bodies.size(winner) };
+  scene.advance(spec, match.frame - T, rig, T);
+  if (match.phase === 'fatality') scene.note(run.beat, run.fromX);
+
+  const feet = at([lf.x, 0, 0]);
+  const up = at([lf.x, 0, 1]);
+  const spots = [
+    at(bodies.chest(winner)),
+    at(bodies.eyes(winner)),
+    at(anchor(winner, ATTACH.rightHand) ?? bodies.chest(winner)),
+    at([wf.x, 0, 0]),
+    at(bodies.chest(loser)),
+    feet,
+  ];
+  for (let k = 0; k < ANCHORS - ANCHOR.from; k++) spots.push(at([scene.fromOf(k, run.fromX), 0, 0]));
+  if (!feet || !up) return;
+  for (let i = 0; i < spots.length; i++) {
+    const p = spots[i];
+    if (!p) return;
+    view.spots[i * 2] = p[0];
+    view.spots[i * 2 + 1] = p[1];
+  }
+  view.yard = Math.max(8, Math.abs(feet[1] - up[1]));
+  view.dir = feet[0] >= view.spots[ANCHOR.winnerFeet * 2]! ? 1 : -1;
+  view.tick = T;
+
+  const beat = match.phase === 'fatality' ? spec.beats[run.beat] : undefined;
+  if (beat?.effect) effect(ctx, spec.id, beat, run.t, match.frame, spec.colour, rig, view, run.beat);
+  drawParticles(ctx, scene.pool, view);
+}
+
+/**
+ * What is still drawn whole under the particles: Thunderstorm's bolts out of the sky onto the
+ * loser's head, the fel beam from the demon hunter's eyes, the mage's ice growing out of the
+ * loser until it shatters, and a faint column of light for the paladin's and the druid's
+ * pillars. Everything else is particles now. `t` is the tick in the beat; all in HUD units.
+ */
+function effect(ctx: CanvasRenderingContext2D, id: string, beat: Beat, t: number, frame: number, colour: string, rig: Rig, v: View, k: number): void {
   const rgba = (a: number): string => `rgba(${colour}, ${a})`;
-  const disc = (x: number, y: number, r: number, inner: string, outer: string): void => {
-    const glow = ctx.createRadialGradient(x, y, 0, x, y, r);
-    glow.addColorStop(0, inner);
-    glow.addColorStop(1, outer);
-    ctx.fillStyle = glow;
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fill();
-  };
-  const line = (ax: number, ay: number, bx: number, by: number): void => {
-    ctx.beginPath();
-    ctx.moveTo(ax, ay);
-    ctx.lineTo(bx, by);
-    ctx.stroke();
-  };
+  const s = t / beat.frames;
+  const yard = v.yard;
+  // The shapes below were first drawn for the camera pushed in, at about 200 units a yard.
+  const scale = yard / 200;
+  const fx = v.spots[ANCHOR.feet * 2]!;
+  const fy = v.spots[ANCHOR.feet * 2 + 1]!;
+  const hit = impactFrame(beat);
   ctx.save();
-  // Light adds up; blood and ice are things, drawn over the scene.
-  ctx.globalCompositeOperation = kind === 'blood' || kind === 'frost' || kind === 'shatter' ? 'source-over' : 'lighter';
+  ctx.globalCompositeOperation = 'lighter';
   ctx.lineCap = 'round';
-  switch (kind) {
-    case 'shockwave': {
-      for (let i = 0; i < 3; i++) {
-        const ss = Math.min(1, s * 1.4 - i * 0.15);
-        if (ss <= 0) continue;
-        const rx = 30 + 320 * ss;
-        ctx.strokeStyle = rgba(0.9 * (1 - ss));
-        ctx.lineWidth = 8 * (1 - ss) + 1;
-        ctx.beginPath();
-        ctx.ellipse(p.feet[0], p.feet[1], rx, rx * 0.28, 0, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-      disc(p.loser[0], p.loser[1], 90, rgba(0.5 * (1 - s)), rgba(0));
-      break;
-    }
+  switch (beat.effect) {
     case 'lightning': {
-      const seed = Math.floor(frame / 3);
-      const on = frame % 14 < 8;
-      for (let b = 0; b < 3; b++) {
-        const alpha = (on ? 1 : 0.25) * (b === 0 ? 1 : 0.6);
-        const x0 = p.top[0] + (jitter(seed + b * 17) - 0.5) * 260;
-        const steps = 9;
-        const path: [number, number][] = [];
-        for (let k = 0; k <= steps; k++) {
-          const t = k / steps;
-          const wobble = k === 0 || k === steps ? 0 : (jitter(seed * 7 + b * 31 + k) - 0.5) * 70;
-          path.push([x0 + (p.top[0] - x0) * t + wobble, -10 + (p.top[1] + 10) * t]);
-        }
-        for (const [width, a] of [[9, 0.35 * alpha], [3.5, 0.8 * alpha], [1.5, alpha]] as const) {
-          ctx.strokeStyle = width > 2 ? rgba(a) : `rgba(255, 255, 255, ${a})`;
-          ctx.lineWidth = width;
-          ctx.beginPath();
-          path.forEach(([x, y], k) => (k === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)));
-          ctx.stroke();
-        }
-      }
-      disc(p.top[0], p.top[1], 90, rgba(on ? 0.7 : 0.2), rgba(0));
-      break;
-    }
-    case 'frost':
-    case 'shatter': {
-      const grow = kind === 'frost' ? Math.min(1, s * 1.5) : 1;
-      const fly = kind === 'shatter' ? s : 0;
-      const [cx, cy] = p.loser;
-      ctx.globalCompositeOperation = 'lighter';
-      disc(cx, cy, 120 * grow, rgba(0.45 * (1 - fly)), rgba(0));
-      ctx.globalCompositeOperation = 'source-over';
-      for (let i = 0; i < 14; i++) {
-        const a = (i / 14) * Math.PI * 2 + jitter(i) * 0.4;
-        const len = (60 + 90 * jitter(i + 5)) * grow;
-        const base = 14 + 10 * jitter(i + 9);
-        const off = fly * 260 * (0.6 + jitter(i + 3));
-        const ox = cx + Math.cos(a) * off;
-        const oy = cy + Math.sin(a) * off + fly * fly * 300;
-        const tx = ox + Math.cos(a) * len;
-        const ty = oy + Math.sin(a) * len;
-        const nx = -Math.sin(a) * base / 2;
-        const ny = Math.cos(a) * base / 2;
-        const ice = ctx.createLinearGradient(ox, oy, tx, ty);
-        ice.addColorStop(0, `rgba(200, 236, 255, ${0.95 * (1 - fly)})`);
-        ice.addColorStop(1, `rgba(255, 255, 255, ${0.6 * (1 - fly)})`);
-        ctx.fillStyle = ice;
-        ctx.strokeStyle = `rgba(40, 110, 190, ${0.9 * (1 - fly)})`;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(tx, ty);
-        ctx.lineTo(ox + nx, oy + ny);
-        ctx.lineTo(ox - nx, oy - ny);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-      }
-      break;
-    }
-    case 'shadow': {
-      const [ax, ay] = p.winner;
-      const [bx, by] = p.loser;
-      for (let i = 0; i < 6; i++) {
-        const wobble = Math.sin(frame * 0.18 + i * 1.7) * (40 + i * 10);
-        const mx = (ax + bx) / 2 + wobble * 0.3;
-        const my = (ay + by) / 2 + wobble - 30;
-        ctx.strokeStyle = i % 2 ? rgba(0.75) : 'rgba(40, 0, 60, 0.85)';
-        ctx.lineWidth = 2 + (i % 3) * 1.5;
-        ctx.beginPath();
-        ctx.moveTo(ax, ay);
-        ctx.quadraticCurveTo(mx, my, bx + Math.sin(frame * 0.3 + i) * 12, by + Math.cos(frame * 0.27 + i) * 18);
-        ctx.stroke();
-      }
-      for (let i = 0; i < 5; i++) {
-        const t = (frame * 0.02 + i / 5) % 1;
-        disc(bx + Math.sin(i * 2.1 + frame * 0.05) * 30, by - 60 * t, 20 + 40 * t, rgba(0.35 * (1 - t)), rgba(0));
+      const top: [number, number] = [fx, fy - rig.top * yard];
+      for (let b = 0; b < BOLTS; b++) {
+        const bolt = boltAt(frame, b);
+        const sky: [number, number] = [fx + v.dir * bolt.x * yard, fy - SKY * yard];
+        lightning(ctx, sky, top, Math.floor(frame / 3) * 31 + b, colour, (bolt.on ? 1 : 0.25) * (b === 0 ? 1 : 0.6), 2.4 * scale, 3);
       }
       break;
     }
     case 'fel': {
-      const [ax, ay] = p.head;
-      const [bx, by] = p.loser;
+      const ax = v.spots[ANCHOR.eyes * 2]!;
+      const ay = v.spots[ANCHOR.eyes * 2 + 1]!;
+      const bx = v.spots[ANCHOR.loser * 2]!;
+      const by = v.spots[ANCHOR.loser * 2 + 1]!;
+      // Only the beam itself; the rush has no beam.
+      if (beat.motion) break;
       const pulse = 0.85 + 0.15 * Math.sin(frame * 0.6);
-      for (const [width, a, white] of [[34, 0.22, false], [16, 0.55, false], [5, 0.95, true]] as const) {
+      for (const [width, a, white] of [[46, 0.22, false], [20, 0.5, false], [6, 0.95, true]] as const) {
         ctx.strokeStyle = white ? 'rgba(235, 255, 220, 0.95)' : rgba(a);
-        ctx.lineWidth = width * pulse;
-        line(ax, ay, bx, by);
+        ctx.lineWidth = width * pulse * scale;
+        ctx.beginPath();
+        ctx.moveTo(ax, ay);
+        ctx.lineTo(bx, by);
+        ctx.stroke();
       }
-      disc(bx, by, 80, rgba(0.6), rgba(0));
-      disc(ax, ay, 30, rgba(0.8), rgba(0));
       break;
     }
-    case 'blood': {
-      const [cx, cy] = p.loser;
-      for (let i = 0; i < 24; i++) {
-        const t = s - jitter(i + 1) * 0.5;
-        if (t < 0) continue;
-        const a = -Math.PI / 2 + (jitter(i + 7) - 0.5) * 2.4;
-        const v = 160 + 260 * jitter(i + 13);
-        const x = cx + Math.cos(a) * v * t;
-        const y = cy + Math.sin(a) * v * t + 900 * t * t;
-        const r = 4 + 6 * jitter(i + 2);
-        ctx.fillStyle = `rgba(170, 8, 18, ${Math.max(0, 1 - t * 1.5)})`;
+    case 'frost':
+    case 'shatter': {
+      // The mage's ice: grows over the first beat, holds, and is gone the moment it shatters into shards.
+      if (id !== 'mage' || (beat.effect === 'shatter' && t >= hit)) break;
+      const grow = k === 0 ? Math.min(1, s * 1.5) : 1;
+      const cx = fx;
+      const cy = fy - rig.chest * yard;
+      ctx.globalCompositeOperation = 'source-over';
+      for (let i = 0; i < 14; i++) {
+        const a = (i / 14) * Math.PI * 2 + jitter(i) * 0.4;
+        const len = (60 + 90 * jitter(i + 5)) * grow * scale;
+        const base = (14 + 10 * jitter(i + 9)) * scale;
+        const tx = cx + Math.cos(a) * len;
+        const ty = cy + Math.sin(a) * len;
+        const nx = (-Math.sin(a) * base) / 2;
+        const ny = (Math.cos(a) * base) / 2;
+        const ice = ctx.createLinearGradient(cx, cy, tx, ty);
+        ice.addColorStop(0, 'rgba(200, 236, 255, 0.9)');
+        ice.addColorStop(1, 'rgba(255, 255, 255, 0.55)');
+        ctx.fillStyle = ice;
+        ctx.strokeStyle = 'rgba(40, 110, 190, 0.9)';
+        ctx.lineWidth = 2;
         ctx.beginPath();
-        // A drop: round, drawn out along its flight.
-        ctx.ellipse(x, y, r, r * 1.6, a + Math.PI / 2, 0, Math.PI * 2);
+        ctx.moveTo(tx, ty);
+        ctx.lineTo(cx + nx, cy + ny);
+        ctx.lineTo(cx - nx, cy - ny);
+        ctx.closePath();
         ctx.fill();
+        ctx.stroke();
       }
       break;
     }
     case 'moon':
     case 'light': {
-      const [fx, fy] = p.feet;
-      const half = kind === 'moon' ? 110 : 90;
+      // A faint column the motes and stars fall through, fading in at the beat's start and out after its blow.
+      const fade = Math.min(1, s * 4) * (beat.impact && t > hit ? Math.max(0, 1 - (t - hit) / 20) : 1);
+      if (fade <= 0) break;
+      const half = (beat.effect === 'moon' ? 100 : 80) * scale;
       const column = ctx.createLinearGradient(fx - half, 0, fx + half, 0);
       column.addColorStop(0, rgba(0));
-      column.addColorStop(0.5, rgba(0.35));
+      column.addColorStop(0.5, rgba(0.2 * fade));
       column.addColorStop(1, rgba(0));
       ctx.fillStyle = column;
       ctx.fillRect(fx - half, 0, half * 2, fy);
-      const core = ctx.createLinearGradient(fx - 25, 0, fx + 25, 0);
+      const core = ctx.createLinearGradient(fx - half / 4, 0, fx + half / 4, 0);
       core.addColorStop(0, rgba(0));
-      core.addColorStop(0.5, 'rgba(255, 255, 255, 0.45)');
+      core.addColorStop(0.5, `rgba(255, 255, 255, ${0.22 * fade})`);
       core.addColorStop(1, rgba(0));
       ctx.fillStyle = core;
-      ctx.fillRect(fx - 25, 0, 50, fy);
-      ctx.fillStyle = rgba(0.4);
-      ctx.beginPath();
-      ctx.ellipse(fx, fy, 95, 24, 0, 0, Math.PI * 2);
-      ctx.fill();
-      if (kind === 'moon') {
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
-        ctx.lineWidth = 2;
-        for (let i = 0; i < 10; i++) {
-          const y = ((frame * 11 + i * 97) % (fy + 80)) - 40;
-          const x = fx + (jitter(i) - 0.5) * 260;
-          line(x, y - 36, x, y);
-        }
-      } else {
-        ctx.fillStyle = rgba(0.16);
-        for (let r = 0; r < 14; r++) {
-          const a = (r / 14) * Math.PI * 2 + frame * 0.01;
-          ctx.beginPath();
-          ctx.moveTo(fx, fy);
-          ctx.lineTo(fx + Math.cos(a) * 460, fy + Math.sin(a) * 460);
-          ctx.lineTo(fx + Math.cos(a + 0.06) * 460, fy + Math.sin(a + 0.06) * 460);
-          ctx.closePath();
-          ctx.fill();
-        }
-      }
+      ctx.fillRect(fx - half / 4, 0, half / 2, fy);
       break;
     }
-    case 'arrows': {
-      const [ax, ay] = p.winner;
-      const [bx, by] = p.loser;
-      const dx = bx - ax;
-      const dy = by - ay;
-      const len = Math.hypot(dx, dy) || 1;
-      for (let i = 0; i < 6; i++) {
-        const t = (s * 4 + i / 6) % 1;
-        const x = ax + dx * t;
-        const y = ay + dy * t - Math.sin(t * Math.PI) * 30 * (jitter(i) - 0.5);
-        ctx.strokeStyle = 'rgba(255, 240, 210, 0.95)';
-        ctx.lineWidth = 2.5;
-        line(x - (dx / len) * 44, y - (dy / len) * 44, x, y);
-        ctx.fillStyle = rgba(1);
-        ctx.beginPath();
-        ctx.arc(x, y, 3, 0, Math.PI * 2);
-        ctx.fill();
-      }
+    default:
       break;
-    }
-    case 'fire': {
-      const [ax, ay] = p.head;
-      const [bx, by] = p.loser;
-      const flicker = 0.9 + 0.2 * Math.sin(frame * 0.7) + 0.1 * Math.sin(frame * 1.9);
-      const dx = bx - ax;
-      const dy = by - ay;
-      const len = Math.hypot(dx, dy) || 1;
-      const nx = -dy / len;
-      const ny = dx / len;
-      const reach = 1.25;
-      for (const [spread, a, col] of [[95, 0.35, '200, 30, 10'], [60, 0.5, colour], [28, 0.65, '255, 240, 150']] as const) {
-        const sp = spread * flicker;
-        const ex = ax + dx * reach;
-        const ey = ay + dy * reach;
-        ctx.fillStyle = `rgba(${col}, ${a})`;
-        ctx.beginPath();
-        ctx.moveTo(ax, ay);
-        ctx.lineTo(ex + nx * sp, ey + ny * sp);
-        ctx.lineTo(ex - nx * sp, ey - ny * sp);
-        ctx.closePath();
-        ctx.fill();
-      }
-      for (let i = 0; i < 14; i++) {
-        const t = (frame * 0.03 + jitter(i)) % 1;
-        const x = ax + dx * t * reach + nx * (jitter(i + 3) - 0.5) * 120 * t;
-        const y = ay + dy * t * reach + ny * (jitter(i + 5) - 0.5) * 120 * t - 40 * t;
-        ctx.fillStyle = rgba(1 - t);
-        ctx.beginPath();
-        ctx.arc(x, y, 2 + 3 * (1 - t), 0, Math.PI * 2);
-        ctx.fill();
-      }
-      break;
-    }
   }
-  void w;
-  void h;
   ctx.restore();
 }
 

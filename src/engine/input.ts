@@ -2,7 +2,8 @@ import { cpuInputs } from './cpu';
 import { type Inputs, type Match, noInputs } from './engine';
 
 export type InputAction = 'left' | 'right' | 'jump' | 'attack' | 'ability1' | 'ability2' | 'ability3';
-export type InputSource = 'keyboard' | 'gamepad' | 'cpu';
+/** 'remote' is the other player of an online match: their inputs come over the wire, through the lockstep, not from here. */
+export type InputSource = 'keyboard' | 'gamepad' | 'cpu' | 'remote';
 
 export type KeyMap = Record<InputAction, readonly string[]>;
 
@@ -248,6 +249,7 @@ export class InputReader {
     if (source === 'cpu') {
       return match ? cpuInputs(match, player) : noInputs();
     }
+    if (source === 'remote') return noInputs();
     const held = source === 'gamepad' ? this.gamepadHeld(player) : this.keyboardHeld(player);
     const previous = this.previous[player];
     const edges = heldNone();
