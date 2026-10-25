@@ -93,6 +93,8 @@ export function Game() {
   // A match the lobby made, while both pages find each other in its room; `found` when the queue made it.
   const [matching, setMatching] = useState<{ name: string; found?: boolean; error?: string }>();
   const matchLink = useRef<Link>(null);
+  /** The lobby's match being met now; given up or replaced, its late callbacks change nothing. */
+  const matchOn = useRef<object>(null);
   // A stable handler: Fight rebuilds the whole match when its props change, and dragging a file
   // across the window re-renders Game (the title's drop state), which must not restart a fight.
   const backToSelect = useCallback(() => {
@@ -226,27 +228,35 @@ export function Game() {
       setShowOnline(false);
       setMatching({ name: match.with.name, found: match.queued });
       matchLink.current = null;
+      const token = {};
+      matchOn.current = token;
       const shown = performance.now();
       let given = false;
       const giveUp = setTimeout(() => {
         given = true;
+        if (matchOn.current !== token) return;
         matchLink.current?.close();
         matchLink.current = null;
         setMatching({ name: match.with.name, error: `${match.with.name} did not come into the room.` });
       }, 20_000);
       void enterRoom(match.code, match.role, product, (link) => {
-        matchLink.current = link;
+        // Given up (or another match came) while the room was still opening: this one is not wanted.
+        if (matchOn.current !== token) link.close();
+        else matchLink.current = link;
       }).then(
         (session) => {
           clearTimeout(giveUp);
-          if (given || matchLink.current !== session.link) {
+          if (given || matchOn.current !== token || matchLink.current !== session.link) {
             session.link.close();
             return;
           }
           // A stranger from the queue: FOUND and their name stay up two seconds before the roster.
           const wait = match.queued ? Math.max(0, FOUND_MS - (performance.now() - shown)) : 0;
           setTimeout(() => {
-            if (matchLink.current !== session.link) return;
+            if (matchOn.current !== token || matchLink.current !== session.link) {
+              session.link.close();
+              return;
+            }
             if (session.link.closed || !session.link.peer) {
               session.link.close();
               setMatching({ name: match.with.name, error: `${match.with.name} left the room.` });
@@ -255,7 +265,7 @@ export function Game() {
         },
         (cause: unknown) => {
           clearTimeout(giveUp);
-          if (!given) setMatching({ name: match.with.name, error: messageOf(cause) });
+          if (!given && matchOn.current === token) setMatching({ name: match.with.name, error: messageOf(cause) });
         },
       );
     });
@@ -263,6 +273,7 @@ export function Game() {
 
   /** The meeting given up or failed: back in the lobby, free; a stranger from the queue who never came puts this page back in it. */
   const endMatching = () => {
+    matchOn.current = null;
     matchLink.current?.close();
     matchLink.current = null;
     const again = matching?.found && matching.error !== undefined;
