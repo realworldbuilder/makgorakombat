@@ -16,7 +16,7 @@ import { LEGENDS, legendTiles, type Tile } from './roster';
 import { loadSaved, type SavedChampion, storeSaved } from './saved';
 import { type OnlinePick, Select, type Source } from './Select';
 import { championOf, decode, encode, type Hello, localize, mismatch, sameStage, stageKeyOf } from './net/handshake';
-import { Lobby, saveName, savedName } from './net/lobby';
+import { Lobby, type LobbyFight, saveName, savedName } from './net/lobby';
 import type { Link } from './net/relay';
 import { VERSION } from './net/version';
 import { Challenge, enterRoom, Matching, Online, type Session, useLobby } from './Online';
@@ -25,6 +25,7 @@ import { loadGameFonts } from './ui/fonts';
 import { FightUi } from './ui/FightUi';
 import { type Stage, stagesFor, type Ground } from './stages';
 import { Versus } from './Versus';
+import { Watch } from './Watch';
 
 /*
  * The screens: the title with the folder drop, CHOOSE YOUR CHAMPION, the VS screen with the
@@ -93,6 +94,17 @@ export function Game() {
   // A match the lobby made, while both pages find each other in its room; `found` when the queue made it.
   const [matching, setMatching] = useState<{ name: string; found?: boolean; error?: string }>();
   const matchLink = useRef<Link>(null);
+  // Somebody else's fight, picked on the panel to watch.
+  const [watching, setWatching] = useState<LobbyFight>();
+  const watchFight = useCallback((fight: LobbyFight) => {
+    setShowOnline(false);
+    setWatching(fight);
+  }, []);
+  /** Done watching: back to the panel it was picked from. */
+  const stopWatching = useCallback(() => {
+    setWatching(undefined);
+    setShowOnline(true);
+  }, []);
   // A stable handler: Fight rebuilds the whole match when its props change, and dragging a file
   // across the window re-renders Game (the title's drop state), which must not restart a fight.
   const backToSelect = useCallback(() => {
@@ -212,8 +224,8 @@ export function Game() {
   const records = useMemo(() => (phase.kind === 'ready' ? phase.records : []), [phase]);
   const product = phase.kind === 'ready' ? phase.opened.info.product : '';
 
-  // The lobby's socket: closed until the roster is up and while a fight is on, busy in an online match.
-  const fighting = screen.kind === 'fight';
+  // The lobby's socket: closed until the roster is up and while a fight is on or watched, busy in an online match.
+  const fighting = screen.kind === 'fight' || watching !== undefined;
   useEffect(() => {
     lobby?.setMode(!loaded || fighting ? 'off' : online ? 'busy' : 'free');
   }, [lobby, loaded, fighting, online]);
@@ -430,9 +442,23 @@ export function Game() {
   if (!loaded) return <Title phase={{ kind: 'opening', message: 'Summoning the roster…' }} dragging={false} onPick={onPick} onCreate={wantCreate} onOnline={wantOnline} />;
 
   // A challenge shows over any screen but a fight, unless this page is already in a match.
-  const challenge = !online && !matching && screen.kind !== 'fight' ? lobbyState.incoming : undefined;
+  const challenge = !online && !matching && screen.kind !== 'fight' && !watching ? lobbyState.incoming : undefined;
 
   const view = (() => {
+    if (watching) {
+      return (
+        <Watch
+          fight={watching}
+          client={client.current!}
+          fighters={loaded.fighters}
+          legends={loaded.legends}
+          stages={loaded.stages}
+          screens={loaded.screens}
+          assets={{ client: client.current!, races: loaded.races, portraits: loaded.portraits }}
+          onBack={stopWatching}
+        />
+      );
+    }
     switch (screen.kind) {
       case 'select':
         return (
@@ -496,7 +522,15 @@ export function Game() {
     <>
       {view}
       {showOnline && (
-        <Online lobby={lobby} name={name} onName={giveName} product={product} onReady={startSession} onClose={() => setShowOnline(false)} />
+        <Online
+          lobby={lobby}
+          name={name}
+          onName={giveName}
+          product={product}
+          onReady={startSession}
+          onClose={() => setShowOnline(false)}
+          onWatch={online ? undefined : watchFight}
+        />
       )}
       {!showOnline && lobbyState.notice && !challenge && !matching && <div class="lobby-toast">{lobbyState.notice}</div>}
       {matching && <Matching name={matching.name} found={matching.found} error={matching.error} onCancel={endMatching} />}

@@ -21,6 +21,15 @@ export interface LobbyPlayer {
   status: 'free' | 'busy';
 }
 
+/** A fight on now, as the lobby lists it for watching: its room, and the host's and the guest's names and ids. */
+export interface LobbyFight {
+  code: string;
+  names: [string, string];
+  ids: [string, string];
+  /** When both came into the room, by the relay's clock. */
+  since: number;
+}
+
 /** The lobby's numbers, as every list of who is here and GET /lobby/stats give them. */
 export interface Counts {
   online: number;
@@ -50,15 +59,17 @@ export interface LobbyState {
   queuedAt?: number;
   /** How many are online, waiting and fighting. */
   counts: Counts;
+  /** The fights on now that the lobby made, to watch. */
+  fights: LobbyFight[];
   /** The last thing worth saying: a decline, a refusal. */
   notice?: string;
 }
 
-export const EMPTY: LobbyState = { connected: false, players: [], queued: false, counts: { online: 0, waiting: 0, fighting: 0 } };
+export const EMPTY: LobbyState = { connected: false, players: [], queued: false, counts: { online: 0, waiting: 0, fighting: 0 }, fights: [] };
 
 /** What the lobby sends. */
 export type LobbyMessage =
-  | ({ t: 'here'; players: LobbyPlayer[] } & Partial<Counts>)
+  | ({ t: 'here'; players: LobbyPlayer[]; fights?: LobbyFight[] } & Partial<Counts>)
   | { t: 'challenged'; from: { id: string; name: string }; ttl: number }
   | { t: 'challenging'; to: { id: string; name: string }; ttl: number }
   | { t: 'declined'; by: string; reason: string }
@@ -135,7 +146,7 @@ export function fold(state: LobbyState, message: LobbyMessage, now: number): Lob
   switch (message.t) {
     case 'here': {
       const { online = message.players.length, waiting = 0, fighting = 0 } = message;
-      return { ...state, players: message.players, counts: { online, waiting, fighting } };
+      return { ...state, players: message.players, counts: { online, waiting, fighting }, fights: message.fights ?? [] };
     }
     case 'challenged':
       return { ...state, incoming: { ...message.from, until: now + message.ttl }, notice: undefined };

@@ -1925,6 +1925,39 @@ code {
   font-size: 0.9rem;
 }
 
+/* Over a fight being watched: whose it is, under the clock. */
+.fight .watch-banner {
+  position: absolute;
+  left: 50%;
+  top: 112px;
+  z-index: 5;
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  transform: translateX(-50%);
+  padding: 6px 18px;
+  background: rgba(10, 6, 7, 0.72);
+  border: 1px solid var(--gold-dark);
+  border-radius: 6px;
+  color: var(--dim);
+  font-family: var(--serif);
+  font-size: 0.95rem;
+  letter-spacing: 0.12em;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.fight .watch-banner b {
+  color: var(--gold);
+  letter-spacing: 0.04em;
+}
+
+.fight .watch-banner span {
+  font-family: system-ui, sans-serif;
+  font-size: 0.75rem;
+  letter-spacing: 0;
+}
+
 /* Over the fight: the wait for the other player's inputs, a desync, and the notes on how this install draws the fight. */
 .fight .net-banner {
   position: absolute;

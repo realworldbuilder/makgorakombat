@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { meet, mismatch } from './net/handshake';
-import { cleanName, type Lobby, type LobbyState, EMPTY, typingName } from './net/lobby';
+import { cleanName, type Lobby, type LobbyFight, type LobbyState, EMPTY, typingName } from './net/lobby';
 import { cleanCode, createRoom, Link, relayUrl, type Role } from './net/relay';
 import { useModalKeys } from './ui/modal';
 
@@ -12,6 +12,8 @@ import { useModalKeys } from './ui/modal';
  * the lobby pairs two players it hands them a room, and from there it is as it always was: both
  * pages meet in the room and agree on the game's version, and the roster opens with the host as
  * player 1 and the guest as player 2. A challenge that comes in shows over whatever screen is up.
+ * Under WHO'S HERE, FIGHTS NOW lists the fights on that the lobby made, and WATCH on one (or on
+ * a player in a match) watches it from here, as a third seat in its room that only listens.
  * Two players on different relays can still use a room code, behind the small link at the bottom.
  * The same panel as the guide, and all of it from the keyboard.
  */
@@ -133,11 +135,24 @@ interface OnlineProps {
   /** A room joined with a code has met; matches the lobby makes go to the game itself. */
   onReady: (session: Session) => void;
   onClose: () => void;
+  /** WATCH: somebody else's fight, from here. */
+  onWatch?: (fight: LobbyFight) => void;
+}
+
+/** How long a fight has been on, as m:ss by the relay's clock, ticking. */
+function OnFor({ since }: { since: number }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  const seconds = Math.max(0, Math.floor((now - since) / 1000));
+  return <span class="dim small">{`${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`}</span>;
 }
 
 type View = 'name' | 'here' | 'code';
 
-export function Online({ lobby, name, onName, product, onReady, onClose }: OnlineProps) {
+export function Online({ lobby, name, onName, product, onReady, onClose, onWatch }: OnlineProps) {
   const [view, setView] = useState<View>(name ? 'here' : 'name');
   const state = useLobby(lobby);
   const others = state.players.filter((p) => p.id !== lobby?.id);
@@ -157,6 +172,14 @@ export function Online({ lobby, name, onName, product, onReady, onClose }: Onlin
     lobby.challenge(id);
   };
   const quick = () => lobby?.quick(!state.queued);
+  /** The fight a player in a match is in, when the lobby lists it. */
+  const fightOf = (id: string) => (onWatch ? state.fights.find((f) => f.ids.includes(id)) : undefined);
+  const watch = (fight: LobbyFight | undefined) => {
+    if (!fight || !onWatch) return;
+    if (state.queued) lobby?.quick(false);
+    if (state.outgoing) lobby?.cancel();
+    onWatch(fight);
+  };
   const copy = (text: string) => {
     void navigator.clipboard?.writeText(text).then(() => {
       setCopied(text);
@@ -168,7 +191,7 @@ export function Online({ lobby, name, onName, product, onReady, onClose }: Onlin
     if (view !== 'here') return;
     const onKey = (event: KeyboardEvent) => {
       const key = event.code;
-      if (!['Escape', 'ArrowUp', 'ArrowDown', 'Enter', 'NumpadEnter', 'KeyQ', 'KeyN'].includes(key)) return;
+      if (!['Escape', 'ArrowUp', 'ArrowDown', 'Enter', 'NumpadEnter', 'KeyQ', 'KeyN', 'KeyW'].includes(key)) return;
       event.stopPropagation();
       event.preventDefault();
       if (key === 'Escape') {
@@ -180,12 +203,15 @@ export function Online({ lobby, name, onName, product, onReady, onClose }: Onlin
       else if (key === 'ArrowDown') setChosen(Math.min(others.length - 1, at + 1));
       else if (key === 'KeyQ') quick();
       else if (key === 'KeyN') setView('name');
+      // W watches the fight the chosen player is in, or else the one that has been on longest.
+      else if (key === 'KeyW') watch((at >= 0 ? fightOf(others[at]!.id) : undefined) ?? state.fights[0]);
       else if (at < 0) {
         // Enter on FIND A FIGHT goes into the queue; leaving it is Escape's.
         if (!state.queued && state.connected) quick();
       } else {
         const them = others[at];
         if (them && them.status === 'free') fight(them.id);
+        else if (them) watch(fightOf(them.id));
       }
     };
     window.addEventListener('keydown', onKey, true);
@@ -262,10 +288,15 @@ export function Online({ lobby, name, onName, product, onReady, onClose }: Onlin
               <ul class="players" role="listbox" aria-label="Who's here">
                 {others.map((player, k) => {
                   const waiting = state.outgoing?.id === player.id;
+                  const theirs = player.status === 'busy' ? fightOf(player.id) : undefined;
                   return (
                     <li key={player.id} class={`${k === at ? 'chosen' : ''} ${player.status}`} role="option" aria-selected={k === at} onMouseEnter={() => setChosen(k)}>
                       <span class="name">{player.name}</span>
-                      {player.status === 'busy' ? (
+                      {theirs ? (
+                        <button type="button" class="button" onClick={() => watch(theirs)}>
+                          WATCH{k === at ? ' · W' : ''}
+                        </button>
+                      ) : player.status === 'busy' ? (
                         <span class="dim small">in a match</span>
                       ) : waiting ? (
                         <span class="asking">
@@ -282,9 +313,29 @@ export function Online({ lobby, name, onName, product, onReady, onClose }: Onlin
                 })}
               </ul>
             )}
+            {onWatch && state.fights.length > 0 && (
+              <>
+                <h3 class="who">FIGHTS NOW</h3>
+                <ul class="players fights" aria-label="Fights now">
+                  {state.fights.map((fight, k) => (
+                    <li key={fight.code}>
+                      <span class="name">
+                        {fight.names[0]} <span class="dim">vs</span> {fight.names[1]}
+                      </span>
+                      <span class="asking">
+                        <OnFor since={fight.since} />
+                        <button type="button" class="button" onClick={() => watch(fight)}>
+                          WATCH{k === 0 && (at < 0 || !fightOf(others[at]?.id ?? '')) ? ' · W' : ''}
+                        </button>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
             {state.notice && <p class="bad">{state.notice}</p>}
             <p class="dim small">
-              ↑ ↓ choose · Enter fight · Esc {state.queued || state.outgoing ? 'take it back' : 'close'}. Each of you needs the game open with your own World of Warcraft
+              ↑ ↓ choose · Enter fight{onWatch ? ' · W watch' : ''} · Esc {state.queued || state.outgoing ? 'take it back' : 'close'}. Each of you needs the game open with your own World of Warcraft
               folder. Whoever challenges is player 1 and picks the ground.{' '}
               <button type="button" class="link" onClick={() => setView('code')}>join with a code</button>
             </p>
