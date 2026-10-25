@@ -47,10 +47,17 @@ and tells each of them its code and whether they host. Nobody reads a code out.
 ## The room
 
 - `POST /rooms` makes a room and answers `{"code":"HXBXDC"}`.
-- `GET /rooms/:code/ws?role=host|guest` upgrades to a WebSocket. A code nobody made is 404, a
-  second host or guest is 409.
+- `GET /rooms/:code/ws?role=host|guest[&id=]` upgrades to a WebSocket. A code nobody made is 404, a
+  second host or guest is 409. `id` is any string the page keeps for as long as it is in the room.
 - When the other player is in the room (on joining, or when they arrive) the relay sends
   `{"t":"peer","joined":true}`; when they leave, `{"t":"peer","joined":false}`.
+- A page that gave an `id` and whose socket drops (any close but 1000 or 1001) keeps its seat for
+  20 seconds. The other hears `{"t":"peer","joined":true,"away":true}`, and what it sends meanwhile
+  is held (the last 600 messages; frames give way before text). If a socket with the same role
+  and `id` comes in time, it takes the seat, both hear `{"t":"peer","joined":true,"back":true}`,
+  and the held messages follow in order. A socket with the seat's `id` also takes over from one
+  the room still thinks is open. After the 20 seconds the other hears `joined:false` as for a
+  leave. A page without an `id` leaves the moment its socket closes.
 - `ping` is answered `pong` by the room itself without waking it: a keep-alive, and a way to
   time the wire.
 - Every other message goes to the other player unchanged.
