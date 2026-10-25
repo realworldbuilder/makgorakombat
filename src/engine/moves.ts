@@ -22,6 +22,8 @@ export type MoveName =
   | 'jumpEnd'
   /** The auto-attack: Attack* with all its variations. */
   | 'swing'
+  /** A bow's, a gun's or a thrown weapon's auto-attack at close quarters: a blow by hand, as a hunter in melee range swings in the game. */
+  | 'jab'
   | 'dodge'
   | 'parry'
   /** Casting: held while the cast bar fills. */
@@ -57,6 +59,8 @@ export interface Weapon {
   range: number;
   /** An off-hand shield: blocks. */
   shield: boolean;
+  /** A ranged weapon's blow when the target is inside `MELEE_RANGE`, where it does not shoot: a fist's damage at the weapon's speed. */
+  close: { damage: number; spread: number } | undefined;
 }
 
 export interface MoveTable {
@@ -133,6 +137,7 @@ function candidates(wielding: Wielding, shield: boolean): Record<MoveName, { nam
     jump: { names: ['Jump'], loop: true },
     jumpEnd: { names: ['JumpEnd', 'JumpLandRun'], loop: false },
     swing: { names: uniq(ATTACK[wielding], ['AttackUnarmed']), loop: false, hit: SWING_HIT },
+    jab: { names: RANGED.has(wielding) ? ['AttackUnarmed', 'Attack1H'] : uniq(ATTACK[wielding], ['AttackUnarmed']), loop: false, hit: SWING_HIT },
     dodge: { names: ['Dodge', 'Walkbackwards'], loop: false },
     parry: { names: uniq(shield ? ['ShieldBlock'] : [], [...PARRY[wielding], 'Parry1H', 'Parry2H', 'ParryUnarmed', 'ShieldBlock', 'Dodge']), loop: false },
     cast: { names: ['ChannelCastDirected', 'ReadySpellDirected', 'ReadySpellOmni', 'SpellCastDirected'], loop: true },
@@ -148,7 +153,7 @@ function candidates(wielding: Wielding, shield: boolean): Record<MoveName, { nam
 }
 
 export const MOVE_NAMES: readonly MoveName[] = [
-  'idle', 'walk', 'back', 'jumpStart', 'jump', 'jumpEnd', 'swing', 'dodge', 'parry', 'cast',
+  'idle', 'walk', 'back', 'jumpStart', 'jump', 'jumpEnd', 'swing', 'jab', 'dodge', 'parry', 'cast',
   'hit', 'crit', 'knockdown', 'dazed', 'death', 'finisher', 'intro', 'win',
 ];
 
@@ -188,7 +193,7 @@ export function resolveMoves(animations: readonly AnimationInfo[], wielding: Wie
   let hasJump = false;
   for (const name of MOVE_NAMES) {
     const c = spec[name];
-    const move = name === 'idle' ? idle : moveFrom(find, name, c.names, c.loop, idle, name === 'swing');
+    const move = name === 'idle' ? idle : moveFrom(find, name, c.names, c.loop, idle, name === 'swing' || name === 'jab');
     if (move.animation && (name === 'jumpStart' || name === 'jump')) hasJump = true;
     if (c.hit) move.hit = c.hit;
     moves[name] = move;
@@ -203,6 +208,7 @@ export function resolveMoves(animations: readonly AnimationInfo[], wielding: Wie
     ranged,
     range: ranged ? SHOT_RANGE : MELEE_RANGE,
     shield,
+    close: ranged ? { damage: DAMAGE.unarmed * kit.swing * kit.power, spread: SPREAD.unarmed } : undefined,
   };
   return { moves, kit, weapon, fatality: resolveFatality(classId, wielding, find, idle), hasJump, body };
 }

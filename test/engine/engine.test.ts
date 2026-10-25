@@ -242,6 +242,31 @@ describe('the auto-attack', () => {
     expect(until(match, (m) => m.fighters[1].hp < HP, 120)).toBeGreaterThan(0);
     expect(match.fighters[1].hp).toBe(HP - 9);
   });
+
+  it('a bow at arm\'s length strikes by hand instead of shooting, for a fist\'s 6 to 8', () => {
+    const table = fakeTable([...FULL_SET, 'AttackBow', 'ReadyBow'], 'bow', {}, HUNTER);
+    const match = newMatch([table, fakeTable()], 1);
+    skipIntro(match);
+    place(match, 1.5);
+    rig(match, 'hit');
+    tick(match, [inputs({ attack: true }), inputs()]);
+    expect(match.fighters[0].move).toBe('jab');
+    expect(poseOf(match, 0).sequence).toBe(table.moves.jab.variations[0]!.sequence);
+    expect(table.moves.jab.animation).toBe('AttackUnarmed');
+    expect(until(match, (m) => m.fighters[1].hp < HP, 70)).toBeGreaterThan(0);
+    expect(match.projectiles).toHaveLength(0);
+    const [low, high] = damageRange(table.weapon.close!.damage, table.weapon.close!.spread);
+    expect([low, high]).toEqual([6, 8]);
+    expect(HP - match.fighters[1].hp).toBeGreaterThanOrEqual(low);
+    expect(HP - match.fighters[1].hp).toBeLessThanOrEqual(high);
+    // Backed off past melee range, the next one is a shot again.
+    place(match, 5);
+    match.fighters[0].swingT = 0;
+    run(match, 30);
+    tick(match, [inputs({ attack: true }), inputs()]);
+    expect(match.fighters[0].move).toBe('swing');
+    expect(until(match, (m) => m.projectiles.length > 0, 60)).toBeGreaterThan(0);
+  });
 });
 
 describe('the hit table', () => {
