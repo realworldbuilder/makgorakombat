@@ -43,6 +43,8 @@ export default defineConfig({
   base: process.env.VITE_BASE ?? '/makgorakombat/',
   plugins: [preact()],
   worker: { format: 'es' },
+  // Two pages: the game, and the welcome page in front of it at /welcome/.
+  build: { rollupOptions: { input: { main: 'index.html', welcome: 'welcome/index.html' } } },
   // Only the game's own page is scanned: the submodule's pages pull in things the game does not use.
   optimizeDeps: { entries: ['index.html'] },
   resolve: { alias: { '@mogshot': mogshot } },
