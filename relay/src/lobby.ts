@@ -258,28 +258,47 @@ export class Lobby extends DurableObject<Env> {
       ws.send(JSON.stringify({ t: 'queued', queued: true, since: place.at }));
       return this.beat();
     }
-    await this.setQueue(waiting.slice(1));
-    // The one who waited longer hosts.
-    await this.match(first.id, me.id);
+    // The one who waited longer hosts. They stay in the queue until the room is made, so a room
+    // that cannot be made does not lose them their place.
+    await this.match(first.id, me.id, first.id);
   }
 
-  /** A room for two, both told, both busy, and anything else either had open called off. */
-  private async match(host: string, guest: string): Promise<void> {
+  /**
+   * A room for two, both told, both busy, and anything else either had open called off. `waiting`
+   * is the one the queue gave, who must still be in it.
+   */
+  private async match(host: string, guest: string, waiting?: string): Promise<void> {
     const pair = [host, guest];
-    const code = await openRoom(this.env, this.ctx.id.name ?? LOBBY);
+    // Making the room is a call to another object, and while it is out this one takes other
+    // messages: either player may leave, take the queue back, or be matched with someone else.
+    let code: string | undefined;
+    try {
+      code = await openRoom(this.env, this.ctx.id.name ?? LOBBY);
+    } catch {
+      code = undefined;
+    }
     if (!code) {
-      for (const id of pair) this.tell(id, { t: 'error', message: 'The relay has no free room; try again.' });
+      for (const id of pair) if (id !== waiting) this.tell(id, { t: 'error', message: 'The relay has no free room; try again.' });
       return;
     }
-    await this.withdraw((c) => pair.includes(c.from) || pair.includes(c.to), 'busy');
-    await this.setQueue((await this.queue()).filter((w) => !pair.includes(w.id)));
-    const seats = pair.map((id) => this.seatById(id)!);
+    const [hostSeat, guestSeat] = pair.map((id) => this.seatById(id));
+    const stillWaiting = waiting === undefined || (await this.queue()).some((w) => w.id === waiting);
+    if (!hostSeat || !guestSeat || hostSeat.busy || guestSeat.busy || !stillWaiting) {
+      // The room stays empty and is let go as any unused one is; whoever is still here and free hears why.
+      for (const [id, seat] of [[host, hostSeat], [guest, guestSeat]] as const) {
+        if (seat && !seat.busy && id !== waiting) this.tell(id, { t: 'error', message: 'They went before the match was made; try again.' });
+      }
+      return;
+    }
+    // Busy before anything else can come in, so neither can be matched twice.
     for (const ws of pair.flatMap((id) => this.socketsOf(id))) {
       const seat = ws.deserializeAttachment() as Seat;
       ws.serializeAttachment({ ...seat, busy: true });
     }
-    this.tell(host, { t: 'fight', code, role: 'host', with: { id: seats[1]!.id, name: seats[1]!.name } });
-    this.tell(guest, { t: 'fight', code, role: 'guest', with: { id: seats[0]!.id, name: seats[0]!.name } });
+    await this.withdraw((c) => pair.includes(c.from) || pair.includes(c.to), 'busy');
+    await this.setQueue((await this.queue()).filter((w) => !pair.includes(w.id)));
+    this.tell(host, { t: 'fight', code, role: 'host', with: { id: guestSeat.id, name: guestSeat.name } });
+    this.tell(guest, { t: 'fight', code, role: 'guest', with: { id: hostSeat.id, name: hostSeat.name } });
     await this.beat();
   }
 
