@@ -1786,6 +1786,18 @@ code {
   letter-spacing: 0.04em;
 }
 
+/* The switch for the browser's notification when a fight comes. */
+.guide.online .notify {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.guide.online .notify input {
+  accent-color: var(--gold);
+}
+
 /* TOP TEN: tonight or all time, the player's own row lit and, out of the ten, pinned under it. */
 .guide .body.online-board {
   padding: 18px 24px 22px;

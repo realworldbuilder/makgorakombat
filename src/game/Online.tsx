@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { BoardTable } from './Board';
+import { notifyOn, setNotify } from './call';
 import { meet, mismatch } from './net/handshake';
 import { cleanName, type Lobby, type LobbyState, EMPTY, recordText, typingName } from './net/lobby';
 import { cleanCode, createRoom, Link, relayUrl, type Role } from './net/relay';
@@ -15,6 +16,7 @@ import { useModalKeys } from './ui/modal';
  * player 1 and the guest as player 2. A challenge that comes in shows over whatever screen is up.
  * Two players on different relays can still use a room code, behind the small link at the bottom.
  * Beside WHO'S HERE is TOP TEN, the relay's board, and each name here carries its record tonight.
+ * A small switch asks the browser to notify the player when a fight comes while they look away.
  * The same panel as the guide, and all of it from the keyboard.
  */
 
@@ -148,6 +150,7 @@ export function Online({ lobby, name, onName, product, onReady, onClose }: Onlin
   const at = Math.min(chosen, others.length - 1);
   const [copied, setCopied] = useState<string>();
   const waited = useSince(state.queued ? state.queuedAt : undefined);
+  const [notify, setNotifyState] = useState(notifyOn);
   /** Shut, the panel takes this page out of the queue: nobody waits there unseen. */
   const close = () => {
     if (state.queued) lobby?.quick(false);
@@ -314,6 +317,12 @@ export function Online({ lobby, name, onName, product, onReady, onClose }: Onlin
               </ul>
             )}
             {state.notice && <p class="bad">{state.notice}</p>}
+            {typeof Notification !== 'undefined' && (
+              <label class="notify dim small">
+                <input type="checkbox" checked={notify} onChange={(event) => void setNotify(event.currentTarget.checked).then(setNotifyState, () => setNotifyState(false))} />
+                notify me when a fight comes while I look away
+              </label>
+            )}
             <p class="dim small">
               ↑ ↓ choose · Enter fight · B the board · Esc {state.queued || state.outgoing ? 'take it back' : 'close'}. Each of you needs the game open with your own World of Warcraft
               folder. Whoever challenges is player 1 and picks the ground.{' '}

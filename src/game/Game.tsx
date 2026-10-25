@@ -3,6 +3,7 @@ import type { ClassEntry, Race } from '@mogshot/character/appearance';
 import type { Image } from '@mogshot/formats/blp';
 import type { LoadingScreen } from '@mogshot/worker/api';
 import { DataClient } from '@mogshot/worker/client';
+import { callToFight } from './call';
 import { type Edition, editionOf, playableProducts } from './edition';
 import { type EditionArt, loadEditionArt } from './editionArt';
 import { Fight, type NetFight, tableOf } from './Fight';
@@ -251,6 +252,9 @@ export function Game() {
   useEffect(() => {
     if (!lobby) return;
     return lobby.onMatch((match) => {
+      // The queue found someone, NEXT OPPONENT did, or a challenge this page made was taken up: call the player back.
+      // One who has just accepted is looking already.
+      if (match.queued || match.role === 'host') callToFight(match.queued ? `Found: ${match.with.name}. To the ring!` : `${match.with.name} accepted. To the ring!`);
       setShowOnline(false);
       setMatching({ name: match.with.name, found: match.queued });
       matchLink.current = null;
@@ -452,6 +456,14 @@ export function Game() {
   const wantOnline = (yes: boolean) => {
     onlineNext.current = yes;
   };
+  // A challenge come in, while it would show: the gong, the title, and the notification for a player who asked for one.
+  const calling = loaded && !online && !matching && screen.kind !== 'fight' ? lobbyState.incoming : undefined;
+  const callingKey = calling && `${calling.id} ${calling.until}`;
+  useEffect(() => {
+    if (calling) callToFight(`${calling.name} challenges you to Mak'gora.`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [callingKey]);
+
   if (phase.kind === 'choose') return <Title phase={phase} dragging={dragging} onPick={onPick} onChoose={(product) => void openFolder(phase.files, product)} onCreate={wantCreate} onOnline={wantOnline} />;
   if (phase.kind !== 'ready') return <Title phase={phase} dragging={dragging} onPick={onPick} onCreate={wantCreate} onOnline={wantOnline} />;
   if (loadError) return <Title phase={{ kind: 'error', message: loadError }} dragging={false} onPick={onPick} onCreate={wantCreate} onOnline={wantOnline} />;

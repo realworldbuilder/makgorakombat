@@ -175,7 +175,66 @@ async function decode(ctx: Pick<BaseAudioContext, 'decodeAudioData'>, set: Fight
       if (clips.length > 0) decoded.set(kit.kit, { kit: kit.kit, pitchVariation: kit.pitchVariation, clips });
     }),
   );
+  const gong = set.sounds.gong === undefined ? undefined : decoded.get(set.sounds.gong);
+  if (gong) keptGong = gong;
   return decoded;
+}
+
+/**
+ * The round gong as last decoded from the player's files, kept past its fighter for the lobby's
+ * calls outside a fight: a challenge, a match found. Every fighter has the same one.
+ */
+let keptGong: Decoded | undefined;
+
+/** Whether a gong from the game files is at hand; until a fight has decoded one, the lobby's calls are synthesized. */
+export function gongKept(): boolean {
+  return keptGong !== undefined;
+}
+
+/** A kit's clip, by the weights the game gives them. */
+function pickClip(sound: Decoded): Decoded['clips'][number] {
+  const total = sound.clips.reduce((n, clip) => n + clip.weight, 0);
+  let roll = Math.random() * total;
+  for (const candidate of sound.clips) {
+    roll -= candidate.weight;
+    if (roll <= 0) return candidate;
+  }
+  return sound.clips[0]!;
+}
+
+/**
+ * The lobby's call to fight, through the effects bus like the fight's sounds, so the mute and the
+ * effects level hold: the round gong from the game files, or, before any fight has decoded it, a
+ * short two-tone. Silent until the page has seen a key or a click, as all sound is.
+ */
+export function playCall(): void {
+  if (!context || !effectsBus) return;
+  if (context.state === 'suspended') void context.resume();
+  if (keptGong) {
+    const clip = pickClip(keptGong);
+    const source = context.createBufferSource();
+    source.buffer = clip.buffer;
+    const volume = context.createGain();
+    volume.gain.value = clip.volume;
+    source.connect(volume).connect(effectsBus);
+    source.start();
+    return;
+  }
+  // Two struck tones a fourth apart, each dying away.
+  const now = context.currentTime;
+  for (const [k, frequency] of [196, 262].entries()) {
+    const at = now + k * 0.22;
+    const tone = context.createOscillator();
+    tone.type = 'triangle';
+    tone.frequency.value = frequency;
+    const volume = context.createGain();
+    volume.gain.setValueAtTime(0.0001, at);
+    volume.gain.exponentialRampToValueAtTime(0.5, at + 0.01);
+    volume.gain.exponentialRampToValueAtTime(0.0001, at + 0.9);
+    tone.connect(volume).connect(effectsBus);
+    tone.start(at);
+    tone.stop(at + 0.95);
+  }
 }
 
 /** One fighter's decoded sounds, by name. */
@@ -254,16 +313,7 @@ export class Mixer {
     const sound = voice.pick(name);
     if (!sound) return;
     // Weighted choice among the kit's files, as the game does.
-    const total = sound.clips.reduce((n, clip) => n + clip.weight, 0);
-    let roll = Math.random() * total;
-    let clip = sound.clips[0]!;
-    for (const candidate of sound.clips) {
-      roll -= candidate.weight;
-      if (roll <= 0) {
-        clip = candidate;
-        break;
-      }
-    }
+    const clip = pickClip(sound);
     const source = context.createBufferSource();
     source.buffer = clip.buffer;
     const [below, above] = sound.pitchVariation;
