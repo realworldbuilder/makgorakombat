@@ -113,6 +113,10 @@ export function Game() {
     setWatching(undefined);
     setShowOnline(true);
   }, []);
+  /** The lobby's match being met now; given up or replaced, its late callbacks change nothing. */
+  const matchOn = useRef<object>(null);
+  /** The VS screen a fight was started from, so its late or repeated Enter starts no second one. */
+  const fightFrom = useRef<Screen>(null);
   // A stable handler: Fight rebuilds the whole match when its props change, and dragging a file
   // across the window re-renders Game (the title's drop state), which must not restart a fight.
   const backToSelect = useCallback(() => {
@@ -274,27 +278,35 @@ export function Game() {
       setShowOnline(false);
       setMatching({ name: match.with.name, found: match.queued });
       matchLink.current = null;
+      const token = {};
+      matchOn.current = token;
       const shown = performance.now();
       let given = false;
       const giveUp = setTimeout(() => {
         given = true;
+        if (matchOn.current !== token) return;
         matchLink.current?.close();
         matchLink.current = null;
         setMatching({ name: match.with.name, error: `${match.with.name} did not come into the room.` });
       }, 20_000);
       void enterRoom(match.code, match.role, product, (link) => {
-        matchLink.current = link;
+        // Given up (or another match came) while the room was still opening: this one is not wanted.
+        if (matchOn.current !== token) link.close();
+        else matchLink.current = link;
       }).then(
         (session) => {
           clearTimeout(giveUp);
-          if (given || matchLink.current !== session.link) {
+          if (given || matchOn.current !== token || matchLink.current !== session.link) {
             session.link.close();
             return;
           }
           // A stranger from the queue: FOUND and their name stay up two seconds before the roster.
           const wait = match.queued ? Math.max(0, FOUND_MS - (performance.now() - shown)) : 0;
           setTimeout(() => {
-            if (matchLink.current !== session.link) return;
+            if (matchOn.current !== token || matchLink.current !== session.link) {
+              session.link.close();
+              return;
+            }
             if (session.link.closed || !session.link.peer) {
               session.link.close();
               setMatching({ name: match.with.name, error: `${match.with.name} left the room.` });
@@ -303,7 +315,7 @@ export function Game() {
         },
         (cause: unknown) => {
           clearTimeout(giveUp);
-          if (!given) setMatching({ name: match.with.name, error: messageOf(cause) });
+          if (!given && matchOn.current === token) setMatching({ name: match.with.name, error: messageOf(cause) });
         },
       );
     });
@@ -311,6 +323,7 @@ export function Game() {
 
   /** The meeting given up or failed: back in the lobby, free; a stranger from the queue who never came puts this page back in it. */
   const endMatching = () => {
+    matchOn.current = null;
     matchLink.current?.close();
     matchLink.current = null;
     const again = matching?.found && matching.error !== undefined;
@@ -457,8 +470,9 @@ export function Game() {
     if (!sameStage(stageKeyOf(ground), message.stage)) notes.push('The host chose ground your folder does not have, so you fight on none.');
     if (pick && message.product !== product) notes.push(`The host plays from ${message.product} and you from ${product}: the fight keeps the host's timing, drawn with your own animations.`);
     link.forget('hello');
+    const from = screenRef.current;
     void (pick ? fightersFor(message, fighters, pick) : Promise.resolve(fighters))
-      .then((ready) => setScreen({ kind: 'fight', fighters: ready, stage: ground, net: { link, me: 1, host: false, hello: message, notes } }))
+      .then((ready) => from === screenRef.current && setScreen({ kind: 'fight', fighters: ready, stage: ground, net: { link, me: 1, host: false, hello: message, notes } }))
       .catch((cause: unknown) => setLeft(`The host's champions could not be built here: ${messageOf(cause)}`));
   };
 
@@ -612,7 +626,13 @@ export function Game() {
             fighters={screen.fighters}
             stages={loaded.stages}
             screens={loaded.screens}
-            onFight={(ground) => startFight(screen.fighters, ground, screen.pick)}
+            onFight={(ground) => {
+              // Once per VS screen, and only while it is still up: a ground still rising when the player
+              // left, or a second Enter, would otherwise start a fight from the roster or send a second hello.
+              if (screenRef.current !== screen || fightFrom.current === screen) return;
+              fightFrom.current = screen;
+              startFight(screen.fighters, ground, screen.pick);
+            }}
             onBack={backToSelect}
             online={screen.pick ? versusOnline : undefined}
             start={screen.pick && online?.role === 'guest' && !hello?.drawn ? hello?.stage : undefined}

@@ -37,10 +37,16 @@ describe('describeAbility', () => {
   });
 
   it('describes the auto-attack from the weapon', () => {
-    const tip = describeWeapon({ wielding: 'oneHand', speed: 120, damage: 8, spread: 0.25, ranged: false, range: 2.6, shield: true });
+    const tip = describeWeapon({ wielding: 'oneHand', speed: 120, damage: 8, spread: 0.25, ranged: false, range: 2.6, shield: true, close: undefined });
     expect(tip.name).toBe('Attack');
     expect(tip.cast).toBe('Every 2 sec');
     expect(tip.description).toContain('Swings at the target for 6 to 10 damage');
     expect(tip.description).toContain('shield');
+  });
+
+  it('tells a bow that it strikes by hand up close', () => {
+    const tip = describeWeapon({ wielding: 'bow', speed: 120, damage: 9, spread: 0.2, ranged: true, range: 8, shield: false, close: { damage: 7, spread: 0.2 } });
+    expect(tip.name).toBe('Auto Shot');
+    expect(tip.description).toContain('Inside melee range it strikes by hand instead, for 6 to 8.');
   });
 });

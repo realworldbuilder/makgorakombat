@@ -1,7 +1,7 @@
 import { ABILITY_MELEE_RANGE, ABILITY_SLOTS, DOT_TICK_FRAMES, EXECUTE_BELOW, MAX_RESOURCE, RESOURCE_NAMES, type ResolvedAbility, type SlotIndex } from './abilities';
 import { BRAND } from './brand';
 import { type Beat, directionOf, impactFrame, PENALTY_FRAMES, type SequenceToken, STEP_FRAMES } from './fatalities';
-import { type Move, type MoveRef, type MoveTable, variationOf } from './moves';
+import { MELEE_RANGE, type Move, type MoveRef, type MoveTable, variationOf } from './moves';
 import { type Rules, RULES, type RulesName } from './rules';
 import {
   BODY, FINISH_FRAMES, GRAVITY, HALF, HP, INTRO_FRAMES, JUMP_V, KO_SLOWMO, ROUND_END_FRAMES, ROUND_FRAMES,
@@ -157,6 +157,8 @@ export interface Fighter {
   dashT: number;
   /** This jump's attack has been thrown; the landing costs a few frames. */
   airAttack: boolean;
+  /** This auto-attack is a ranged weapon's blow by hand, the target having been inside melee range when it started. */
+  close: boolean;
 }
 
 export interface Projectile {
@@ -355,7 +357,11 @@ const REACH_SLACK = 0.4;
 const AIR_UNDER = 0.5;
 const DASH_SPEED = 0.3;
 /** A charge stops this far short of contact. */
-const DASH_STOP = 0.15;
+/**
+ * A charge ends this far short of contact: its end animation (CombatChargeEnd) carries the body
+ * on another 1 to 2 yd, and stopping at contact buried Cairne in his target. Still in reach.
+ */
+const DASH_STOP = 0.9;
 const DASH_LIMIT = 60;
 const RIPOSTE_FRAMES = 90;
 /** A blow sets a cast bar back half a second, twice at most, as in the game; a stun, a fear or an interrupt ends it. */
@@ -438,6 +444,7 @@ function newFighter(side: 0 | 1, table: MoveTable): Fighter {
     dashDir: 1,
     dashT: 0,
     airAttack: false,
+    close: false,
   };
 }
 
@@ -859,7 +866,9 @@ function swingAt(match: Match, i: 0 | 1): void {
   f.chainPress = false;
   f.connected = false;
   f.swings++;
-  play(f, 'attack', 'swing');
+  // A bow does not shoot at a target inside melee range: the fighter strikes by hand instead.
+  f.close = match.tables[i].weapon.close !== undefined && inReach(match, f, match.fighters[other(i)], MELEE_RANGE, false);
+  play(f, 'attack', f.close ? 'jab' : 'swing');
   if (rules.swingTimer) f.swingT = match.tables[i].weapon.speed;
   f.queued = false;
 }
@@ -1125,6 +1134,8 @@ interface Blow {
   roll: Roll;
   /** Undefined for an auto-attack. */
   ability: ResolvedAbility | undefined;
+  /** How far the blow strays either way, when not its ability's or its weapon's (a ranged weapon's blow by hand). */
+  spread?: number;
   pushback: number;
   hitstop: number;
   /** The side of the target it comes from, -1 or +1 along x, when it can be blocked; a spell cannot. */
@@ -1307,7 +1318,7 @@ function strike(match: Match, ai: 0 | 1, ti: 0 | 1, blow: Blow, dir: number, spa
   if (a || blow.roll === 'ranged') spellEvent(match, ai, a ? a.id : 'shot', 'impact', sparkX, sparkZ);
 
   // Every blow is rolled in its range, a weapon's or a spell's: no two land quite alike.
-  const spread = a ? a.spread : match.tables[ai].weapon.spread;
+  const spread = a ? a.spread : (blow.spread ?? match.tables[ai].weapon.spread);
   let amount = blow.damage > 0 ? Math.max(1, Math.round(blow.damage * (1 + spread * (2 * nextRandom(match) - 1)))) : 0;
   let kind: 'damage' | 'crit' | 'block' = 'damage';
   if (outcome === 'crit') {
@@ -1641,11 +1652,12 @@ function attacks(match: Match, i: 0 | 1): void {
   if (f.state === 'attack') {
     const hit = rulesOf(match).swingHit;
     if (at < hit.from) return;
-    if (table.weapon.ranged) {
+    if (table.weapon.ranged && !f.close) {
       f.hitDone = true;
       launch(match, i, -1, table.weapon.damage);
       return;
     }
+    const range = f.close ? MELEE_RANGE : table.weapon.range;
     if (at > hit.to) {
       f.hitDone = true;
       return;
@@ -1653,8 +1665,8 @@ function attacks(match: Match, i: 0 | 1): void {
     // A jumping attack reaches down: a target ahead, or just under, no higher than the attacker.
     if (f.airAttack) {
       const ahead = f.facing * (target.x - f.x);
-      if (ahead < -AIR_UNDER || ahead > table.weapon.range + REACH_SLACK || target.z > f.z + 0.5) return;
-    } else if (!inReach(match, f, target, table.weapon.range + REACH_SLACK, false)) {
+      if (ahead < -AIR_UNDER || ahead > range + REACH_SLACK || target.z > f.z + 0.5) return;
+    } else if (!inReach(match, f, target, range + REACH_SLACK, false)) {
       return;
     }
     f.hitDone = true;
@@ -1663,9 +1675,10 @@ function attacks(match: Match, i: 0 | 1): void {
     const last = rules.chain.length > 1 && f.chain === rules.chain.length - 1;
     const blow: Blow = {
       // Unrounded: the blow is rolled in its range and rounded once, as every other blow is.
-      damage: table.weapon.damage * rules.chain[f.chain]!,
+      damage: (f.close ? table.weapon.close!.damage : table.weapon.damage) * rules.chain[f.chain]!,
       roll: 'melee',
       ability: undefined,
+      spread: f.close ? table.weapon.close!.spread : undefined,
       pushback: PUSHBACK.swing * (last ? rules.chainEnd.pushback : 1),
       hitstop: rules.swingHitstop,
       from: sideOf(target, f.x),

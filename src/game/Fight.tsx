@@ -258,6 +258,8 @@ export function Fight({ fighters, stage, p2, onBack, net, watch }: FightProps) {
     let push = 1;
     let hitsSeen = 0;
     const loop = (now: number) => {
+      // The fight left: its canvases are gone a frame before this effect's cleanup cancels the loop.
+      if (!canvas.current || !overlay.current) return;
       frame = requestAnimationFrame(loop);
       // Watching, a rematch is a new match the spectator made.
       if (watch?.spectator.match) match.current = watch.spectator.match;

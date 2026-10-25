@@ -12,7 +12,7 @@ import { headshotOf } from '../headshot';
 import type { Source } from '../Select';
 import { FightBar } from './FightBar';
 import { SequenceStrip, type SequenceView } from './SequenceStrip';
-import { Icons, type UiAssets } from './icons';
+import { iconsFor, type UiAssets } from './icons';
 import { UnitFrame } from './UnitFrame';
 import './ui.css';
 
@@ -97,7 +97,8 @@ function sequenceOf(match: Match, p2: Source, me: 0 | 1 | undefined): SequenceVi
 const liveMatch = (): Match | undefined => (window as unknown as { mk?: { match?: () => Match } }).mk?.match?.();
 
 export function FightUi({ fighters, p2, assets, me, next }: FightUiProps) {
-  const icons = useMemo(() => new Icons(assets), [assets]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const icons = useMemo(() => iconsFor(assets), [assets.client]);
   const [frame, setFrame] = useState<Frame>();
   const [abilityIcons, setAbilityIcons] = useState<[Map<string, string>, Map<string, string>]>([new Map(), new Map()]);
   const [spellIcons, setSpellIcons] = useState<Map<string, string>>(new Map());

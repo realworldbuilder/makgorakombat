@@ -305,33 +305,54 @@ export class Lobby extends DurableObject<Env> {
       ws.send(JSON.stringify({ t: 'queued', queued: true, since: place.at }));
       return this.beat();
     }
-    await this.setQueue(waiting.slice(1));
-    // The one who waited longer hosts.
-    await this.match(first.id, me.id);
+    // The one who waited longer hosts. They stay in the queue until the room is made, so a room
+    // that cannot be made does not lose them their place.
+    await this.match(first.id, me.id, first.id);
   }
 
-  /** A room for two, both told, both busy, and anything else either had open called off. */
-  private async match(host: string, guest: string): Promise<void> {
+  /**
+   * A room for two, both told, both busy, and anything else either had open called off. `waiting`
+   * is the one the queue gave, who must still be in it.
+   */
+  private async match(host: string, guest: string, waiting?: string): Promise<void> {
     const pair = [host, guest];
-    const seats = pair.map((id) => this.seatById(id)!);
+    // The room is made with both names, as they are now; the seats are read again once it is back.
+    const before = pair.map((id) => this.seatById(id));
     const fighter = (seat: Seat): Fighter => ({ id: seat.id, name: seat.name });
-    const code = await openRoom(this.env, this.ctx.id.name ?? LOBBY, { host: fighter(seats[0]!), guest: fighter(seats[1]!) });
+    // Making the room is a call to another object, and while it is out this one takes other
+    // messages: either player may leave, take the queue back, or be matched with someone else.
+    let code: string | undefined;
+    try {
+      code = before[0] && before[1] ? await openRoom(this.env, this.ctx.id.name ?? LOBBY, { host: fighter(before[0]), guest: fighter(before[1]) }) : undefined;
+    } catch {
+      code = undefined;
+    }
     if (!code) {
-      for (const id of pair) this.tell(id, { t: 'error', message: 'The relay has no free room; try again.' });
+      for (const id of pair) if (id !== waiting) this.tell(id, { t: 'error', message: 'The relay has no free room; try again.' });
       return;
     }
-    await this.withdraw((c) => pair.includes(c.from) || pair.includes(c.to), 'busy');
-    await this.setQueue((await this.queue()).filter((w) => !pair.includes(w.id)));
+    const [hostSeat, guestSeat] = pair.map((id) => this.seatById(id));
+    const stillWaiting = waiting === undefined || (await this.queue()).some((w) => w.id === waiting);
+    if (!hostSeat || !guestSeat || hostSeat.busy || guestSeat.busy || !stillWaiting) {
+      // The room stays empty and is let go as any unused one is; whoever is still here and free hears why.
+      for (const [id, seat] of [[host, hostSeat], [guest, guestSeat]] as const) {
+        if (seat && !seat.busy && id !== waiting) this.tell(id, { t: 'error', message: 'They went before the match was made; try again.' });
+      }
+      return;
+    }
     // The room is listed under these two names once both are in it.
     const rooms = await this.rooms();
-    rooms[code] = { ...rooms[code], n: rooms[code]?.n ?? 0, at: rooms[code]?.at ?? Date.now(), names: [seats[0]!.name, seats[1]!.name], ids: [host, guest] };
+    rooms[code] = { ...rooms[code], n: rooms[code]?.n ?? 0, at: rooms[code]?.at ?? Date.now(), names: [hostSeat.name, guestSeat.name], ids: [host, guest] };
     await this.ctx.storage.put('rooms', rooms);
+    // Busy before anything else can come in, so neither can be matched twice.
     for (const ws of pair.flatMap((id) => this.socketsOf(id))) {
       const seat = ws.deserializeAttachment() as Seat;
       ws.serializeAttachment({ ...seat, busy: true });
     }
-    this.tell(host, { t: 'fight', code, role: 'host', with: { id: seats[1]!.id, name: seats[1]!.name } });
-    this.tell(guest, { t: 'fight', code, role: 'guest', with: { id: seats[0]!.id, name: seats[0]!.name } });
+    await this.withdraw((c) => pair.includes(c.from) || pair.includes(c.to), 'busy');
+    await this.setQueue((await this.queue()).filter((w) => !pair.includes(w.id)));
+    this.tell(host, { t: 'fight', code, role: 'host', with: { id: guestSeat.id, name: guestSeat.name } });
+    this.tell(guest, { t: 'fight', code, role: 'guest', with: { id: hostSeat.id, name: hostSeat.name } });
     await this.beat();
   }
 
