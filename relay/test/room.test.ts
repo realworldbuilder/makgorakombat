@@ -1,7 +1,7 @@
 import { env, runDurableObjectAlarm, runInDurableObject, SELF } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 import { ALPHABET, isCode } from '../src/code';
-import { allowedOrigin, HELD_MAX, RECONNECT_MS, type Room } from '../src/index';
+import { allowedOrigin, HELD_MAX, RECONNECT_MS, type Room, SILENT_MS } from '../src/index';
 import { Client } from './client';
 
 async function makeRoom(origin?: string): Promise<{ code: string; response: Response }> {
@@ -195,6 +195,50 @@ describe('relay', () => {
     expect(guest.closed).toBe(true);
     await new Promise((resolve) => setTimeout(resolve, 100));
     expect(host.kinds(2)).toEqual([]);
+  });
+
+  it('takes a seat that has gone silent for dropped, when no close ever came', async () => {
+    const { code } = await makeRoom();
+    const stub = env.ROOMS.getByName(code);
+    const host = await connect(code, 'host', 'h1');
+    const guest = await connect(code, 'guest', 'g1');
+    await host.until(1);
+    await guest.until(1);
+    // The guest has said nothing for SILENT_MS: as if its Wi-Fi went.
+    await runInDurableObject(stub, (room: Room) => {
+      const inner = room as unknown as { heard: WeakMap<WebSocket, number>; checkedAt: number; ctx: DurableObjectState };
+      for (const ws of inner.ctx.getWebSockets('guest')) inner.heard.set(ws, Date.now() - SILENT_MS - 1);
+      inner.checkedAt = 0;
+    });
+    host.ws.send('{"t":"roster","n":1}');
+    await host.until(2);
+    expect(host.json(1)).toEqual({ t: 'peer', joined: true, away: true });
+    for (let k = 0; k < 40 && !guest.closed; k++) await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(guest.closed).toBe(true);
+    // What set it off is held for the guest, who comes back to it.
+    const back = await connect(code, 'guest', 'g1');
+    await back.until(2);
+    expect(back.got[1]).toBe('{"t":"roster","n":1}');
+  });
+
+  it('lets a quiet seat be while it pings', async () => {
+    const { code } = await makeRoom();
+    const stub = env.ROOMS.getByName(code);
+    const host = await connect(code, 'host', 'h1');
+    const guest = await connect(code, 'guest', 'g1');
+    await host.until(1);
+    await guest.until(1);
+    guest.ws.send('ping');
+    await guest.until(2);
+    await runInDurableObject(stub, (room: Room) => {
+      const inner = room as unknown as { heard: WeakMap<WebSocket, number>; checkedAt: number; ctx: DurableObjectState };
+      for (const ws of inner.ctx.getWebSockets('guest')) inner.heard.set(ws, Date.now() - SILENT_MS - 1);
+      inner.checkedAt = 0;
+    });
+    host.ws.send('{"t":"roster","n":1}');
+    await guest.until(3);
+    expect(guest.got[2]).toBe('{"t":"roster","n":1}');
+    expect(host.got.length).toBe(1);
   });
 
   it('tells a returning player the other left on purpose while they were away', async () => {

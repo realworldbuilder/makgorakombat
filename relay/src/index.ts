@@ -31,6 +31,12 @@ const IDLE_MS = 10 * 60 * 1000;
 export const RECONNECT_MS = 20_000;
 /** At most this many messages are held for a player who is away; the oldest frames go first. */
 export const HELD_MAX = 600;
+/**
+ * A page with an id pings every two seconds and sends the fight's frames every frame; one that has
+ * sent nothing for this long while the other is talking has dropped without a word (Wi-Fi pulled:
+ * no close ever comes), and is taken for away.
+ */
+export const SILENT_MS = 6000;
 /** Close codes that mean the page left on purpose (BACK TO THE ROSTER, a closed tab): no seat is kept for it. */
 const LEAVING = new Set([1000, 1001]);
 
@@ -87,6 +93,9 @@ export class Room extends DurableObject<Env> {
   private readonly held: Record<Role, (string | ArrayBuffer)[]> = { host: [], guest: [] };
   /** Sockets already seen to close: a close and an error for one socket are one departure. */
   private readonly gone = new WeakSet<WebSocket>();
+  /** When each socket last sent a message; its pings the runtime keeps for us. */
+  private readonly heard = new WeakMap<WebSocket, number>();
+  private checkedAt = 0;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -123,6 +132,7 @@ export class Room extends DurableObject<Env> {
     const [client, server] = [pair[0], pair[1]];
     this.ctx.acceptWebSocket(server, [role]);
     server.serializeAttachment({ id } satisfies Seat);
+    this.heard.set(server, Date.now());
     for (const ws of seated) {
       try {
         ws.close(4001, 'replaced');
@@ -150,7 +160,15 @@ export class Room extends DurableObject<Env> {
 
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
     const role = this.roleOf(ws);
-    if (role) this.tell(other(role), message);
+    if (!role) return;
+    const now = Date.now();
+    this.heard.set(ws, now);
+    // Before passing it on, a look (once a second) at whether the other has gone quiet: then this is held for them.
+    if (now - this.checkedAt >= 1000) {
+      this.checkedAt = now;
+      await this.silence(other(role), now);
+    }
+    this.tell(other(role), message);
   }
 
   async webSocketClose(ws: WebSocket, code: number, reason: string): Promise<void> {
@@ -204,6 +222,27 @@ export class Room extends DurableObject<Env> {
     }
     await this.schedule(ws);
     await this.report(this.heads(ws));
+  }
+
+  /** Takes a seat whose socket has been silent SILENT_MS for dropped, and shuts that socket. Pages without an id ping only every five seconds, and are let be. */
+  private async silence(role: Role, now: number): Promise<void> {
+    for (const ws of this.live(role)) {
+      if (this.seatOf(ws).id === undefined) continue;
+      const heard = this.heard.get(ws);
+      // A room just woken has forgotten: the socket gets the whole time from now.
+      if (heard === undefined) {
+        this.heard.set(ws, now);
+        continue;
+      }
+      const last = Math.max(heard, this.ctx.getWebSocketAutoResponseTimestamp(ws)?.getTime() ?? 0);
+      if (now - last < SILENT_MS) continue;
+      try {
+        ws.close(4002, 'silent');
+      } catch {
+        // Already gone.
+      }
+      await this.left(ws, false);
+    }
   }
 
   /** Sends to a role's socket, or holds it for them while they are away. `gone` is a socket closing now. */

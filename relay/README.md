@@ -58,6 +58,10 @@ and tells each of them its code and whether they host. Nobody reads a code out.
   and the held messages follow in order. A socket with the seat's `id` also takes over from one
   the room still thinks is open. After the 20 seconds the other hears `joined:false` as for a
   leave. A page without an `id` leaves the moment its socket closes.
+- A page with an `id` should send something at least every couple of seconds (the game pings every
+  two): one that has sent nothing, not even a ping, for 6 seconds while the other is talking is
+  taken for dropped, as above, and its socket shut. That is how a pulled Wi-Fi, which never sends
+  a close, is noticed.
 - `ping` is answered `pong` by the room itself without waking it: a keep-alive, and a way to
   time the wire.
 - Every other message goes to the other player unchanged.
