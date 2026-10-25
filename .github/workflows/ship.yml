@@ -2,7 +2,8 @@ name: Ship
 
 # A pull request from one of the two of us goes live as soon as its Check passes: merged into
 # main, then the site deployed. A draft, or one labelled "hold", waits. The merge is made with
-# the workflow's own token, which does not start other workflows, so Deploy is started by hand.
+# the workflow's own token, which does not start other workflows, so Deploy is started by hand,
+# and Relay too when the pull request touched relay/.
 
 on:
   workflow_run:
@@ -43,3 +44,7 @@ jobs:
           fi
           gh workflow run deploy.yml --ref main
           echo "#$n merged by Ship; the site is deploying"
+          if gh pr view "$n" --json files -q '.files[].path' | grep -q '^relay/'; then
+            gh workflow run relay.yml --ref main
+            echo "#$n changed the relay; it is deploying too"
+          fi

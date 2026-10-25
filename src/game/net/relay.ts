@@ -4,12 +4,16 @@ import type { Channel } from './lockstep';
 /*
  * The page's end of the relay (relay/ in this repository): make a room, join one, and the
  * open socket as a Link the screens talk through. Text is the screens' messages, bytes the
- * fight's frames. The relay is Chris's deploy unless SETTINGS names another, so anyone can
- * run their own; both players must use the same one.
+ * fight's frames. The relay is the one the site was built for unless SETTINGS names another, so
+ * anyone can run their own; both players must use the same one.
  */
 
-/** Chris's deploy on workers.dev. */
-export const RELAY_URL = 'https://makgora-relay.clawdgross.workers.dev';
+/**
+ * The relay the site was built for: the repository's RELAY_URL variable, which the Deploy workflow
+ * hands the build as VITE_RELAY_URL once the Relay workflow has deployed one; Chris's deploy on
+ * workers.dev until then.
+ */
+export const RELAY_URL = ((import.meta.env.VITE_RELAY_URL as string | undefined) || 'https://makgora-relay.clawdgross.workers.dev').replace(/\/$/, '');
 const STORAGE = 'makgora.relay';
 /**
  * A ping to the room this often keeps the socket open through quiet screens, times the wire, and
@@ -27,7 +31,7 @@ const TRY_MS = 4000;
 /** Screens' messages sent while the socket is down wait for it, up to this many. */
 const QUEUE_MAX = 100;
 
-/** The relay in use: the one named in SETTINGS, else Chris's. */
+/** The relay in use: the one named in SETTINGS, else the site's. */
 export function relayUrl(): string {
   try {
     const kept = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE) : null;
