@@ -15,14 +15,14 @@ Play: https://realworldbuilder.github.io/makgorakombat/
 
 ### Editions
 
-Each game in the folder is its own edition of the ring, because each one's files hold different champions and different ground. CHOOSE YOUR CHAMPION is dressed as that game's login screen: its logo under ours, one of its loading screens behind the champions, its title music, its colours (`src/game/edition.ts`, every picture and track read from the install by file id).
+Each game in the folder is its own edition of the ring, because each one's files hold different champions and different ground. CHOOSE YOUR CHAMPION is dressed as that game's login screen: the edition's name under our logo, one of its loading screens behind the champions, its title music, its colours (`src/game/edition.ts`, every picture and track read from the install by file id). The games' official logos are not used.
 
 | | Midnight Edition (retail, `wow` 12.x) | Forever Edition (WoW Forever, `wowf` 1.60, and its beta) | Classic Edition (`wow_classic_era` and the other classic clients) |
 |---|---|---|---|
 | Legends | Tyrande, Thrall, Malfurion, Illidan, Varian, Cairne, Vol'jin, in their newest looks with their artifacts | Tyrande, Thrall, Sylvanas, Cairne, Vol'jin, in their first looks with the weapons the old files name | as Forever, as far as the files have them |
 | Races and classes | 31 races (every allied race, the Dracthyr, Earthen and Haranir), 13 classes | the eight 2004 races and the two Skyborne, the nine 2004 classes | the 2004 races and classes |
 | Stages | the five on the rebuilt world | all six, the Valley of Heroes too (Cataclysm rebuilt it on retail) | all six up to Wrath Classic; the rebuilt world from Cataclysm Classic on |
-| Login screen | Midnight's logo, the Assault on Quel'Danas screen, Midnight's main title, void violet | WoW Forever's crest, its inked Kalimdor screen, *Legends of Azeroth*, bronze and teal | the Classic logo, the 2004 continent screens, *Legends of Azeroth* |
+| Login screen | the Assault on Quel'Danas screen, Midnight's main title, void violet | its inked Kalimdor screen, *Legends of Azeroth*, bronze and teal | the 2004 continent screens, *Legends of Azeroth* |
 | Spells | newer visuals, mostly particles the renderer leaves to `fx2d.ts` | the old spell models (Lightning Bolt's ball, Wrath's orb) | the old spell models |
 
 ![The two editions of one folder](docs/edition-choose.png)

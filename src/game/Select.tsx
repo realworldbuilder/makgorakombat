@@ -3,6 +3,7 @@ import type { ClassEntry, Race } from '@mogshot/character/appearance';
 import type { BuildInfoEntry } from '@mogshot/casc/build-info';
 import type { ImportedRecord } from '@mogshot/import/record';
 import { BRAND } from '../engine/brand';
+import { GLYPHS } from './ActionBar';
 import { type Edition, editionOf } from './edition';
 import type { EditionArt } from './editionArt';
 import { type BuiltFighter, type Champion, type Fighters } from './fighters';
@@ -22,7 +23,7 @@ const RESOURCE_WORDS: Record<ResourceKind, string> = { rage: 'Rage: builds in co
  * CHOOSE YOUR CHAMPION. Every race on a grid of the game's own portraits, the player's own
  * characters in a row above, the legends in a row above those, both players' cursors on it
  * at once, each champion drawn full size on its player's side as soon as the cursor rests
- * on it. The screen is dressed as the open game's edition: its logo under ours, one of its
+ * on it. The screen is dressed as the open game's edition: its name under our logo, one of its
  * loading screens behind, its colours; E switches to another game in the same folder.
  */
 
@@ -494,8 +495,8 @@ export function Select({ edition, art, others, onEdition, races, classes, record
         <header>
           <LogoArt small={!legendsOnly} />
           <div class="edition-mark" title={`${edition.game} ${edition.version}`}>
-            {art.logo && <img src={art.logo} alt={edition.game} draggable={false} />}
-            <span>{edition.name.toUpperCase()}</span>
+            <span class="glyph">{GLYPHS[edition.key]}</span>
+            <span class="words">{edition.name.toUpperCase()}</span>
           </div>
           <h1>{BRAND.choose}</h1>
         </header>

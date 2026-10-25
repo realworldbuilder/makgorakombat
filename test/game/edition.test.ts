@@ -7,7 +7,6 @@ describe('editions', () => {
     expect(retail.key).toBe('retail');
     expect(retail.name).toBe('Midnight Edition');
     expect(retail.world).toBe('retail');
-    expect(retail.logos[0]).toBe(7242277);
     expect(retail.title.groups[0]).toEqual([7713732]);
 
     // WoW Forever live, and its beta, which shipped under the classic beta's product name.
@@ -15,7 +14,7 @@ describe('editions', () => {
       const forever = editionOf(product, version);
       expect(forever.key).toBe('forever');
       expect(forever.world).toBe('classic');
-      expect(forever.logos[0]).toBe(8205333);
+      expect(forever.title.groups[0]).toEqual([8176610]);
     }
 
     const era = editionOf('wow_classic_era', '1.15.7.61000');
@@ -23,8 +22,10 @@ describe('editions', () => {
     expect(era.world).toBe('classic');
     // Mists Classic stands in Cataclysm's rebuilt world.
     expect(editionOf('wow_classic', '5.5.1.63000').world).toBe('retail');
-    // A retail build of an expansion not listed yet still gets a logo and music.
-    expect(editionOf('wow_beta', '13.0.0.80000').logos.length).toBeGreaterThan(0);
+    // A retail build of an expansion not listed yet still gets music and a loading screen.
+    const next = editionOf('wow_beta', '13.0.0.80000');
+    expect(next.title.groups.length).toBeGreaterThan(0);
+    expect(next.backdrops.length).toBeGreaterThan(0);
   });
 
   it('offer the active products, retail first', () => {
