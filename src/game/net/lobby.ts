@@ -269,6 +269,13 @@ export class Lobby {
     this.send({ t: on ? 'quick' : 'unquick' });
   }
 
+  /** Out of the queue and no wish to be put back in it, connected or not: the panel shut. */
+  leaveQueue(): void {
+    const asked = this.state.queued || this.wantQueue;
+    this.wantQueue = false;
+    if (asked && this.ws?.readyState === WebSocket.OPEN) this.send({ t: 'unquick' });
+  }
+
   /**
    * NEXT OPPONENT: into the queue as soon as the lobby has this page free. A socket open free asks
    * now; otherwise the next one opened free (once the match is left) comes in with requeue=1.

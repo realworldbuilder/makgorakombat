@@ -201,6 +201,20 @@ describe('the lobby socket', () => {
     lobby.close();
   });
 
+  it('shut while the wire is down, leaves the queue for good: no requeue as it comes back', () => {
+    const lobby = new Lobby('Chris', 'chris-0001', 'https://relay.test');
+    lobby.setMode('free');
+    FakeSocket.made[0]!.open();
+    lobby.quick(true);
+    FakeSocket.made[0]!.say({ t: 'queued' });
+    FakeSocket.made[0]!.close();
+    expect(lobby.state.queued).toBe(false);
+    lobby.leaveQueue();
+    vi.advanceTimersByTime(1000);
+    expect(FakeSocket.made[1]!.url).not.toContain('requeue');
+    lobby.close();
+  });
+
   it('sends the challenge and its answers, and a name change comes in again under the new name', () => {
     const lobby = new Lobby('Chris', 'chris-0001', 'https://relay.test');
     lobby.setMode('free');
