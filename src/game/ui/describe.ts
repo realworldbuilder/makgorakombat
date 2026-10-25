@@ -94,6 +94,6 @@ export function describeWeapon(weapon: Weapon): Tooltip {
     range: shots ? `${weapon.range} yd range` : 'Melee Range',
     cast: `Every ${sec(weapon.speed)}`,
     cooldown: '',
-    description: `${shots ? 'Shoots' : 'Swings'} at the target for ${amount(weapon.damage, weapon.spread)} damage whenever it is in reach. Hold the key to keep ${shots ? 'shooting' : 'swinging'}; a tap ${shots ? 'shoots' : 'swings'} once.${weapon.shield ? ' Your shield blocks some blows from the front.' : ''}`,
+    description: `${shots ? 'Shoots' : 'Swings'} at the target for ${amount(weapon.damage, weapon.spread)} damage whenever it is in reach. Hold the key to keep ${shots ? 'shooting' : 'swinging'}; a tap ${shots ? 'shoots' : 'swings'} once.${weapon.close ? ` Inside melee range it strikes by hand instead, for ${amount(weapon.close.damage, weapon.close.spread)}.` : ''}${weapon.shield ? ' Your shield blocks some blows from the front.' : ''}`,
   };
 }
