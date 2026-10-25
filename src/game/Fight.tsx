@@ -3,7 +3,7 @@ import { type Inputs, type Match, newMatch, poseOf, type Spark, tick } from '../
 import { InputReader } from '../engine/input';
 import { type MoveTable, resolveMoves } from '../engine/moves';
 import { type FighterView, fighterView } from '../engine/view';
-import { CAMERA, TICK_MS } from '../engine/stage';
+import { bodyRadius, CAMERA, HUMAN_HEAD, TICK_MS } from '../engine/stage';
 import { Arena } from './arena';
 import type { BuiltFighter } from './fighters';
 import { type FighterFx, poseFx } from './fx';
@@ -74,7 +74,9 @@ const SHIELD_CLASSES = new Set([1, 2, 7]);
 function tableOf(fighter: BuiltFighter): MoveTable {
   const { champion, result } = fighter;
   const shield = result.wielding === 'oneHand' && champion.classId !== undefined && SHIELD_CLASSES.has(champion.classId) && champion.gear.some(([slot]) => slot === 'offHand');
-  return resolveMoves(result.scene.animations, result.wielding, champion.classId, shield);
+  // The body's size and lean set how close it stands and how far it reaches: Cairne stands off further than a gnome.
+  const body = bodyRadius(headHeight(fighter) / HUMAN_HEAD, result.scene.head?.[0] ?? 0);
+  return resolveMoves(result.scene.animations, result.wielding, champion.classId, shield, body);
 }
 
 /** How high a fighter's head is, standing: the model's helm point, at its own size; a little under the top of its box without one. */
