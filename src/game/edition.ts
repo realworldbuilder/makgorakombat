@@ -5,10 +5,11 @@ import type { Cue } from './music';
  * by side (retail in _retail_, WoW Forever in _forever_, the classic clients in _classic_*_),
  * each its own product in .build.info, and each draws the ring differently: its own races,
  * classes and legends' looks, its own world for the stages, and its own login screen. The
- * edition is that login screen's dress for CHOOSE YOUR CHAMPION: the game's logo, a loading
- * screen of its own behind the champions, its title music and its colours. Everything is read
- * from the install by file id, the first id it has winning, so a build that moves a file only
- * falls back.
+ * edition is that login screen's dress for CHOOSE YOUR CHAMPION: a loading screen of its own
+ * behind the champions, its title music and its colours, under the edition's name and a glyph
+ * of our own drawing. The game's official logos are left out on purpose. Everything is read from
+ * the install by file id, the first id it has winning, so a build that moves a file only falls
+ * back.
  */
 
 export type EditionKey = 'retail' | 'forever' | 'classic';
@@ -25,8 +26,6 @@ export interface Edition {
   name: string;
   /** Whose world the stages stand in: the 2004 ground, or retail's rebuilt one. */
   world: 'classic' | 'retail';
-  /** The game's logo from its login screen, as file ids to try in order. */
-  logos: number[];
   /** Loading screens of this game to stand the select screen in front of, in order. */
   backdrops: number[];
   /** The login screen's music. */
@@ -36,21 +35,18 @@ export interface Edition {
 /** The 2004 login theme, "Legends of Azeroth": WoW Forever's own copy, then the original file. */
 const LEGENDS_OF_AZEROTH: Cue = { key: 'title:legends', groups: [[8176610], [53223]] };
 
-/** Retail by expansion: its name, logo and main title, newest first. The 2004 theme is the fallback for all. */
-const EXPANSIONS: Record<number, { name: string; logo: number; music: number; backdrops: number[] }> = {
+/** Retail by expansion: its name and main title, newest first. The 2004 theme is the fallback for all. */
+const EXPANSIONS: Record<number, { name: string; music: number; backdrops: number[] }> = {
   // Midnight: Assault on Quel'Danas, Windrunner Spire, Zul'Aman.
-  12: { name: 'Midnight', logo: 7242277, music: 7713732, backdrops: [7578182, 7266211, 7488404] },
+  12: { name: 'Midnight', music: 7713732, backdrops: [7578182, 7266211, 7488404] },
   // The War Within.
-  11: { name: 'The War Within', logo: 5705453, music: 6075186, backdrops: [] },
+  11: { name: 'The War Within', music: 6075186, backdrops: [] },
   // Dragonflight.
-  10: { name: 'Dragonflight', logo: 4547767, music: 4880327, backdrops: [] },
+  10: { name: 'Dragonflight', music: 4880327, backdrops: [] },
 };
 
 /** The original Eastern Kingdoms and Kalimdor loading screens, wide and then 4:3. */
 const OLD_WORLD = [343001, 343002, 131839, 131848];
-
-/** Classic's logos by major version: era, Burning Crusade, Wrath, Cataclysm and Mists Classic. */
-const CLASSIC_LOGOS: Record<number, number> = { 1: 538639, 2: 4069412, 3: 4544489, 4: 5730488, 5: 7118960 };
 
 const parse = (version: string) => {
   const [major = 0, minor = 0] = version.split('.').map(Number);
@@ -69,14 +65,12 @@ export function editionOf(product: string, version: string): Edition {
       game: 'World of Warcraft: Forever',
       name: 'Forever Edition',
       world: 'classic',
-      logos: [8205333, 8363869, 538639],
       // Its own loading screens, drawn in ink: Kalimdor, the Eastern Kingdoms, Dalaran, then the 2004 ones.
       backdrops: [7963779, 7963776, 7963775, ...OLD_WORLD],
       title: LEGENDS_OF_AZEROTH,
     };
   }
   if (product.startsWith('wow_classic') || product.startsWith('wow_anniversary') || (major > 0 && major < 10)) {
-    const anniversary = product.startsWith('wow_anniversary');
     return {
       key: 'classic',
       product,
@@ -85,7 +79,6 @@ export function editionOf(product: string, version: string): Edition {
       name: 'Classic Edition',
       // Cataclysm rebuilt the old world; the classic clients before it stand on the 2004 ground.
       world: major >= 4 ? 'retail' : 'classic',
-      logos: [...(anniversary ? [6366094] : []), CLASSIC_LOGOS[major] ?? 538639, 538639],
       backdrops: OLD_WORLD,
       title: { key: 'title:classic', groups: [[53223], [8176610]] },
     };
@@ -99,7 +92,6 @@ export function editionOf(product: string, version: string): Edition {
     game: `World of Warcraft: ${expansion.name}`,
     name: `${expansion.name} Edition`,
     world: 'retail',
-    logos: [expansion.logo, ...newest.map((m) => EXPANSIONS[m]!.logo)],
     backdrops: [...expansion.backdrops, ...newest.flatMap((m) => EXPANSIONS[m]!.backdrops), ...OLD_WORLD],
     title: { key: `title:${major}`, groups: [[expansion.music], ...LEGENDS_OF_AZEROTH.groups] },
   };
