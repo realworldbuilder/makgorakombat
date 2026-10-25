@@ -8,10 +8,26 @@ Play: https://realworldbuilder.github.io/makgorakombat/
 
 ## How it plays
 
-1. Drag your `World of Warcraft` folder onto the page (it is in `Applications` on a Mac). Chrome on a Mac is what it is made for.
-2. **CHOOSE YOUR CHAMPION.** Every race the game lets you create is on the grid, in the game's own portraits; your own characters, as captured by the [Mogshot addon](https://github.com/realworldbuilder/mogshot/tree/main/addon/Mogshot), are in the row above with their real gear; above those, the **LEGENDS**: Tyrande, Thrall, Sylvanas, Malfurion, Illidan, Varian, Cairne and Vol'jin, drawn exactly as the game draws them (the NPC's own gear, face and painted body), as far as your install has them. Both players' cursors are on the grid at once. Resting on a tile summons that champion full size on your side; choosing makes them roar.
+1. Drag your `World of Warcraft` folder onto the page (it is in `Applications` on a Mac). Chrome on a Mac is what it is made for. A folder that holds more than one game (retail beside WoW Forever, say) asks **which world** to fight in; **E** on the champion screen switches to the other.
+2. **CHOOSE YOUR CHAMPION.** Every race the game lets you create is on the grid, in the game's own portraits; your own characters, as captured by the [Mogshot addon](https://github.com/realworldbuilder/mogshot/tree/main/addon/Mogshot), are in the row above with their real gear; above those, the **LEGENDS**: Tyrande, Thrall, Sylvanas, Malfurion, Illidan, Varian, Cairne and Vol'jin, drawn exactly as the game draws them (the NPC's own gear, face and painted body), as far as your install has them. For now the ring is the legends' alone; add `?all` to the address (https://realworldbuilder.github.io/makgorakombat/?all) for every race and your own characters. Both players' cursors are on the grid at once. Resting on a tile summons that champion full size on your side; choosing makes them roar.
 3. The **VS** screen: pick the ground. The stages are real places in the game world, read from the open folder's map files and raised around the fighters while they wait: Gurubashi Arena's pit, the ring of totems in the Valley of Trials, the Crossroads, the Valley of Heroes, Goldshire's lawn, Sentinel Hill, the gardens of Darnassus, Thunder Bluff's rise, and on a retail install Dalaran and the gate of Icecrown. The strip shows the stages the open install has maps for; past them are the game's loading screens, flat pictures behind the ring, for installs that lack a map.
 4. Best of three rounds, sixty seconds each. Take the other champion's health to nothing and they are dazed: **FINISH THE MAK'GORA!** You have four seconds. Enter your class's **fatality** sequence (it is shown on your side of the screen) and the execution plays; an ability that lands without it is the plain finisher; either is **DISHONOR!** A swing, or the clock, is a mere **K.O.** A round won untouched is **HONOR RESTORED**.
+
+### Editions
+
+Each game in the folder is its own edition of the ring, because each one's files hold different champions and different ground. CHOOSE YOUR CHAMPION is dressed as that game's login screen: the edition's name under our logo, one of its loading screens behind the champions, its title music, its colours (`src/game/edition.ts`, every picture and track read from the install by file id). The games' official logos are not used.
+
+| | Midnight Edition (retail, `wow` 12.x) | Forever Edition (WoW Forever, `wowf` 1.60, and its beta) | Classic Edition (`wow_classic_era` and the other classic clients) |
+|---|---|---|---|
+| Legends | Tyrande, Thrall, Malfurion, Illidan, Varian, Cairne, Vol'jin, in their newest looks with their artifacts | Tyrande, Thrall, Sylvanas, Cairne, Vol'jin, in their first looks with the weapons the old files name | as Forever, as far as the files have them |
+| Races and classes | 31 races (every allied race, the Dracthyr, Earthen and Haranir), 13 classes | the eight 2004 races and the two Skyborne, the nine 2004 classes | the 2004 races and classes |
+| Stages | the five on the rebuilt world | all six, the Valley of Heroes too (Cataclysm rebuilt it on retail) | all six up to Wrath Classic; the rebuilt world from Cataclysm Classic on |
+| Login screen | the Assault on Quel'Danas screen, Midnight's main title, void violet | its inked Kalimdor screen, *Legends of Azeroth*, bronze and teal | the 2004 continent screens, *Legends of Azeroth* |
+| Spells | newer visuals, mostly particles the renderer leaves to `fx2d.ts` | the old spell models (Lightning Bolt's ball, Wrath's orb) | the old spell models |
+
+![The two editions of one folder](docs/edition-choose.png)
+![Midnight Edition](docs/edition-midnight.png)
+![Forever Edition](docs/edition-forever.png)
 
 ### The fight is World of Warcraft's
 
@@ -87,7 +103,7 @@ pnpm dev
 
 The engine (CASC reader, model and animation parsers, skinning, WebGL renderer, the worker that reads the folder) is [Mogshot](https://github.com/realworldbuilder/mogshot), brought in as the submodule `vendor/mogshot`. To work on both at once, point the game at a checkout of Mogshot: `MOGSHOT_SRC=../mogshot/src pnpm dev`.
 
-`pnpm test` runs the engine's tests (the fight itself is deterministic and runs without a browser). `pnpm build` makes the static site in `dist/`; a push to `main` deploys it to GitHub Pages.
+`pnpm test` runs the engine's tests (the fight itself is deterministic and runs without a browser). `pnpm build` makes the static site in `dist/`; a push to `main` deploys it to GitHub Pages. Working on it together: [CONTRIBUTING.md](CONTRIBUTING.md); every change goes through a pull request.
 
 ### Stages
 

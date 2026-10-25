@@ -379,19 +379,17 @@ describe('resources', () => {
 });
 
 describe('cooldowns', () => {
-  it('the global cooldown holds the next ability for 1.0 s', () => {
+  it('the global cooldown holds the next ability for 1.0 s, then the queued press goes off', () => {
     const match = fighting(1.5, 1, [ROGUE, WARRIOR]);
     press(match, 0, 0, 'hit');
     expect(match.fighters[0].gcd).toBe(GCD_FRAMES);
     run(match, 40);
     const energy = match.fighters[0].resource;
     press(match, 0, 0, 'hit');
-    expect(match.fighters[0].resource).toBeGreaterThan(energy); // not spent again
-    run(match, GCD_FRAMES);
-    expect(match.fighters[0].gcd).toBe(0);
-    press(match, 0, 0, 'hit');
-    expect(match.fighters[0].t).toBeLessThan(25);
-    expect(match.fighters[0].resource).toBeLessThan(energy);
+    expect(match.fighters[0].resource).toBeGreaterThan(energy); // not spent yet
+    run(match, GCD_FRAMES - 40 + 2);
+    expect(match.fighters[0].resource).toBeLessThan(energy); // spent once the cooldown ended
+    expect(match.fighters[0].gcd).toBeGreaterThan(0); // and the next one is running
   });
 
   it('an ability on cooldown says NOT READY until it is back', () => {
@@ -897,5 +895,60 @@ describe('determinism', () => {
     expect(JSON.stringify(a)).toBe(JSON.stringify(b));
     // Blood was drawn: a round was won, or someone is hurt.
     expect(a.round > 1 || a.fighters[0].hp + a.fighters[1].hp < 2 * HP).toBe(true);
+  });
+});
+
+describe('the finish window', () => {
+  it('a cast the winner had in flight does not land as the plain finisher', () => {
+    const match = fighting(1.5, 1, [PRIEST, WARRIOR]);
+    const [priest, warrior] = match.fighters;
+    press(match, 0, 0); // Mind Blast, a 1 s cast
+    expect(priest.cast).toBeDefined();
+    run(match, 20);
+    warrior.hp = 0; // a damage-over-time tick ends the round mid-cast
+    tick(match, NONE);
+    expect(match.phase).toBe('finish');
+    expect(priest.cast).toBeUndefined();
+    run(match, 90);
+    expect(match.phase).toBe('finish');
+    expect(warrior.state).toBe('dazed');
+  });
+
+  it('a swing the winner had started does not land either', () => {
+    const match = fighting(1.0, 1);
+    const [a, b] = match.fighters;
+    tick(match, [inputs({ attack: true }), inputs()]);
+    expect(a.state).toBe('attack');
+    b.hp = 0;
+    tick(match, NONE);
+    expect(match.phase).toBe('finish');
+    run(match, 90);
+    expect(match.phase).toBe('finish');
+  });
+});
+
+describe('the spell queue', () => {
+  it('a press inside the global cooldown waits for it and goes off when it ends', () => {
+    const match = fighting(1.0, 1, [ROGUE, ROGUE]);
+    const f = match.fighters[0];
+    press(match, 0, 0); // Sinister Strike starts the global cooldown
+    expect(f.gcd).toBe(GCD_FRAMES);
+    run(match, 20);
+    press(match, 0, 1); // Kidney Shot, with 40 frames of cooldown still to go
+    expect(f.cooldowns[1]).toBe(0);
+    run(match, GCD_FRAMES - 20 + 2);
+    expect(f.cooldowns[1]).toBeGreaterThan(0);
+  });
+
+  it('the last press wins the queue', () => {
+    const match = fighting(1.0, 1, [ROGUE, ROGUE]);
+    const f = match.fighters[0];
+    press(match, 0, 0);
+    run(match, 10);
+    press(match, 0, 1);
+    run(match, 10);
+    press(match, 0, 0);
+    run(match, GCD_FRAMES);
+    expect(f.cooldowns[1]).toBe(0);
   });
 });

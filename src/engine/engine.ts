@@ -690,7 +690,8 @@ function readKeys(f: Fighter, inputs: Inputs): void {
   const pressed = inputs.abilities.findIndex(Boolean);
   if (pressed >= 0) {
     f.buffered = pressed;
-    f.bufferedT = BUFFER_FRAMES;
+    // The spell queue: a press inside the global cooldown is kept until it ends, as in the game.
+    f.bufferedT = f.gcd + BUFFER_FRAMES;
   } else if (f.bufferedT > 0 && --f.bufferedT === 0) {
     f.buffered = -1;
   }
@@ -705,12 +706,14 @@ function applyInputs(match: Match, i: 0 | 1, inputs: Inputs): void {
   if (f.cast && f.state === 'cast' && (dir !== 0 || inputs.jump)) cancelCast(f);
   if (!actionable(match, i)) return;
 
-  // The buffered ability press goes first.
+  // The buffered ability press goes first; one waiting on the global cooldown stays queued.
   if (f.buffered >= 0) {
     const n = f.buffered;
-    f.buffered = -1;
-    f.bufferedT = 0;
-    if (useAbility(match, i, n)) return;
+    if (!(abilityOf(match, i, n).gcd && f.gcd > 0)) {
+      f.buffered = -1;
+      f.bufferedT = 0;
+      if (useAbility(match, i, n)) return;
+    }
   }
   // The auto-attack goes when its timer is up and the target is in reach. In the finish only a fresh tap
   // swings: a key held through the knockdown must not drop the loser before the sequence can be entered.
@@ -1454,7 +1457,16 @@ function checkFinish(match: Match): void {
   w.dots.length = 0;
   w.stunT = 0;
   w.fearT = 0;
-  if (w.state === 'stun' || w.state === 'fear') play(w, 'idle', 'idle');
+  // Nothing the winner had in flight lands by itself: a cast about to go off, a dash, a swing or
+  // bolt mid-animation, or a queued press would be the plain finisher before the sequence could
+  // be entered. The window is theirs to use.
+  w.cast = undefined;
+  w.dash = undefined;
+  w.hitDone = true;
+  w.buffered = -1;
+  w.bufferedT = 0;
+  w.queued = false;
+  if (w.state === 'stun' || w.state === 'fear' || w.state === 'cast' || w.state === 'dash') play(w, 'idle', 'idle');
   match.projectiles.length = 0;
   match.roundWinner = winner;
   // The sequence starts clean: a key held through the knockdown is not a press.

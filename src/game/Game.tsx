@@ -1,12 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { ClassEntry, Race } from '@mogshot/character/appearance';
 import type { Image } from '@mogshot/formats/blp';
 import type { LoadingScreen } from '@mogshot/worker/api';
 import { DataClient } from '@mogshot/worker/client';
+import { type Edition, editionOf, playableProducts } from './edition';
+import { type EditionArt, loadEditionArt } from './editionArt';
 import { Fight } from './Fight';
 import { type BuiltFighter, Fighters } from './fighters';
 import { messageOf, useFolder } from './folder';
-import { LEVEL, music, TITLE } from './music';
+import { LEVEL, music } from './music';
 import { pictureUrl } from './pixels';
 import { LEGENDS, legendTiles, type Tile } from './roster';
 import { Select, type Source } from './Select';
@@ -19,7 +21,7 @@ import { Versus } from './Versus';
 /*
  * The screens: the title with the folder drop, CHOOSE YOUR CHAMPION, the VS screen with the
  * stage pick, and the fight. Everything the game knows about the open folder is loaded once
- * here and handed down.
+ * here and handed down, with the edition (edition.ts): which of the folder's games is open.
  */
 
 type Screen =
@@ -28,6 +30,8 @@ type Screen =
   | { kind: 'fight'; fighters: [BuiltFighter, BuiltFighter]; stage: Ground };
 
 interface Loaded {
+  edition: Edition;
+  art: EditionArt;
   races: Race[];
   classes: ClassEntry[];
   portraits: { races: Map<string, string>; classes: Map<string, string> };
@@ -41,11 +45,14 @@ interface Loaded {
 export function Game() {
   const client = useRef<DataClient>(null);
   client.current ??= new DataClient();
-  const { phase, dragging, onPick } = useFolder(client.current);
+  const { phase, dragging, openFolder, onPick } = useFolder(client.current);
   const [loaded, setLoaded] = useState<Loaded>();
   const [loadError, setLoadError] = useState<string>();
   const [screen, setScreen] = useState<Screen>({ kind: 'select' });
   const [p2, setP2] = useState<Source>('cpu');
+  // A stable handler: Fight rebuilds the whole match when its props change, and dragging a file
+  // across the window re-renders Game (the title's drop state), which must not restart a fight.
+  const backToSelect = useCallback(() => setScreen({ kind: 'select' }), []);
 
   const openKey = phase.kind === 'ready' ? phase.opened.info.buildKey + phase.opened.info.product : undefined;
   useEffect(() => {
@@ -55,11 +62,12 @@ export function Game() {
     if (openKey === undefined) return;
     let stale = false;
     const data = client.current!;
-    const product = phase.kind === 'ready' ? phase.opened.info.product : '';
+    const info = phase.kind === 'ready' ? phase.opened.info : undefined;
+    const edition = editionOf(info?.product ?? '', info?.version ?? '');
     void (async () => {
       try {
         void loadGameFonts(data);
-        const [races, classes, portraits, screens, looks, maps] = await Promise.all([
+        const [races, classes, portraits, screens, looks, maps, art] = await Promise.all([
           data.races(),
           data.classList(),
           data.portraits().catch((cause: unknown) => {
@@ -77,16 +85,23 @@ export function Game() {
             console.warn('The maps could not be listed:', cause);
             return [];
           }),
+          // The edition's logo and loading screen; a screen without them still plays.
+          loadEditionArt(data, edition).catch((cause: unknown) => {
+            console.warn('The edition\'s art could not be read:', cause);
+            return {} as EditionArt;
+          }),
         ]);
         if (stale) return;
         if (portraits.problems.length > 0) console.warn('Portraits:', portraits.problems.join('; '));
         const urls = (images: Record<string, Image>) => new Map(Object.entries(images).map(([key, image]) => [key, pictureUrl(image)]));
         setLoaded({
+          edition,
+          art,
           races,
           classes,
           portraits: { races: urls(portraits.races), classes: urls(portraits.classes) },
           screens,
-          stages: stagesFor(maps.map((map) => map.id), product),
+          stages: stagesFor(maps.map((map) => map.id), edition.world),
           legends: legendTiles(LEGENDS, looks, races),
           fighters: new Fighters(data, classes),
         });
@@ -99,12 +114,21 @@ export function Game() {
     };
   }, [openKey]);
 
-  // The login theme under CHOOSE YOUR CHAMPION; the VS screen and the fight play their stage's own.
+  // The open game's login theme under CHOOSE YOUR CHAMPION; the VS screen and the fight play their stage's own.
   useEffect(() => {
-    if (!loaded) return;
-    music.use(client.current!);
-    if (screen.kind === 'select') music.play(TITLE, LEVEL.select);
+    if (!loaded || openKey === undefined) return;
+    music.use(client.current!, openKey);
+    if (screen.kind === 'select') music.play(loaded.edition.title, LEVEL.select);
   }, [loaded, screen.kind]);
+
+  // The folder's other games, for switching edition from the select screen.
+  const others = useMemo(
+    () => (phase.kind === 'ready' ? playableProducts(phase.opened.products).filter((entry) => entry.product !== phase.opened.info.product) : []),
+    [phase],
+  );
+  const switchTo = (product: string) => {
+    if (phase.kind === 'ready') void openFolder(phase.files, product);
+  };
 
   const records = useMemo(() => (phase.kind === 'ready' ? phase.records : []), [phase]);
 
@@ -112,6 +136,7 @@ export function Game() {
     document.body.classList.toggle('ingame', phase.kind === 'ready' && loaded !== undefined);
   }, [phase.kind, loaded]);
 
+  if (phase.kind === 'choose') return <Title phase={phase} dragging={dragging} onPick={onPick} onChoose={(product) => void openFolder(phase.files, product)} />;
   if (phase.kind !== 'ready') return <Title phase={phase} dragging={dragging} onPick={onPick} />;
   if (loadError) return <Title phase={{ kind: 'error', message: loadError }} dragging={false} onPick={onPick} />;
   if (!loaded) return <Title phase={{ kind: 'opening', message: 'Summoning the roster…' }} dragging={false} onPick={onPick} />;
@@ -120,6 +145,10 @@ export function Game() {
     case 'select':
       return (
         <Select
+          edition={loaded.edition}
+          art={loaded.art}
+          others={others}
+          onEdition={switchTo}
           races={loaded.races}
           classes={loaded.classes}
           records={records}
@@ -146,7 +175,7 @@ export function Game() {
     case 'fight':
       return (
         <>
-          <Fight fighters={screen.fighters} stage={screen.stage} p2={p2} onBack={() => setScreen({ kind: 'select' })} />
+          <Fight fighters={screen.fighters} stage={screen.stage} p2={p2} onBack={backToSelect} />
           <FightUi fighters={screen.fighters} p2={p2} assets={{ client: client.current, races: loaded.races, portraits: loaded.portraits }} />
         </>
       );
