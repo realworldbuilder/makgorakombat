@@ -237,6 +237,13 @@ export function impactFrame(beat: Beat): number {
   return Math.floor(beat.frames * (beat.impactAt ?? 0.3));
 }
 
+/** Whether a blow lands on tick `t` of the beat: at its impact frame, and every `repeat` after for a volley or a channel. */
+export function isBlow(beat: Beat, t: number): boolean {
+  if (!beat.impact) return false;
+  const at = impactFrame(beat);
+  return t === at || (beat.repeat !== undefined && t > at && (t - at) % beat.repeat === 0);
+}
+
 /** Ticks a whole fatality takes. */
 export function fatalityFrames(f: Fatality): number {
   return f.beats.reduce((n, b) => n + b.frames, 0);
