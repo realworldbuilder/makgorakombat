@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { DOT_TICK_FRAMES, GCD_FRAMES } from '../../src/engine/abilities';
+import { damageRange, DOT_TICK_FRAMES, GCD_FRAMES } from '../../src/engine/abilities';
 import { BRAND } from '../../src/engine/brand';
 import { cpuInputs } from '../../src/engine/cpu';
-import { type Inputs, type Match, newMatch, poseOf, tick } from '../../src/engine/engine';
-import { BODY, FINISH_FRAMES, HALF, HP, INTRO_FRAMES, KO_SLOWMO, ROUND_END_FRAMES, START_X } from '../../src/engine/stage';
+import { contactOf, type Inputs, type Match, newMatch, poseOf, tick } from '../../src/engine/engine';
+import { BODY, bodyRadius, FINISH_FRAMES, HALF, HP, INTRO_FRAMES, KO_SLOWMO, ROUND_END_FRAMES, START_X } from '../../src/engine/stage';
 import { fakeMatch, fakeTable, FULL_SET, HUNTER, inputs, MAGE, NONE, PALADIN, place, PRIEST, rig, ROGUE, run, SHAMAN, skipIntro, until, WARLOCK, WARRIOR } from './fake';
 
 /** A match in the fight phase with the fighters `gap` apart. */
@@ -78,6 +78,27 @@ describe('movement', () => {
     run(match, 400, [inputs({ left: true }), inputs({ left: true })]);
     expect(match.fighters[0].x).toBe(-HALF);
     expect(match.fighters[1].x).toBeCloseTo(-HALF + BODY, 5);
+  });
+
+  it('walks up to the other body and stops there, never shoving it back', () => {
+    const match = fighting(3);
+    const standing = match.fighters[1].x;
+    run(match, 200, [inputs({ right: true }), inputs()]);
+    expect(match.fighters[1].x).toBe(standing);
+    expect(match.fighters[1].x - match.fighters[0].x).toBeCloseTo(BODY, 5);
+  });
+
+  it('keeps a big body further off, and lets it and its opponent reach as much further', () => {
+    const match = newMatch([fakeTable(), fakeTable(FULL_SET, 'oneHand', {}, WARRIOR, false, true, bodyRadius(1.5, 0.7))], 1);
+    skipIntro(match);
+    place(match, 3);
+    run(match, 200, [inputs({ right: true }), inputs()]);
+    const gap = match.fighters[1].x - match.fighters[0].x;
+    expect(gap).toBeCloseTo(contactOf(match), 5);
+    expect(gap).toBeGreaterThan(BODY + 0.5);
+    // From there a swing still lands.
+    swing(match, 0, 'hit');
+    expect(match.fighters[1].hp).toBeLessThan(HP);
   });
 
   it('runs forward and backpedals at different speeds', () => {
@@ -224,6 +245,30 @@ describe('the auto-attack', () => {
 });
 
 describe('the hit table', () => {
+  it('rolls every blow in its weapon\'s range, so no two swings need land alike', () => {
+    const match = newMatch([fakeTable(FULL_SET, 'twoHand', {}, WARRIOR, false, false), fakeTable(FULL_SET, 'oneHand', {}, WARRIOR, false, false)], 7);
+    skipIntro(match);
+    const weapon = match.tables[0].weapon;
+    const [low, high] = damageRange(weapon.damage, weapon.spread);
+    const seen = new Set<number>();
+    // The dice run free: plain hits only, a crit or a block is another number.
+    for (let n = 0; n < 60; n++) {
+      place(match, 1.5);
+      match.fighters[1].hp = HP;
+      match.fighters[0].swingT = 0;
+      match.texts.length = 0;
+      tick(match, [inputs({ attack: true }), inputs()]);
+      run(match, 70);
+      const hit = match.texts.find((t) => t.side === 1 && t.kind === 'damage');
+      if (!hit) continue;
+      const dealt = Number(hit.text);
+      expect(dealt).toBeGreaterThanOrEqual(low);
+      expect(dealt).toBeLessThanOrEqual(high);
+      seen.add(dealt);
+    }
+    expect(seen.size).toBeGreaterThan(4);
+  });
+
   it('a text names who caused it: a blow from the other side, a buff from one\'s own', () => {
     const match = fighting(1.5, 1, [PRIEST, WARRIOR]);
     press(match, 0, 2);
@@ -506,14 +551,14 @@ describe('abilities', () => {
     expect(match.fighters[1].dots.length).toBe(1);
     expect(match.fighters[1].hp).toBe(HP);
     run(match, DOT_TICK_FRAMES);
-    expect(match.fighters[1].hp).toBe(HP - 5);
-    expect(texts(match, 1)).toContain('dot:5');
+    expect(match.fighters[1].hp).toBe(HP - 7);
+    expect(texts(match, 1)).toContain('dot:7');
     expect(match.sparks.some((s) => s.kind === 'dot')).toBe(true);
     run(match, DOT_TICK_FRAMES * 4);
-    expect(match.fighters[1].hp).toBe(HP - 25);
+    expect(match.fighters[1].hp).toBe(HP - 35);
     expect(match.fighters[1].dots.length).toBe(0);
     run(match, DOT_TICK_FRAMES);
-    expect(match.fighters[1].hp).toBe(HP - 25);
+    expect(match.fighters[1].hp).toBe(HP - 35);
   });
 
   it('a cast fills its bar, then the bolt flies and slows', () => {
@@ -531,7 +576,7 @@ describe('abilities', () => {
     expect(match.fighters[0].resource).toBe(80);
     expect(until(match, (m) => m.projectiles.length > 0, 60)).toBeGreaterThan(0);
     expect(until(match, (m) => m.fighters[1].hp < HP, 120)).toBeGreaterThan(0);
-    expect(match.fighters[1].hp).toBe(HP - 14);
+    expect(match.fighters[1].hp).toBe(HP - 22);
     expect(match.fighters[1].slowT).toBeGreaterThan(0);
     expect(texts(match, 1)).toContain('status:SLOWED');
   });
@@ -557,17 +602,39 @@ describe('abilities', () => {
     expect(match.spellEvents.map((e) => `${e.spell}:${e.kind}`)).toEqual(['shadowWordPain:release', 'shadowWordPain:impact']);
   });
 
-  it('damage interrupts a cast', () => {
+  it('a blow sets a cast back half a second, twice at most, and the cast still goes', () => {
     const match = fighting(1.5, 1, [MAGE, WARRIOR]);
     press(match, 0, 0);
     expect(match.fighters[0].state).toBe('cast');
+    run(match, 40);
+    const before = match.fighters[0].cast!.t;
     rig(match, 'hit');
     tick(match, [inputs(), inputs({ attack: true })]);
     until(match, (m) => m.fighters[0].hp < HP, 60);
+    const cast = match.fighters[0].cast!;
+    expect(match.fighters[0].state).toBe('cast');
+    expect(cast.delays).toBe(1);
+    expect(cast.t).toBeLessThan(before);
+    // A third blow sets it back no further.
+    cast.delays = 2;
+    const t = cast.t;
+    rig(match, 'hit');
+    match.fighters[1].swingT = 0;
+    tick(match, [inputs(), inputs({ attack: true })]);
+    until(match, (m) => m.fighters[0].hp < HP - 10, 60);
+    expect(match.fighters[0].cast!.t).toBeGreaterThan(t);
+    expect(until(match, (m) => m.projectiles.length > 0, 120)).toBeGreaterThan(0);
+    // Paid when it went off, less the mana that came back since.
+    expect(match.fighters[0].resource).toBeLessThan(85);
+  });
+
+  it('a stun ends a cast', () => {
+    const match = fighting(1.5, 1, [MAGE, PALADIN]);
+    press(match, 0, 0);
+    expect(match.fighters[0].state).toBe('cast');
+    press(match, 1, 1, 'hit'); // Hammer of Justice
     expect(match.fighters[0].cast).toBeUndefined();
-    expect(match.fighters[0].state).not.toBe('cast');
-    run(match, 120);
-    expect(match.projectiles.length).toBe(0);
+    expect(match.fighters[0].state).toBe('stun');
     expect(match.fighters[0].resource).toBe(100);
   });
 
