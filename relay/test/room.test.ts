@@ -133,6 +133,8 @@ describe('relay', () => {
     expect(await runDurableObjectAlarm(stub)).toBe(true);
     await host.until(3);
     expect(host.json(2)).toEqual({ t: 'peer', joined: false });
+    // Too late for the page that dropped: it was said to have left.
+    expect((await join(code, 'guest', 'g1')).status).toBe(410);
     const next = await connect(code, 'guest', 'someone-else');
     await next.until(1);
     expect(next.json(0)).toEqual({ t: 'peer', joined: true });
@@ -153,15 +155,15 @@ describe('relay', () => {
     // Every frame in the room before the guest comes back (a ping would not do: the runtime answers it ahead of the queue).
     const stub = env.ROOMS.getByName(code);
     const heldNow = () => runInDurableObject(stub, (room: Room) => (room as unknown as { held: { guest: unknown[] } }).held.guest);
-    let last: unknown;
-    for (let k = 0; k < 80; k++) {
+    const deadline = Date.now() + 10_000;
+    for (;;) {
       const held = await heldNow();
+      expect(held.length).toBeLessThanOrEqual(HELD_MAX);
       const tail = held.at(-1);
-      if (held.length === HELD_MAX && tail instanceof ArrayBuffer && new Uint8Array(tail)[0] === ((sent - 1) & 0xff)) break;
-      last = held.length;
+      if (tail instanceof ArrayBuffer && new Uint8Array(tail)[0] === ((sent - 1) & 0xff) && new Uint8Array(tail)[1] === (sent - 1) >> 8) break;
+      if (Date.now() > deadline) throw new Error(`the room has ${held.length} held, not the last frame yet`);
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
-    expect(last).not.toBeGreaterThan(HELD_MAX);
     const back = await connect(code, 'guest', 'g1');
     await back.until(1 + HELD_MAX);
     await new Promise((resolve) => setTimeout(resolve, 100));
@@ -175,7 +177,7 @@ describe('relay', () => {
     expect(frames[0]).toBe(sent - (HELD_MAX - 1));
     expect(frames.at(-1)).toBe(sent - 1);
     expect(frames.every((n, k) => k === 0 || n === frames[k - 1]! + 1)).toBe(true);
-  });
+  }, 20_000);
 
   it('lets a page whose old socket still looks open take its own seat over', async () => {
     const { code } = await makeRoom();

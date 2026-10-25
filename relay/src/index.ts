@@ -127,6 +127,8 @@ export class Room extends DurableObject<Env> {
     const again = id !== undefined && seated.length > 0 && seated.every((ws) => this.seatOf(ws).id === id);
     if (seated.length > 0 && !again) return new Response(`The room already has a ${role}.`, { status: 409 });
     if (kept && kept.id !== id) return new Response(`The room is keeping the ${role}'s seat for them.`, { status: 409 });
+    // A page back too late: the other has been told it left, so it may not walk back in as if it had not.
+    if (id !== undefined && !kept && !again && (await this.ctx.storage.get<string[]>('lost'))?.includes(id)) return new Response('That seat was given up.', { status: 410 });
 
     const pair = new WebSocketPair();
     const [client, server] = [pair[0], pair[1]];
@@ -191,6 +193,7 @@ export class Room extends DurableObject<Env> {
       const kept = this.away[role];
       if (!kept || kept.until > Date.now()) continue;
       await this.keep(role, undefined);
+      await this.ctx.storage.put('lost', [...((await this.ctx.storage.get<string[]>('lost')) ?? []), kept.id]);
       this.held[role] = [];
       this.tell(other(role), peer(false));
       ended = true;
