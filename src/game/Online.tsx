@@ -148,7 +148,8 @@ export function Online({ lobby, name, onName, product, onReady, onClose }: Onlin
   const waited = useSince(state.queued ? state.queuedAt : undefined);
   /** Shut, the panel takes this page out of the queue: nobody waits there unseen. */
   const close = () => {
-    if (state.queued) lobby?.quick(false);
+    // Even while the wire is down and the page shows nothing queued: it would ask again as it came back.
+    lobby?.leaveQueue();
     onClose();
   };
 
@@ -175,7 +176,7 @@ export function Online({ lobby, name, onName, product, onReady, onClose }: Onlin
         // Escape takes back what is waiting first, then closes.
         if (state.outgoing) lobby?.cancel();
         else if (state.queued) lobby?.quick(false);
-        else onClose();
+        else close();
       } else if (key === 'ArrowUp') setChosen(Math.max(-1, at - 1));
       else if (key === 'ArrowDown') setChosen(Math.min(others.length - 1, at + 1));
       else if (key === 'KeyQ') quick();
