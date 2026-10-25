@@ -177,7 +177,7 @@ export class Music {
     const source = out.context.createMediaElementSource(audio);
     const gain = out.context.createGain();
     gain.gain.value = 0;
-    source.connect(gain).connect(out.master);
+    source.connect(gain).connect(out.music);
     const playing: Playing = { cue, audio, gain, source };
     this.playing = playing;
     gain.gain.setTargetAtTime(this.wanted?.level ?? 0, out.context.currentTime, CROSSFADE / 3);

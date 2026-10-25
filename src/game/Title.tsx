@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import type { BuildInfoEntry } from '@mogshot/casc/build-info';
 import { BRAND } from '../engine/brand';
 import { ActionBar, GLYPHS, type Slot } from './ActionBar';
 import { editionOf, type EditionKey } from './edition';
 import { lastProduct, type Phase } from './folder';
 import { Guide, type GuidePage } from './Guide';
+import { Settings } from './Settings';
 
 interface TitleProps {
   phase: Phase;
@@ -12,6 +13,8 @@ interface TitleProps {
   onPick: (input: HTMLInputElement) => void;
   /** A game picked from a folder that holds several. */
   onChoose?: (product: string) => void;
+  /** CREATE YOUR CHAMPION is open (or closed): a folder chosen meanwhile opens the roster on the creator's question mark. */
+  onCreate: (open: boolean) => void;
 }
 
 /** What each edition brings to the ring, for the slot's tooltip before anything is read. */
@@ -66,9 +69,40 @@ export function LogoArt({ small }: { small?: boolean }) {
   );
 }
 
-export function Title({ phase, dragging, onPick, onChoose }: TitleProps) {
-  const [guide, setGuide] = useState<GuidePage>();
+export function Title({ phase, dragging, onPick, onChoose, onCreate }: TitleProps) {
+  const [guide, setGuidePage] = useState<GuidePage>();
+  const setGuide = (page: GuidePage | undefined) => {
+    setGuidePage(page);
+    onCreate(page === 'create');
+  };
+  const [settings, setSettings] = useState(false);
+  const picker = useRef<HTMLInputElement>(null);
   const opening = phase.kind === 'opening';
+  // The folder is on its way: the panel gives way to the opening, and the wish to create stands.
+  useEffect(() => {
+    if (opening) setGuidePage(undefined);
+  }, [opening]);
+
+  // The action bar's hotkeys: 1 opens the folder picker (a key press counts as the click the
+  // browser wants), 2 how to play, 3 CREATE YOUR CHAMPION, 4 the source, 5 the settings.
+  useEffect(() => {
+    // A folder with several games takes the digits for its WHICH WORLD? slots instead.
+    if (opening || phase.kind === 'choose') return;
+    const onKey = (event: KeyboardEvent) => {
+      if (guide || settings || event.metaKey || event.ctrlKey || event.altKey) return;
+      switch (event.code) {
+        case 'Digit1': case 'Numpad1': picker.current?.click(); break;
+        case 'Digit2': case 'Numpad2': setGuide('play'); break;
+        case 'Digit3': case 'Numpad3': setGuide('create'); break;
+        case 'Digit4': case 'Numpad4': window.open(SOURCE, '_blank', 'noreferrer'); break;
+        case 'Digit5': case 'Numpad5': setSettings(true); break;
+        default: return;
+      }
+      event.preventDefault();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [opening, phase.kind, guide, settings]);
 
   // A folder with several games: 1, 2... pick one, Enter the one played last.
   useEffect(() => {
@@ -123,6 +157,7 @@ export function Title({ phase, dragging, onPick, onChoose }: TitleProps) {
                 ],
                 input: (
                   <input
+                    ref={picker}
                     type="file"
                     // @ts-expect-error webkitdirectory is not in the DOM typings
                     webkitdirectory
@@ -143,13 +178,13 @@ export function Title({ phase, dragging, onPick, onChoose }: TitleProps) {
               },
               {
                 key: '3',
-                label: 'YOUR CHAMPION',
+                label: 'CREATE YOUR CHAMPION',
                 icon: GLYPHS.champion,
-                onClick: () => setGuide('champion'),
+                onClick: () => setGuide('create'),
                 tip: [
-                  { left: 'Your Champion', kind: 'name', hue: 'epic' },
+                  { left: 'Create Your Champion', kind: 'name', hue: 'epic' },
                   { left: 'Soulbound' },
-                  { left: 'Use: Bring your own characters into the ring with the Mogshot addon.', hue: 'green' },
+                  { left: 'Use: Make a champion of your own: race, class, look, armour and name. Drop your World of Warcraft folder first.', hue: 'green' },
                 ],
               },
               {
@@ -160,6 +195,16 @@ export function Title({ phase, dragging, onPick, onChoose }: TitleProps) {
                 tip: [
                   { left: 'Source', kind: 'name', hue: 'uncommon' },
                   { left: 'Use: Read how the game is made, on GitHub.', hue: 'green' },
+                ],
+              },
+              {
+                key: '5',
+                label: 'SETTINGS',
+                icon: GLYPHS.gear,
+                onClick: () => setSettings(true),
+                tip: [
+                  { left: 'Settings', kind: 'name', hue: 'common' },
+                  { left: 'Use: The sound, the music and which keys the two players hold. Remembered in this browser.', hue: 'green' },
                 ],
               },
             ]}
@@ -176,7 +221,8 @@ export function Title({ phase, dragging, onPick, onChoose }: TitleProps) {
         A fan game. World of Warcraft is Blizzard Entertainment's; the fighters are drawn from your own copy of it with the{' '}
         <a href="https://realworldbuilder.github.io/mogshot/">Mogshot</a> engine.
       </p>
-      {guide && <Guide page={guide} onPage={setGuide} onClose={() => setGuide(undefined)} />}
+      {guide && <Guide page={guide} onPage={setGuide} onClose={() => setGuide(undefined)} onFolder={() => picker.current?.click()} />}
+      {settings && <Settings onClose={() => setSettings(false)} />}
     </div>
   );
 }

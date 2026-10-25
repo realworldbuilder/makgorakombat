@@ -773,32 +773,6 @@ code {
   transform-origin: 50% 32%;
 }
 
-.tile.create {
-  display: grid;
-  place-items: center;
-  padding: 6px;
-  text-align: center;
-  border-style: dashed;
-  border-color: #8a6a2a;
-  color: var(--gold);
-  font-family: var(--serif);
-  font-weight: 700;
-  font-size: 0.62rem;
-  letter-spacing: 0.08em;
-  line-height: 1.2;
-}
-
-.tile.create:hover {
-  border-color: var(--gold);
-  background: rgba(255, 209, 0, 0.08);
-}
-
-.tile.create .plus {
-  font-family: var(--heavy);
-  font-size: 2rem;
-  line-height: 1;
-}
-
 .tile .noface {
   display: grid;
   place-items: center;
@@ -1023,4 +997,416 @@ code {
 .grid.legends-only .tile .name {
   font-size: 0.85rem;
   padding: 4px 6px;
+}
+
+/* Settings: the same panel as the guide, with rows of controls. */
+.settings h3 {
+  margin: 6px 0 10px;
+  color: var(--gold);
+  font-family: var(--serif);
+  font-size: 0.95rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.settings h3 + .row,
+.settings .row + .row {
+  margin-top: 8px;
+}
+
+.settings .row {
+  display: grid;
+  grid-template-columns: 7em 1fr 3em;
+  align-items: center;
+  gap: 12px;
+}
+
+.settings .row label {
+  color: var(--dim);
+}
+
+.settings .row .value {
+  text-align: right;
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.settings .toggle {
+  justify-self: start;
+  padding: 6px 14px;
+  background: var(--stone);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--dim);
+  font-family: var(--serif);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+}
+
+.settings .toggle.on {
+  color: var(--gold);
+  border-color: var(--gold-dark);
+}
+
+.settings input[type='range'] {
+  width: 100%;
+  accent-color: var(--gold);
+}
+
+.settings .choice {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.settings .choice button {
+  display: grid;
+  gap: 4px;
+  padding: 10px 14px;
+  background: var(--stone);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--dim);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.settings .choice button b {
+  color: var(--text);
+  font-family: var(--serif);
+  letter-spacing: 0.08em;
+}
+
+.settings .choice button span {
+  font-size: 0.85rem;
+}
+
+.settings .choice button.here {
+  border-color: var(--gold);
+  box-shadow: inset 0 0 0 1px var(--gold-dark);
+}
+
+.settings .choice button.here b {
+  color: var(--gold);
+}
+
+.settings p.dim.small {
+  margin: 8px 0 18px;
+}
+
+@media (max-width: 560px) {
+  .settings .choice {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---- create your champion ------------------------------------------------------------- */
+
+.creator-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 15;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(4px);
+}
+
+.creator {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 400px);
+  width: min(1180px, 96vw);
+  height: min(780px, 92vh);
+  background: radial-gradient(ellipse at 30% 40%, #2b1416 0%, #120a0b 60%, #070405 100%);
+  border: 2px solid #8a6a2a;
+  border-radius: 10px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.9);
+  overflow: hidden;
+}
+
+.creator .stage {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 12px 0 14px;
+}
+
+.creator .plate-name {
+  text-align: center;
+  padding: 0 16px;
+}
+
+.creator .plate-name .name {
+  font-family: var(--heavy);
+  font-size: 2.2rem;
+  line-height: 1.05;
+  letter-spacing: 0.04em;
+}
+
+.creator .plate-name .title {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--serif);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--gold);
+}
+
+.creator .plate-name img.class {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  border: 1px solid var(--gold-dark);
+}
+
+.creator .plate-name .status {
+  font-size: 0.85rem;
+  color: var(--dim);
+}
+
+.creator .plate-name .status.bad {
+  color: #ff6b6b;
+}
+
+.creator .column {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 16px 18px 12px;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0.6));
+  border-left: 1px solid var(--line);
+}
+
+.creator h1 {
+  margin: 0 0 10px;
+  font-family: var(--serif);
+  font-weight: 900;
+  font-size: 1.3rem;
+  letter-spacing: 0.14em;
+  color: var(--gold);
+  text-align: center;
+  text-shadow: 0 2px 0 #000, 0 0 12px rgba(255, 209, 0, 0.25);
+}
+
+.creator .rows {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.creator .row {
+  display: grid;
+  grid-template-columns: 92px 24px minmax(0, 1fr) 24px auto;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+}
+
+.creator .row.here {
+  border-color: var(--gold-dark);
+  background: rgba(255, 209, 0, 0.07);
+}
+
+.creator .row .label {
+  font-family: var(--serif);
+  font-weight: 700;
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  color: var(--gold);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.creator .row .pick {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.creator .row select,
+.creator .row input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 6px;
+  background: #0b0708;
+  color: var(--text);
+  border: 1px solid #5a4020;
+  border-radius: 4px;
+  font: inherit;
+  font-size: 0.9rem;
+}
+
+.creator .row input {
+  grid-column: 2 / -1;
+  font-family: var(--serif);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.creator .row select:focus,
+.creator .row input:focus {
+  outline: none;
+  border-color: var(--gold);
+}
+
+.creator .row .icon {
+  width: 26px;
+  height: 26px;
+  border-radius: 4px;
+  border: 1px solid var(--gold-dark);
+  object-fit: cover;
+}
+
+.creator .row .swatch {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  border-radius: 50%;
+  border: 1px solid #c9a24a;
+}
+
+.creator .row .arrow {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid #5a4020;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, #4a2c12, #1a0d06);
+  color: var(--gold);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.creator .row .arrow:hover {
+  border-color: var(--gold);
+}
+
+.creator .row.wait {
+  grid-template-columns: 92px 1fr;
+}
+
+.creator .row.actions {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.creator .button {
+  background: linear-gradient(180deg, #5a1010, #2a0606);
+}
+
+.creator .button.on {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 2px rgba(255, 209, 0, 0.35);
+}
+
+.creator .button.roll {
+  padding: 3px 8px;
+  font-size: 0.7rem;
+}
+
+.creator .armour-tip {
+  position: absolute;
+  right: calc(100% + 8px);
+  bottom: 60px;
+  width: 300px;
+  z-index: 2;
+  text-align: left;
+}
+
+.creator .hint {
+  margin: 8px 0 0;
+  text-align: center;
+}
+
+/* The tile that opens the creator: a gold question mark on the legends' plate. */
+.tile.create {
+  display: grid;
+  place-items: center;
+  border-color: var(--gold);
+  background: radial-gradient(circle at 50% 40%, #4a2a2e 0%, #1a1012 60%, #0b0708 100%);
+}
+
+.tile.create .ask {
+  font-family: var(--heavy);
+  font-size: 2.8rem;
+  line-height: 1;
+  color: var(--gold);
+  text-shadow: 0 3px 0 var(--gold-dark), 0 0 14px rgba(255, 209, 0, 0.4);
+}
+
+.tile.create .name {
+  justify-content: center;
+  color: var(--gold);
+}
+
+.tile .edit {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  padding: 0 4px;
+  border: 1px solid var(--gold-dark);
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.75);
+  color: var(--gold);
+  font-family: var(--serif);
+  font-size: 0.55rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.tile:hover .edit,
+.tile.p1 .edit,
+.tile.p2 .edit {
+  opacity: 1;
+}
+
+@media (max-width: 720px) {
+  .creator {
+    grid-template-columns: 1fr;
+    grid-template-rows: 38vh 1fr;
+    height: 96vh;
+  }
+
+  .creator .column {
+    border-left: none;
+    border-top: 1px solid var(--line);
+  }
+
+  .creator .armour-tip {
+    display: none;
+  }
+}
+
+.guide .body.create-first {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  padding: 28px 24px 30px;
+  text-align: center;
+}
+
+.guide .body.create-first .big {
+  margin: 0;
+  font-family: var(--serif);
+  font-weight: 700;
+  font-size: 1.2rem;
+  color: var(--gold);
 }

@@ -4,13 +4,14 @@ import type { BuiltFighter } from './fighters';
 
 /*
  * One player's side of the select screen: the champion under the cursor, full size, idling in
- * its Ready stance and turning a little; a battle roar when the player locks in.
+ * its Ready stance and turning a little; a battle roar when the player locks in. In the middle
+ * (the creator) it faces the player.
  */
 
 interface PreviewProps {
   fighter: BuiltFighter | undefined;
   locked: boolean;
-  side: 'left' | 'right';
+  side: 'left' | 'right' | 'middle';
 }
 
 const DEGREE = Math.PI / 180;
@@ -61,7 +62,7 @@ export function Preview({ fighter, locked, side }: PreviewProps) {
       draw.setPose({ meshes: current.rig.pose(sequence, time), bounds: current.result.scene.bounds, pose: current.result.scene.pose });
       // Turned a little toward the middle of the screen, swaying as on character select.
       const sway = Math.sin(now / 2600) * 6 * DEGREE;
-      const turned: Camera = { ...DEFAULT_CAMERA, yaw: (side === 'left' ? -28 : 28) * DEGREE + sway, pitch: 4 * DEGREE, fov: 28 * DEGREE };
+      const turned: Camera = { ...DEFAULT_CAMERA, yaw: (side === 'left' ? -28 : side === 'right' ? 28 : -8) * DEGREE + sway, pitch: 4 * DEGREE, fov: 28 * DEGREE };
       // Aimed at the body's middle so the champion fills the height, whatever is held out in front.
       const { min, max } = current.result.scene.bounds;
       const tall = max[2] - min[2];
