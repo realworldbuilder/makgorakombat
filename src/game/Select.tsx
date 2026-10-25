@@ -674,7 +674,7 @@ export function Select({ edition, art, others, onEdition, races, classes, record
       const weapon = player.built?.moves.weapon;
       if (weapon) {
         const speed = weapon.speed / 60;
-        lines.push({ left: `${weapon.damage} Damage`, right: `Speed ${speed.toFixed(2)}` });
+        lines.push({ left: `${Number(weapon.damage.toFixed(1))} Damage`, right: `Speed ${speed.toFixed(2)}` });
         lines.push({ left: `(${(weapon.damage / speed).toFixed(1)} damage per second)` });
       }
       const kit = kitSpec(classId, player.built?.result.wielding ?? 'oneHand');
