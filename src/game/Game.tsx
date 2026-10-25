@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { ClassEntry, Race } from '@mogshot/character/appearance';
 import type { Image } from '@mogshot/formats/blp';
 import type { LoadingScreen } from '@mogshot/worker/api';
@@ -50,6 +50,9 @@ export function Game() {
   const [loadError, setLoadError] = useState<string>();
   const [screen, setScreen] = useState<Screen>({ kind: 'select' });
   const [p2, setP2] = useState<Source>('cpu');
+  // A stable handler: Fight rebuilds the whole match when its props change, and dragging a file
+  // across the window re-renders Game (the title's drop state), which must not restart a fight.
+  const backToSelect = useCallback(() => setScreen({ kind: 'select' }), []);
 
   const openKey = phase.kind === 'ready' ? phase.opened.info.buildKey + phase.opened.info.product : undefined;
   useEffect(() => {
@@ -172,7 +175,7 @@ export function Game() {
     case 'fight':
       return (
         <>
-          <Fight fighters={screen.fighters} stage={screen.stage} p2={p2} onBack={() => setScreen({ kind: 'select' })} />
+          <Fight fighters={screen.fighters} stage={screen.stage} p2={p2} onBack={backToSelect} />
           <FightUi fighters={screen.fighters} p2={p2} assets={{ client: client.current, races: loaded.races, portraits: loaded.portraits }} />
         </>
       );
