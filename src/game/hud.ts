@@ -35,6 +35,8 @@ export interface HudOptions {
   debug?: string;
   /** What each player plays with, for the sequence prompt's key labels; the keyboard by default. */
   sources?: [InputSource, InputSource];
+  /** Whose keys each fighter's prompt shows: its own player's by default; online, both are this keyboard's player 1. */
+  keys?: [0 | 1, 0 | 1];
   /** The fighters' attachment points this frame (hands, chest), for the spells to start and land on. */
   anchor?: AnchorAt;
   /** Each fighter's head, standing, in yards above the feet at its own size; a human's when not given. */
@@ -104,7 +106,7 @@ export function drawHud(ctx: CanvasRenderingContext2D, width: number, height: nu
   drawSpells(ctx, match, at, options.anchor ?? (() => undefined));
   fatalityEffects(ctx, w, h, match, at, bodies);
   floatingTexts(ctx, match, at, human, bodies, w);
-  sequencePrompt(ctx, w, h, match, sources);
+  sequencePrompt(ctx, w, h, match, sources, options.keys ?? [0, 1]);
   cinematic(ctx, w, h, match);
   banner(ctx, w, h, match);
 
@@ -312,6 +314,8 @@ function styleOf(text: FloatingText, human: [boolean, boolean]): TextStyle {
       return { size: 18, colour: '#ffb347', font: SERIF, word: true };
     case 'info':
       return { size: 13, colour: '#ff8a8a', font: SERIF, word: true };
+    case 'combo':
+      return { size: 24, colour: GOLD, font: SERIF, word: true };
   }
 }
 
@@ -449,7 +453,7 @@ function glyphOf(token: SequenceToken, facing: 1 | -1, player: 0 | 1, source: In
  * its 1.5 s down, every slot red while a wrong key's penalty runs, and a bar for the finish
  * window itself. The computer's sequence shows too, with player 2's keys.
  */
-function sequencePrompt(ctx: CanvasRenderingContext2D, w: number, h: number, match: Match, sources: [InputSource, InputSource]): void {
+function sequencePrompt(ctx: CanvasRenderingContext2D, w: number, h: number, match: Match, sources: [InputSource, InputSource], keys: [0 | 1, 0 | 1]): void {
   const s = match.sequence;
   const winner = match.roundWinner;
   if (match.phase !== 'finish' || !s || winner === undefined) return;
@@ -496,7 +500,7 @@ function sequencePrompt(ctx: CanvasRenderingContext2D, w: number, h: number, mat
     ctx.lineWidth = current ? 3 : 2;
     ctx.strokeStyle = wrong ? RED : lit ? '#fff1b0' : current ? `rgba(255, 209, 0, ${0.45 + 0.55 * pulse})` : 'rgba(244, 241, 230, 0.4)';
     ctx.stroke();
-    const label = glyphOf(token, fighter.facing, winner, sources[winner]);
+    const label = glyphOf(token, fighter.facing, keys[winner], sources[winner]);
     const arrow = label === '←' || label === '→';
     ctx.font = arrow ? 'bold 34px sans-serif' : `${label.length > 2 ? 16 : label.length > 1 ? 24 : 32}px ${HEAVY}`;
     ctx.fillStyle = lit ? '#2a0606' : wrong ? '#ffb0b0' : BONE;

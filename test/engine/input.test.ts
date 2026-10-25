@@ -38,3 +38,18 @@ describe('the key layouts', () => {
     expect(p2.right).toBe(true);
   });
 });
+
+describe('a remote player', () => {
+  it('reads nothing from this keyboard: their inputs come through the lockstep', () => {
+    const reader = new InputReader();
+    reader.setSource(1, 'remote');
+    expect(reader.source(1)).toBe('remote');
+    reader.press('KeyD');
+    reader.press('ArrowRight');
+    reader.press('Comma');
+    const [p1, p2] = reader.read();
+    expect(p1.right).toBe(true);
+    expect(p2.right).toBe(false);
+    expect(p2.attack).toBe(false);
+  });
+});

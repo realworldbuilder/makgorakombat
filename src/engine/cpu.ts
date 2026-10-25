@@ -1,5 +1,5 @@
 import { ABILITY_SLOTS } from './abilities';
-import { abilityBlocked, type Inputs, type Match, nextRandom, noInputs } from './engine';
+import { abilityBlocked, actionable, type Inputs, type Match, nextRandom, noInputs, rulesOf } from './engine';
 import { directionOf } from './fatalities';
 import { FINISH_FRAMES, HALF } from './stage';
 
@@ -11,11 +11,21 @@ const FUMBLE = 0.35;
 /** How often the CPU makes up its mind, in frames; it holds its inputs in between. */
 export const CPU_DECIDE_FRAMES = 8;
 
+/** KOMBAT: the share of the opponent's swings in reach the CPU blocks, and how long it holds the guard for one. */
+export const BLOCK_CHANCE = 0.4;
+const GUARD_FRAMES = 24;
+/** KOMBAT: farther than this the CPU may run in with a double tap, this often a decision. */
+const DASH_FROM = 3.5;
+const DASH_CHANCE = 0.35;
+/** KOMBAT: the share of decisions in reach the CPU throws a swing on; the rest it waits, free to block. */
+const SWING_CHANCE = 0.5;
+
 /**
  * The CPU player's inputs for this tick. Decides every CPU_DECIDE_FRAMES frames from `match.rng`
  * alone, so the same seed and the same match give the same play. Call it once per tick, before `tick`.
  */
 export function cpuInputs(match: Match, me: 0 | 1): Inputs {
+  if (!rulesOf(match).swingTimer) return kombatInputs(match, me);
   const memory = match.cpu[me];
   if (match.frame < memory.next) {
     // Presses are edge-triggered: only the decision tick carries them. The attack key stays held.
@@ -25,6 +35,72 @@ export function cpuInputs(match: Match, me: 0 | 1): Inputs {
   memory.held = decision;
   memory.next = match.frame + CPU_DECIDE_FRAMES;
   return { ...decision, abilities: [...decision.abilities] };
+}
+
+/**
+ * The CPU under KOMBAT: the same decisions, with a fighting game's reflexes between them. Every
+ * swing the opponent starts in reach is weighed once and blocked BLOCK_CHANCE of the time; a blow
+ * of its own that connects is followed by the string's next press; a far opponent is closed on
+ * with a double tap. The attack key is a press, never held, and only when the swing can land.
+ */
+function kombatInputs(match: Match, me: 0 | 1): Inputs {
+  const memory = match.cpu[me];
+  const f = match.fighters[me];
+  const opp = match.fighters[me === 0 ? 1 : 0];
+  const table = match.tables[me];
+  const toward: 1 | -1 = opp.x >= f.x ? 1 : -1;
+  const dist = Math.abs(opp.x - f.x);
+  const fighting = match.phase === 'fight';
+  const give = (out: Inputs): Inputs => {
+    memory.pressed = out.attack;
+    return out;
+  };
+  const only = (key: 'left' | 'right' | 'attack'): Inputs => {
+    const out = noInputs();
+    out[key] = true;
+    return give(out);
+  };
+
+  // A double tap being keyed in: let go, press, let go, press.
+  if (memory.dash > 0) {
+    memory.dash--;
+    return memory.dash % 2 === 0 ? only(toward > 0 ? 'right' : 'left') : give(noInputs());
+  }
+  if (fighting) {
+    // The opponent swings: weigh it once, and hold back through it when it is to be blocked.
+    if (opp.swings !== memory.seen) {
+      memory.seen = opp.swings;
+      const reach = match.tables[me === 0 ? 1 : 0].weapon.range + 0.6;
+      if (opp.state === 'attack' && dist <= reach && nextRandom(match) < BLOCK_CHANCE) memory.guardUntil = Math.max(memory.guardUntil, match.frame + GUARD_FRAMES);
+    }
+    if (match.frame < memory.guardUntil && !f.airborne) return only(toward > 0 ? 'left' : 'right');
+    // A blow of mine connected: the string's next press, letting go of the key first if it is down.
+    if (f.state === 'attack' && f.connected && !f.airAttack && f.chain + 1 < rulesOf(match).chain.length && memory.chained !== f.swings) {
+      if (memory.pressed) return give(noInputs());
+      memory.chained = f.swings;
+      return only('attack');
+    }
+  }
+  if (match.frame < memory.next) {
+    // Between decisions the movement holds; the presses, the attack key's among them, were the decision tick's.
+    return give({ ...memory.held, jump: false, attack: false, abilities: [false, false, false] });
+  }
+  const decision = decide(match, me);
+  memory.next = match.frame + CPU_DECIDE_FRAMES;
+  if (fighting) {
+    // A swing goes on the press, reach or not: only press it when it can land, and not every time, so as to be free to block.
+    if (decision.attack && !table.weapon.ranged && (dist > table.weapon.range * 0.95 || nextRandom(match) >= SWING_CHANCE)) decision.attack = false;
+    // Far off and walking in: run in instead, now and then.
+    const closing = toward > 0 ? decision.right : decision.left;
+    if (closing && dist > DASH_FROM && !f.airborne && actionable(match, me) && nextRandom(match) < DASH_CHANCE) {
+      memory.held = noInputs();
+      memory.dash = 3;
+      return give(noInputs());
+    }
+  }
+  memory.held = decision;
+  if (decision.attack && memory.pressed) decision.attack = false;
+  return give({ ...decision, abilities: [...decision.abilities] });
 }
 
 /** Does this kit fight from a distance? Two or more spells or bolts, or a ranged weapon. */
@@ -67,7 +143,7 @@ function decide(match: Match, me: 0 | 1): Inputs {
   };
 
   if (match.phase !== 'fight' && match.phase !== 'finish') return out;
-  if (f.state === 'death' || f.state === 'dazed' || f.state === 'knockdown' || f.state === 'stun' || f.state === 'fear' || f.state === 'dash') return out;
+  if (f.state === 'death' || f.state === 'dazed' || f.state === 'knockdown' || f.state === 'stun' || f.state === 'fear' || f.state === 'dash' || f.state === 'run' || f.state === 'backdash') return out;
   // Let a cast finish.
   if (f.state === 'cast') return out;
 

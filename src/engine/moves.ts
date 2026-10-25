@@ -119,7 +119,7 @@ const ALL_READY = ['Ready1H', 'Ready2H', 'ReadyUnarmed', 'Ready2HL', 'ReadyBow',
 const ALL_ATTACK = ['Attack1H', 'Attack2H', 'Attack2HL', 'AttackUnarmed', 'AttackBow', 'AttackRifle', 'AttackCrossbow', 'AttackThrown'];
 const ALL_PARRY = ['ShieldBlock', 'Parry1H', 'Parry2H', 'Parry2HL', 'ParryUnarmed', 'Dodge'];
 
-const SWING_HIT: HitWindow = { from: 0.2, to: 0.5, recover: 0.45 };
+export const SWING_HIT: HitWindow = { from: 0.2, to: 0.5, recover: 0.45 };
 
 /** Candidates in order of preference, for a given weapon. `swing` collects all variations of the name it finds. */
 function candidates(wielding: Wielding, shield: boolean): Record<MoveName, { names: string[]; loop: boolean; hit?: HitWindow }> {

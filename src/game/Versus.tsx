@@ -10,6 +10,8 @@ import { BATTLEGROUND, LEVEL, music, stageCue } from './music';
 import type { BuiltFighter } from './fighters';
 import { facingRadians, type Ground, type Stage, thumbnailUrl } from './stages';
 import { type Line, WowTooltip } from './ui/WowTooltip';
+import { sameStage, type StageKey } from './net/handshake';
+import type { Link } from './net/relay';
 
 /*
  * The two champions face each other across the ring while the ground is picked: a stage in the
@@ -25,6 +27,10 @@ interface VersusProps {
   screens: LoadingScreen[];
   onFight: (ground: Ground) => void;
   onBack: () => void;
+  /** Online: the host picks the ground and the guest watches the host's cursor. */
+  online?: { host: boolean; link: Link };
+  /** The guest: the host has started the fight on this ground. */
+  start?: StageKey;
 }
 
 type Entry = { kind: 'stage'; stage: Stage } | { kind: 'screen'; screen: LoadingScreen };
@@ -57,8 +63,10 @@ const KEEP_PLACES = 3;
 const MUSIC_REST = 450;
 
 const keyOf = (entry: Entry) => (entry.kind === 'stage' ? `stage:${entry.stage.slug}` : `screen:${entry.screen.id}`);
+const stageKeyOfEntry = (entry: Entry | undefined): StageKey =>
+  entry === undefined ? { kind: 'none' } : entry.kind === 'stage' ? { kind: 'stage', slug: entry.stage.slug } : { kind: 'screen', id: entry.screen.id };
 
-export function Versus({ client, fighters, stages, screens, onFight, onBack }: VersusProps) {
+export function Versus({ client, fighters, stages, screens, onFight, onBack, online, start }: VersusProps) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const arena = useRef<Arena>(null);
   // The real places only; the loading screens are there for an install that has none of them.
@@ -183,9 +191,36 @@ export function Versus({ client, fighters, stages, screens, onFight, onBack }: V
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cursor, stages, screens]);
 
+  // Online: the host's cursor goes to the guest, and the guest's follows it.
+  useEffect(() => {
+    if (online?.host) online.link.send({ t: 'stage', stage: stageKeyOfEntry(entries[cursor]) });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cursor, online]);
+  useEffect(() => {
+    if (!online || online.host) return;
+    return online.link.listen((message) => {
+      if (message.t !== 'stage') return;
+      const at = entries.findIndex((entry) => sameStage(stageKeyOfEntry(entry), message.stage));
+      if (at >= 0) setCursor(at);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [online, stages, screens]);
+
+  // The guest goes into the ring on the host's word, on the ground the host chose if this install has it, else on none.
+  useEffect(() => {
+    if (!start) return;
+    const entry = entries.find((e) => sameStage(stageKeyOfEntry(e), start));
+    if (!entry) onFight({});
+    else if (entry.kind === 'stage') void placeOf(entry.stage).then((place) => onFight({ stage: entry.stage, place })).catch(() => onFight({}));
+    else void imageOf(entry.screen).then((image) => onFight({ screen: entry.screen, image }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [start]);
+
   useEffect(() => {
     const count = entries.length;
     const onKey = (event: KeyboardEvent) => {
+      // The guest only watches; Escape takes both players back to the roster.
+      if (online && !online.host && event.code !== 'Escape') return;
       switch (event.code) {
         case 'ArrowLeft': case 'KeyA': setCursor((c) => (c - 1 + count) % count); break;
         case 'ArrowRight': case 'KeyD': setCursor((c) => (c + 1) % count); break;
@@ -201,7 +236,10 @@ export function Versus({ client, fighters, stages, screens, onFight, onBack }: V
           } else void imageOf(entry.screen).then((image) => onFight({ screen: entry.screen, image }));
           break;
         }
-        case 'Escape': onBack(); break;
+        case 'Escape':
+          online?.link.send({ t: 'back' });
+          onBack();
+          break;
         default: return;
       }
       event.preventDefault();
@@ -209,7 +247,7 @@ export function Versus({ client, fighters, stages, screens, onFight, onBack }: V
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stages, screens, onFight, onBack]);
+  }, [stages, screens, onFight, onBack, online]);
 
   const [a, b] = fighters;
   const here = entries[cursor];
@@ -246,7 +284,13 @@ export function Versus({ client, fighters, stages, screens, onFight, onBack }: V
           ))}
         </div>
         <div class="controls">
-          {status ? <span class="status">{status}</span> : <span>← → pick a stage · ↑ ↓ jump eight · <b>Enter</b> fight · <b>Esc</b> back</span>}
+          {status ? (
+            <span class="status">{status}</span>
+          ) : online && !online.host ? (
+            <span>The host picks the ground · <b>Esc</b> back to the roster</span>
+          ) : (
+            <span>← → pick a stage · ↑ ↓ jump eight · <b>Enter</b> fight · <b>Esc</b> back</span>
+          )}
         </div>
       </div>
     </div>

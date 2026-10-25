@@ -2,17 +2,17 @@ import { useEffect } from 'preact/hooks';
 import { type InputAction, KEY_LABELS, KEYS, keyLayout, LAYOUT_WORDS } from '../engine/input';
 
 /*
- * The guide: how to play, and CREATE YOUR CHAMPION before the folder is open (the creator
- * draws from the game's own files, so it waits for them).
+ * The guide: how to play, and CREATE YOUR CHAMPION and PLAY ONLINE before the folder is open
+ * (the creator and an online fight draw from the game's own files, so they wait for them).
  */
 
-export type GuidePage = 'play' | 'create';
+export type GuidePage = 'play' | 'create' | 'online';
 
 interface GuideProps {
   page: GuidePage;
   onPage: (page: GuidePage) => void;
   onClose: () => void;
-  /** Opens the folder picker, from the CREATE YOUR CHAMPION page; a key press counts as the click the browser wants. */
+  /** Opens the folder picker, from the CREATE YOUR CHAMPION and PLAY ONLINE pages; a key press counts as the click the browser wants. */
   onFolder?: () => void;
 }
 
@@ -25,7 +25,7 @@ export function Guide({ page, onPage, onClose, onFolder }: GuideProps) {
       if (event.code === 'Escape') {
         event.stopPropagation();
         onClose();
-      } else if (page === 'create' && onFolder && ['Digit1', 'Numpad1', 'Enter', 'NumpadEnter'].includes(event.code)) {
+      } else if (page !== 'play' && onFolder && ['Digit1', 'Numpad1', 'Enter', 'NumpadEnter'].includes(event.code)) {
         event.stopPropagation();
         event.preventDefault();
         onFolder();
@@ -41,6 +41,7 @@ export function Guide({ page, onPage, onClose, onFolder }: GuideProps) {
         <nav class="tabs">
           <button class={page === 'play' ? 'here' : ''} onClick={() => onPage('play')}>HOW TO PLAY</button>
           <button class={page === 'create' ? 'here' : ''} onClick={() => onPage('create')}>CREATE YOUR CHAMPION</button>
+          <button class={page === 'online' ? 'here' : ''} onClick={() => onPage('online')}>PLAY ONLINE</button>
           <button class="close" onClick={onClose} aria-label="Close">✕</button>
         </nav>
         {page === 'play' ? (
@@ -82,12 +83,13 @@ export function Guide({ page, onPage, onClose, onFolder }: GuideProps) {
             <p class="dim small">
               <b>C</b> on the roster switches the keys ({LAYOUT_WORDS[keyLayout()]} now): player 1 on the game's own keys, the arrows to move and jump
               and 1 2 3 4 for the attack and the action bar, with player 2 on WASD and J K L U · <b>Tab</b> switches player 2 between the keyboard, a gamepad
-              and the computer · <b>Enter</b> rematch · <b>Esc</b> back · <b>M</b> mute · <b>F3</b> frame times
+              and the computer · <b>O</b> there plays online · <b>Enter</b> rematch · <b>Esc</b> back · <b>M</b> mute · <b>F3</b> frame times
             </p>
           </div>
         ) : (
           <div class="body create-first">
             <p class="big">Drop your World of Warcraft folder first.</p>
+            {page === 'online' && <p class="dim">Each player's champions and ground are drawn from their own folder; then give a name, and you find each other under WHO'S HERE: one challenges, the other accepts.</p>}
             {onFolder && (
               <button type="button" class="button" onClick={onFolder}>
                 CHOOSE THE FOLDER · 1

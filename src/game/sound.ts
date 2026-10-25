@@ -343,8 +343,8 @@ export class Mixer {
     if (swinging(b) && b.hitDone && !(swinging(a) && a.hitDone)) return 1;
     if (swinging(a) && !swinging(b)) return 0;
     if (swinging(b) && !swinging(a)) return 1;
-    if (a.state === 'hit' || a.state === 'knockdown' || a.state === 'death' || a.state === 'dazed' || a.state === 'stun' || a.state === 'dodge' || a.state === 'parry') return 1;
-    if (b.state === 'hit' || b.state === 'knockdown' || b.state === 'death' || b.state === 'dazed' || b.state === 'stun' || b.state === 'dodge' || b.state === 'parry') return 0;
+    if (a.state === 'hit' || a.state === 'knockdown' || a.state === 'death' || a.state === 'dazed' || a.state === 'stun' || a.state === 'dodge' || a.state === 'parry' || a.state === 'block') return 1;
+    if (b.state === 'hit' || b.state === 'knockdown' || b.state === 'death' || b.state === 'dazed' || b.state === 'stun' || b.state === 'dodge' || b.state === 'parry' || b.state === 'block') return 0;
     return fallback;
   }
 

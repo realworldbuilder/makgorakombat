@@ -7,7 +7,7 @@ import type { BuiltFighter, Champion, Fighters } from './fighters';
 import { headshotOf } from './headshot';
 import { Preview } from './Preview';
 import { classesOf, rosterTiles, sexFor } from './roster';
-import { cleanName, defaultName, madeKey, NAME_LENGTH, newSavedId, type SavedChampion } from './saved';
+import { cleanName, defaultName, fullName, isBuiltin, madeKey, NAME_LENGTH, newSavedId, type SavedChampion } from './saved';
 import { type Line, type Quality, WowTooltip } from './ui/WowTooltip';
 
 /*
@@ -16,7 +16,8 @@ import { type Line, type Quality, WowTooltip } from './ui/WowTooltip';
  * race, sex, class, every appearance option the model offers for that race and sex, the armour
  * (the class's sets by name, or a random outfit), and a name. Each change rebuilds the champion
  * after a moment; the builds go through the fighter cache under a key of the look, so the tile
- * on the roster afterwards is the same build.
+ * on the roster afterwards is the same build. Opened on a champion built into the game, it shows
+ * that champion and says so, with nothing to change and only CANCEL to press.
  */
 
 interface CreateProps {
@@ -123,7 +124,9 @@ export function Create({ races, classes, portraits, fighters, saved, editing, on
   const [building, setBuilding] = useState(false);
   const [error, setError] = useState<string>();
   const [row, setRow] = useState(0);
-  const [button, setButton] = useState<Button>('save');
+  // A champion that comes with the game is shown, not changed: no rows to step through, CANCEL alone.
+  const builtin = editing !== undefined && isBuiltin(editing.id);
+  const [button, setButton] = useState<Button>(builtin ? 'cancel' : 'save');
   const [deleting, setDeleting] = useState(false);
   const nameInput = useRef<HTMLInputElement>(null);
   const request = useRef(0);
@@ -167,7 +170,7 @@ export function Create({ races, classes, portraits, fighters, saved, editing, on
 
   const champion: Champion = {
     key: madeKey(draft.raceId, draft.sex, draft.classId, draft.choices, draft.gear),
-    name: (cleanName(draft.name) || defaultName(race)).toUpperCase(),
+    name: (builtin && editing ? fullName(editing) : cleanName(draft.name) || defaultName(race)).toUpperCase(),
     title: `${race.name.toUpperCase()} ${classEntry?.name.toUpperCase() ?? ''}`.trim(),
     raceId: draft.raceId,
     sex: draft.sex,
@@ -219,7 +222,7 @@ export function Create({ races, classes, portraits, fighters, saved, editing, on
         name: d.named ? d.name : defaultName(next),
       };
     });
-  const chooseSex = (sex: number) => setDraft((d) => (d.sex === sex || !race.sexes.includes(sex) ? d : { ...d, sex, choices: [] }));
+  const chooseSex = (sex: number) => setDraft((d) => (builtin || d.sex === sex || !race.sexes.includes(sex) ? d : { ...d, sex, choices: [] }));
   const chooseClass = (classId: number) => setDraft((d) => (d.classId === classId ? d : { ...d, classId, armour: armourFor(d.armour) }));
   const chooseOption = (option: number, choice: number) => setDraft((d) => ({ ...d, choices: [...d.choices.filter(([o]) => o !== option), [option, choice]] }));
   const roll = () => {
@@ -251,6 +254,7 @@ export function Create({ races, classes, portraits, fighters, saved, editing, on
   };
 
   const save = () => {
+    if (builtin) return;
     const entry: SavedChampion = {
       id: draft.id ?? newSavedId(),
       name: cleanName(draft.name) || defaultName(race),
@@ -274,7 +278,7 @@ export function Create({ races, classes, portraits, fighters, saved, editing, on
     onDelete(draft.id);
   };
   const press = (which: Button) => (which === 'save' ? save() : which === 'cancel' ? onCancel() : remove());
-  const buttons: Button[] = draft.id ? ['save', 'cancel', 'delete'] : ['save', 'cancel'];
+  const buttons: Button[] = builtin ? ['cancel'] : draft.id ? ['save', 'cancel', 'delete'] : ['save', 'cancel'];
 
   // ---- the rows ----
 
@@ -361,6 +365,8 @@ export function Create({ races, classes, portraits, fighters, saved, editing, on
     change: chooseArmour,
   });
   rows.push({ kind: 'name', key: 'name' }, { kind: 'actions', key: 'actions' });
+  // A built-in champion: the preview shows the look, and CANCEL is the one thing to press.
+  if (builtin) rows.splice(0, rows.length, { kind: 'actions', key: 'actions' });
 
   const at = Math.min(row, rows.length - 1);
   const here = rows[at]!;
@@ -560,10 +566,15 @@ export function Create({ races, classes, portraits, fighters, saved, editing, on
           </div>
         </div>
         <div class="column">
-          <h1>{draft.id ? 'EDIT YOUR CHAMPION' : 'CREATE YOUR CHAMPION'}</h1>
+          <h1>{builtin ? 'BUILT-IN CHAMPION' : draft.id ? 'EDIT YOUR CHAMPION' : 'CREATE YOUR CHAMPION'}</h1>
+          {builtin && editing && (
+            <p class="built-in">
+              {fullName(editing)} comes with the game, so there is nothing here to change or delete. Make a champion of your own with the question mark beside {editing.name}.
+            </p>
+          )}
           <div class="rows">{rows.map(rowView)}</div>
           {here.key === 'armour' && <WowTooltip class="armour-tip" lines={armourTip()} />}
-          <p class="dim small hint">↑ ↓ or W S a row · ← → or A D change it · Enter save · Esc cancel</p>
+          <p class="dim small hint">{builtin ? 'Enter or Esc back to the roster' : '↑ ↓ or W S a row · ← → or A D change it · Enter save · Esc cancel'}</p>
         </div>
       </div>
     </div>
