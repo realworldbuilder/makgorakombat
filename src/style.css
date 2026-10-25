@@ -1862,19 +1862,19 @@ code {
   padding: 18px 24px 22px;
 }
 
-.guide .board {
+.board {
   display: grid;
   justify-items: center;
   gap: 12px;
   text-align: center;
 }
 
-.guide .board .spans {
+.board .spans {
   display: flex;
   gap: 6px;
 }
 
-.guide .board .spans button {
+.board .spans button {
   padding: 5px 14px;
   background: none;
   border: 1px solid var(--line);
@@ -1886,24 +1886,24 @@ code {
   cursor: pointer;
 }
 
-.guide .board .spans button.here {
+.board .spans button.here {
   color: var(--gold);
   border-color: var(--gold);
 }
 
-.guide .board table {
+.board table {
   width: 100%;
   border-collapse: collapse;
   border-top: 1px solid var(--line);
 }
 
-.guide .board td {
+.board td {
   padding: 7px 10px;
   border-bottom: 1px solid var(--line);
   text-align: left;
 }
 
-.guide .board .rank {
+.board .rank {
   width: 2.2em;
   color: var(--gold);
   font-family: var(--serif);
@@ -1911,53 +1911,84 @@ code {
   text-align: right;
 }
 
-.guide .board .name {
+.board .name {
   color: var(--text);
   font-family: var(--serif);
   font-weight: 700;
   font-size: 1.05rem;
 }
 
-.guide .board .record {
+.board .record {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
-.guide .board .streak {
+.board .streak {
   color: var(--dim);
   font-size: 0.85rem;
   text-align: right;
   white-space: nowrap;
 }
 
-.guide .board tr.me {
+.board tr.me {
   background: rgba(255, 209, 0, 0.06);
 }
 
-.guide .board tr.me td:first-child {
+.board tr.me td:first-child {
   box-shadow: inset 3px 0 0 var(--gold);
 }
 
-.guide .board tr.me .name {
+.board tr.me .name {
   color: var(--gold);
 }
 
-.guide .board tr.gap td {
+.board tr.gap td {
   padding: 2px;
   color: var(--dim);
   text-align: center;
 }
 
-/* Under the title's presence line: the way to the board. */
-.board-line {
-  flex-basis: 100%;
-  margin: 2px 0 0;
-  text-align: center;
+/* On the title under the presence line: the board's top five, and the way to the whole ten. */
+.title-board {
   position: relative;
   z-index: 1;
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  width: min(440px, 92vw);
+  padding: 14px 20px 12px;
+  background: rgba(8, 4, 5, 0.78);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
 }
 
-.board-line .link {
+.title-board h2 {
+  margin: 0;
+  color: var(--gold);
+  font-family: var(--serif);
+  font-size: 0.95rem;
+  letter-spacing: 0.3em;
+}
+
+.title-board .board {
+  width: 100%;
+  gap: 10px;
+}
+
+.title-board .board td {
+  padding: 5px 8px;
+}
+
+.title-board .board .name {
+  font-size: 0.98rem;
+}
+
+.title-board .board p {
+  margin: 0;
+}
+
+.title-board .link {
   padding: 0;
   background: none;
   border: none;
@@ -1969,7 +2000,7 @@ code {
   cursor: pointer;
 }
 
-.board-line .link:hover {
+.title-board .link:hover {
   color: var(--gold);
 }
 
@@ -2415,4 +2446,18 @@ code {
   width: 14em;
   padding: 6px 10px;
   font-size: 1rem;
+}
+
+/* A short window (a laptop's browser) with the board on the title: the logo gives way first. */
+@media (max-height: 1120px) {
+  .title {
+    gap: 12px;
+    /* Too short still: the title scrolls, from the logo down, rather than cut both ends. */
+    justify-content: safe center;
+    overflow-y: auto;
+  }
+
+  .logo-art {
+    width: min(620px, 72vw, 52vh);
+  }
 }
