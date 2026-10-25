@@ -6,8 +6,8 @@ import { type FighterView, fighterView } from '../engine/view';
 import { CAMERA, TICK_MS } from '../engine/stage';
 import { Arena } from './arena';
 import type { BuiltFighter } from './fighters';
-import { type FighterFx, poseFx } from './fx';
-import { drawHud } from './hud';
+import { ATTACH, type FighterFx, poseFx } from './fx';
+import { drawHud, HUMAN_HEAD, LETTERBOX } from './hud';
 import { seedOf } from './pixels';
 import { LEVEL, music, stageCue } from './music';
 import { isMuted, Mixer, toggleMute } from './sound';
@@ -35,6 +35,44 @@ const SHAKE_DECAY = 0.82;
 const PUSH_EASE = 0.07;
 /** The view sinks a little as it pushes in, so the feet stay in frame; in pan units per unit of push. */
 const PUSH_SINK = 0.16;
+/** In a fatality the camera keeps this much air between a head or a foot and its letterbox bar, as a fraction of the height. */
+const FIT_AIR = 0.02;
+/** How fast it lets the push off or slides the view to do that, per frame: quickly to make room before a head is cut, slowly back once there is room. */
+const FIT_EASE = { out: 0.45, back: 0.1 };
+/** The top of the head above the helm point, for a human. */
+const CROWN = 0.25;
+
+/**
+ * Keeps both bodies between a fatality's letterbox bars: a leap or a hop can lift a head out of a
+ * frame pushed in for the close-up. Measured on each frame's picture, it lets the push off
+ * (`give`, a factor on the zoom) while the pair is taller than the room between the bars, and
+ * slides the view (`lift`, in pan units) while they fit but sit under a bar; both ease back to
+ * nothing once there is room.
+ */
+class Fitter {
+  give = 1;
+  lift = 0;
+
+  /** Step toward the framing that puts `span` (the pair's top and bottom in canvas pixels, as this frame drew them) between the bars; undefined steps back to none. */
+  observe(span: readonly [number, number] | undefined, height: number): void {
+    let give = 1;
+    let lift = 0;
+    if (span) {
+      const [top, bottom] = span;
+      const lo = height * (LETTERBOX + FIT_AIR);
+      const hi = height * (1 - LETTERBOX - FIT_AIR);
+      give = Math.max(1, (this.give * (bottom - top)) / (hi - lo));
+      // Slide the picture down by `by` pixels (up when negative): as little as fits, and toward no slide at all.
+      const now = this.lift * (height / 2);
+      const least = lo - top;
+      const most = hi - bottom;
+      const by = least > most ? (least + most) / 2 : Math.min(most, Math.max(least, -now));
+      lift = (now + by) / (height / 2);
+    }
+    this.give += (give - this.give) * (give > this.give ? FIT_EASE.out : FIT_EASE.back);
+    this.lift += (lift - this.lift) * (Math.abs(lift) > Math.abs(this.lift) ? FIT_EASE.out : FIT_EASE.back);
+  }
+}
 
 /** The camera's shake: kicked by each new spark, dying away over a few frames, deterministic in the frame count. */
 class Shaker {
@@ -148,6 +186,7 @@ export function Fight({ fighters, stage, p2, onBack }: FightProps) {
     let owed = 0;
     const times = { engine: 0, pose: 0, draw: 0 };
     const shaker = new Shaker();
+    const fitter = new Fitter();
     let push = 1;
     let hitsSeen = 0;
     const loop = (now: number) => {
@@ -183,13 +222,30 @@ export function Fight({ fighters, stage, p2, onBack }: FightProps) {
       const cinematic = current.fatality !== undefined && (current.phase === 'fatality' || current.phase === 'ko');
       const wantPush = cinematic ? current.tables[current.roundWinner ?? 0].fatality.spec.push : 1;
       push += (wantPush - push) * PUSH_EASE;
-      const camera = { ...CAMERA, zoom: CAMERA.zoom / push, panX: CAMERA.panX + shake.x, panY: CAMERA.panY + shake.y - (push - 1) * PUSH_SINK };
+      const camera = { ...CAMERA, zoom: (CAMERA.zoom / push) * fitter.give, panX: CAMERA.panX + shake.x, panY: CAMERA.panY + shake.y - (push - 1) * PUSH_SINK - fitter.lift };
       ring.frame(current.fighters.map((fighter) => fighter.x));
       ring.draw(
         current.fighters.map((fighter, i) => ({ ...poseOf(current, i as 0 | 1), x: fighter.x, z: fighter.z, facing: fighter.facing })),
         camera,
         (at) => poseFx(current, fxs, at).flat(),
       );
+      // Where the pair reaches in that picture, the top of the higher head and the lower feet, for the next frame's fit.
+      let span: [number, number] | undefined;
+      if (cinematic) {
+        let top = Infinity;
+        let bottom = -Infinity;
+        for (const i of [0, 1] as const) {
+          const f = current.fighters[i];
+          const ground = f.z + ring.floorAt(f.x);
+          const eyes = ring.anchor(i, ATTACH.helm) ?? ring.anchor(i, ATTACH.head) ?? [f.x, 0, ground + heads[i]];
+          const crown = ring.project(camera, [eyes[0], eyes[1], eyes[2] + (CROWN * heads[i]) / HUMAN_HEAD]);
+          const feet = ring.project(camera, [f.x, 0, ground]);
+          if (crown) top = Math.min(top, crown[1]);
+          if (feet) bottom = Math.max(bottom, feet[1]);
+        }
+        if (top < bottom) span = [top, bottom];
+      }
+      fitter.observe(span, canvas.current!.height);
       const t2 = performance.now();
       const hud = overlay.current!;
       if (hud.width !== canvas.current!.width || hud.height !== canvas.current!.height) {
