@@ -16,8 +16,38 @@ import type { Fighter, Match, Projectile, Spark } from '../engine/engine';
 /** The page's one audio context, made on the first key press. */
 let context: AudioContext | undefined;
 let master: GainNode | undefined;
-let muted = false;
+/** The music and the fight's effects each have a bus under the master, with their own level. */
+let musicBus: GainNode | undefined;
+let effectsBus: GainNode | undefined;
 const listeners = new Set<() => void>();
+
+/** The sound settings, remembered in the browser: the mute and a level for the music and for the effects, 0 to 1. */
+export interface SoundSettings {
+  muted: boolean;
+  music: number;
+  effects: number;
+}
+
+const SOUND_STORAGE = 'makgora.sound';
+const settings: SoundSettings = { muted: false, music: 1, effects: 1 };
+try {
+  if (typeof localStorage !== 'undefined') {
+    const saved = JSON.parse(localStorage.getItem(SOUND_STORAGE) ?? '{}') as Partial<SoundSettings>;
+    if (typeof saved.muted === 'boolean') settings.muted = saved.muted;
+    if (typeof saved.music === 'number') settings.music = Math.max(0, Math.min(1, saved.music));
+    if (typeof saved.effects === 'number') settings.effects = Math.max(0, Math.min(1, saved.effects));
+  }
+} catch {
+  // No storage: the defaults.
+}
+
+function remember(): void {
+  try {
+    if (typeof localStorage !== 'undefined') localStorage.setItem(SOUND_STORAGE, JSON.stringify(settings));
+  } catch {
+    // The choice then lasts for this visit.
+  }
+}
 
 function unlock(): void {
   if (context) {
@@ -27,8 +57,14 @@ function unlock(): void {
   try {
     context = new AudioContext();
     master = context.createGain();
-    master.gain.value = muted ? 0 : 1;
+    master.gain.value = settings.muted ? 0 : 1;
     master.connect(context.destination);
+    musicBus = context.createGain();
+    musicBus.gain.value = settings.music;
+    musicBus.connect(master);
+    effectsBus = context.createGain();
+    effectsBus.gain.value = settings.effects;
+    effectsBus.connect(master);
   } catch (error) {
     console.warn('No audio:', error);
     return;
@@ -42,14 +78,34 @@ if (typeof window !== 'undefined') {
 }
 
 export function isMuted(): boolean {
-  return muted;
+  return settings.muted;
+}
+
+/** The settings as they stand. */
+export function soundSettings(): Readonly<SoundSettings> {
+  return settings;
+}
+
+/** Mute or unmute. */
+export function setMuted(on: boolean): void {
+  settings.muted = on;
+  if (master && context) master.gain.setTargetAtTime(on ? 0 : 1, context.currentTime, 0.02);
+  remember();
 }
 
 /** Flip the mute, and say whether sound is now off. */
 export function toggleMute(): boolean {
-  muted = !muted;
-  if (master && context) master.gain.setTargetAtTime(muted ? 0 : 1, context.currentTime, 0.02);
-  return muted;
+  setMuted(!settings.muted);
+  return settings.muted;
+}
+
+/** Set the music's or the effects' level, 0 to 1. */
+export function setLevel(bus: 'music' | 'effects', level: number): void {
+  const value = Math.max(0, Math.min(1, level));
+  settings[bus] = value;
+  const node = bus === 'music' ? musicBus : effectsBus;
+  if (node && context) node.gain.setTargetAtTime(value, context.currentTime, 0.02);
+  remember();
 }
 
 /** Is the audio context up, so that sounds can play? */
@@ -57,9 +113,9 @@ export function soundReady(): boolean {
   return context !== undefined;
 }
 
-/** The context and the master gain (under the mute), once a key has made them. */
-export function audioOut(): { context: AudioContext; master: GainNode } | undefined {
-  return context && master ? { context, master } : undefined;
+/** The context and the buses (under the mute), once a key has made them: the master, and the music and effects buses below it. */
+export function audioOut(): { context: AudioContext; master: GainNode; music: GainNode; effects: GainNode } | undefined {
+  return context && master && musicBus && effectsBus ? { context, master, music: musicBus, effects: effectsBus } : undefined;
 }
 
 /** Call `listener` when the audio context comes up: at once if it is up already. */
@@ -160,7 +216,7 @@ export class Mixer {
   /** Play a side's sound, placed by `x` on the stage, `delay` seconds from now. */
   play(side: 0 | 1, name: FightSoundName, x = 0, delay = 0, gain = 1): void {
     const voice = this.voices[side];
-    if (!context || !master || !voice?.ready) return;
+    if (!context || !effectsBus || !voice?.ready) return;
     const sound = voice.pick(name);
     if (!sound) return;
     // Weighted choice among the kit's files, as the game does.
@@ -182,7 +238,7 @@ export class Mixer {
     volume.gain.value = clip.volume * gain;
     const pan = context.createStereoPanner();
     pan.pan.value = Math.max(-1, Math.min(1, (x / 5) * PAN));
-    source.connect(volume).connect(pan).connect(master);
+    source.connect(volume).connect(pan).connect(effectsBus);
     source.start(context.currentTime + delay);
     this.played++;
   }

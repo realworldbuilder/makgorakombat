@@ -1,43 +1,46 @@
 import { useEffect } from 'preact/hooks';
-import { type InputAction, KEY_LABELS, KEYS } from '../engine/input';
+import { type InputAction, KEY_LABELS, KEYS, keyLayout, LAYOUT_WORDS } from '../engine/input';
 
 /*
- * The guide: how to play, and how to get your own characters into the ring (the Mogshot
- * addon captures them in the game; the page reads them from the folder you drop).
+ * The guide: how to play, and CREATE YOUR CHAMPION before the folder is open (the creator
+ * draws from the game's own files, so it waits for them).
  */
 
-export type GuidePage = 'play' | 'champion';
+export type GuidePage = 'play' | 'create';
 
 interface GuideProps {
   page: GuidePage;
   onPage: (page: GuidePage) => void;
   onClose: () => void;
+  /** Opens the folder picker, from the CREATE YOUR CHAMPION page; a key press counts as the click the browser wants. */
+  onFolder?: () => void;
 }
 
 /** Every key bound to an action, as the action bar labels them: "J", ", or NUM 0". */
 const keys = (player: 0 | 1, action: InputAction) => KEYS[player][action].map((code) => KEY_LABELS[code] ?? code).join(' or ');
 
-const ADDON = 'https://github.com/realworldbuilder/mogshot/tree/main/addon/Mogshot';
-const ADDON_ZIP = 'https://github.com/realworldbuilder/mogshot/archive/refs/heads/main.zip';
-
-export function Guide({ page, onPage, onClose }: GuideProps) {
+export function Guide({ page, onPage, onClose, onFolder }: GuideProps) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.code === 'Escape') {
         event.stopPropagation();
         onClose();
+      } else if (page === 'create' && onFolder && ['Digit1', 'Numpad1', 'Enter', 'NumpadEnter'].includes(event.code)) {
+        event.stopPropagation();
+        event.preventDefault();
+        onFolder();
       }
     };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
-  }, [onClose]);
+  }, [onClose, onFolder, page]);
 
   return (
     <div class="guide-backdrop" onClick={onClose}>
       <div class="guide" onClick={(event) => event.stopPropagation()}>
         <nav class="tabs">
           <button class={page === 'play' ? 'here' : ''} onClick={() => onPage('play')}>HOW TO PLAY</button>
-          <button class={page === 'champion' ? 'here' : ''} onClick={() => onPage('champion')}>CREATE YOUR CHAMPION</button>
+          <button class={page === 'create' ? 'here' : ''} onClick={() => onPage('create')}>CREATE YOUR CHAMPION</button>
           <button class="close" onClick={onClose} aria-label="Close">✕</button>
         </nav>
         {page === 'play' ? (
@@ -48,8 +51,8 @@ export function Guide({ page, onPage, onClose }: GuideProps) {
                 here in the browser and never leave your computer; the first open takes a moment, later ones are instant.
               </li>
               <li>
-                <b>CHOOSE YOUR CHAMPION.</b> Every race, the legends, and your own characters. Rest on a tile and your champion appears on
-                your side. Lock in and they roar.
+                <b>CHOOSE YOUR CHAMPION.</b> The legends, and after them the question mark: <b>CREATE YOUR CHAMPION</b> makes one of your
+                own, who joins the row. Rest on a tile and your champion appears on your side. Lock in and they roar.
               </li>
               <li>
                 <b>Pick the ground</b> from the game's loading screens, then fight: best of three, sixty seconds a round.
@@ -69,38 +72,27 @@ export function Guide({ page, onPage, onClose }: GuideProps) {
                 <tr><td>Attack (hold to keep swinging)</td><td>{keys(0, 'attack')}</td><td>{keys(1, 'attack')}</td></tr>
                 <tr><td>Abilities, on the action bar</td><td>{keys(0, 'ability1')} · {keys(0, 'ability2')} · {keys(0, 'ability3')}</td><td>{keys(1, 'ability1')} · {keys(1, 'ability2')} · {keys(1, 'ability3')}</td></tr>
                 <tr><td>What an ability does</td><td colSpan={2}>Hover its slot, or hold its key</td></tr>
-                <tr><td>On the roster</td><td>WASD · J choose · H back · U ♂/♀ · K L class</td><td>arrows · , choose · M back · Right Shift ♂/♀ · . / class</td></tr>
+                {keyLayout() === 'wow' ? (
+                  <tr><td>On the roster</td><td>arrows · 1 choose · Backspace back · 4 ♂/♀ · 2 3 class</td><td>WASD · J choose · H back · U ♂/♀ · K L class</td></tr>
+                ) : (
+                  <tr><td>On the roster</td><td>WASD · J choose · H back · U ♂/♀ · K L class</td><td>arrows · , choose · M back · Right Shift ♂/♀ · . / class</td></tr>
+                )}
               </tbody>
             </table>
             <p class="dim small">
-              <b>Tab</b> switches player 2 between the keyboard, a gamepad and the computer · <b>Enter</b> rematch · <b>Esc</b> back ·{' '}
-              <b>M</b> mute · <b>F3</b> frame times
+              <b>C</b> on the roster switches the keys ({LAYOUT_WORDS[keyLayout()]} now): player 1 on the game's own keys, the arrows to move and jump
+              and 1 2 3 4 for the attack and the action bar, with player 2 on WASD and J K L U · <b>Tab</b> switches player 2 between the keyboard, a gamepad
+              and the computer · <b>Enter</b> rematch · <b>Esc</b> back · <b>M</b> mute · <b>F3</b> frame times
             </p>
           </div>
         ) : (
-          <div class="body">
-            <p>
-              Your own characters fight with their real gear, face and transmog. The game cannot ask Blizzard who you are, so a small addon
-              writes each character down inside your game folder, and the page reads it from the folder you drop.
-            </p>
-            <ol>
-              <li>
-                <a href={ADDON_ZIP}>Download Mogshot</a> and copy its <code>addon/Mogshot</code> folder into{' '}
-                <code>World of Warcraft/_retail_/Interface/AddOns/</code> (or <code>_forever_</code> for WoW Forever; one copy loads in both). The source is{' '}
-                <a href={ADDON} target="_blank" rel="noreferrer">on GitHub</a>.
-              </li>
-              <li>
-                Log in to each character you want in the ring. Sit in a <b>barber chair</b> once so the addon can read your face and hair (the game
-                only tells addons that while the barber window is open), then type <code>/reload</code> or log out. The game writes the file then.
-              </li>
-              <li>
-                Come back here and <b>drop the folder again</b>. Your characters appear in the <b>YOUR CHAMPIONS</b> row with their names.
-              </li>
-            </ol>
-            <p class="dim small">
-              <code>/mogshot</code> in the game also shows a code for the character you are on. Transmog is drawn as the item's own look for now;
-              an item the files do not name is listed under the champion's plate.
-            </p>
+          <div class="body create-first">
+            <p class="big">Drop your World of Warcraft folder first.</p>
+            {onFolder && (
+              <button type="button" class="button" onClick={onFolder}>
+                CHOOSE THE FOLDER · 1
+              </button>
+            )}
           </div>
         )}
       </div>

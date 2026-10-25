@@ -11,6 +11,7 @@ import { messageOf, useFolder } from './folder';
 import { LEVEL, music } from './music';
 import { pictureUrl } from './pixels';
 import { LEGENDS, legendTiles, type Tile } from './roster';
+import { loadSaved, type SavedChampion, storeSaved } from './saved';
 import { Select, type Source } from './Select';
 import { Title } from './Title';
 import { loadGameFonts } from './ui/fonts';
@@ -50,6 +51,14 @@ export function Game() {
   const [loadError, setLoadError] = useState<string>();
   const [screen, setScreen] = useState<Screen>({ kind: 'select' });
   const [p2, setP2] = useState<Source>('cpu');
+  // The champions made on CREATE YOUR CHAMPION, read from the browser once.
+  const [saved, setSaved] = useState<SavedChampion[]>(() => loadSaved());
+  const keepSaved = useCallback((list: SavedChampion[]) => {
+    setSaved(list);
+    if (!storeSaved(list)) console.warn('The browser would not keep the champions; they last for this visit.');
+  }, []);
+  // The title's CREATE YOUR CHAMPION was open when the folder was chosen: the roster opens on the question mark.
+  const createNext = useRef(false);
   // A stable handler: Fight rebuilds the whole match when its props change, and dragging a file
   // across the window re-renders Game (the title's drop state), which must not restart a fight.
   const backToSelect = useCallback(() => setScreen({ kind: 'select' }), []);
@@ -136,10 +145,13 @@ export function Game() {
     document.body.classList.toggle('ingame', phase.kind === 'ready' && loaded !== undefined);
   }, [phase.kind, loaded]);
 
-  if (phase.kind === 'choose') return <Title phase={phase} dragging={dragging} onPick={onPick} onChoose={(product) => void openFolder(phase.files, product)} />;
-  if (phase.kind !== 'ready') return <Title phase={phase} dragging={dragging} onPick={onPick} />;
-  if (loadError) return <Title phase={{ kind: 'error', message: loadError }} dragging={false} onPick={onPick} />;
-  if (!loaded) return <Title phase={{ kind: 'opening', message: 'Summoning the roster…' }} dragging={false} onPick={onPick} />;
+  const wantCreate = (yes: boolean) => {
+    createNext.current = yes;
+  };
+  if (phase.kind === 'choose') return <Title phase={phase} dragging={dragging} onPick={onPick} onChoose={(product) => void openFolder(phase.files, product)} onCreate={wantCreate} />;
+  if (phase.kind !== 'ready') return <Title phase={phase} dragging={dragging} onPick={onPick} onCreate={wantCreate} />;
+  if (loadError) return <Title phase={{ kind: 'error', message: loadError }} dragging={false} onPick={onPick} onCreate={wantCreate} />;
+  if (!loaded) return <Title phase={{ kind: 'opening', message: 'Summoning the roster…' }} dragging={false} onPick={onPick} onCreate={wantCreate} />;
 
   switch (screen.kind) {
     case 'select':
@@ -155,9 +167,15 @@ export function Game() {
           legends={loaded.legends}
           portraits={loaded.portraits}
           fighters={loaded.fighters}
+          saved={saved}
+          onSaved={keepSaved}
+          startOnCreate={createNext.current}
           p2={p2}
           onP2={setP2}
-          onReady={(fighters) => setScreen({ kind: 'versus', fighters })}
+          onReady={(fighters) => {
+            createNext.current = false;
+            setScreen({ kind: 'versus', fighters });
+          }}
           onBack={() => location.reload()}
         />
       );

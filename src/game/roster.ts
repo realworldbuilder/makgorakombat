@@ -1,12 +1,13 @@
 import type { ClassEntry, Race } from '@mogshot/character/appearance';
 import type { ImportedRecord } from '@mogshot/import/record';
 import type { CreatureLook } from '@mogshot/worker/api';
+import type { SavedChampion } from './saved';
 
 /*
  * The roster: every race the game lets you create, one tile each, in the character creation
  * screen's order with the Alliance first, then the neutral races, then the Horde; a random
- * tile; above them, the player's own characters as the Mogshot addon captured them; and
- * above those the legends: named Warcraft characters drawn as the game draws them.
+ * tile; above them, the champions the player made on CREATE YOUR CHAMPION and their own
+ * characters as the Mogshot addon captured them; and above those the legends: named Warcraft characters drawn as the game draws them.
  */
 
 export type Faction = 'alliance' | 'horde' | 'neutral';
@@ -45,8 +46,13 @@ export interface WeaponKit {
 export type Tile =
   | { kind: 'race'; id: string; race: Race }
   | { kind: 'record'; id: string; race: Race; record: ImportedRecord }
+  | { kind: 'saved'; id: string; race: Race; saved: SavedChampion }
   | { kind: 'legend'; id: string; legend: Legend; displayId: number; raceId: number; sex: number; race: Race | undefined }
-  | { kind: 'random'; id: 'random' };
+  | { kind: 'random'; id: 'random' }
+  /** The question mark after the legends that opens CREATE YOUR CHAMPION. */
+  | { kind: 'create'; id: 'create' };
+
+export const CREATE_TILE: Tile = { kind: 'create', id: 'create' };
 
 /**
  * The legends offered, in row order. Display ids checked on 24 Oct 2026 against the retail
@@ -97,7 +103,7 @@ export function legendTiles(legends: readonly Legend[], looks: readonly Creature
 
 /** The faction a tile's border shows. */
 export function factionOf(tile: Tile): Faction | 'unknown' | '' {
-  if (tile.kind === 'random') return '';
+  if (tile.kind === 'random' || tile.kind === 'create') return '';
   if (tile.kind === 'legend') return tile.legend.faction;
   return tile.race.faction;
 }
@@ -138,9 +144,9 @@ export function sexFor(race: Race, wanted: number): number {
   return race.sexes.includes(wanted) ? wanted : (race.sexes[0] ?? 0);
 }
 
-/** A tile other than the random one, chosen with a step of the match's generator so a rematch can differ. */
+/** A tile other than the random one and the creator's, chosen with a step of the match's generator so a rematch can differ. */
 export function randomTile(tiles: readonly Tile[], draw: () => number): Tile | undefined {
-  const picks = tiles.filter((tile) => tile.kind !== 'random');
+  const picks = tiles.filter((tile) => tile.kind !== 'random' && tile.kind !== 'create');
   if (picks.length === 0) return undefined;
   return picks[Math.floor(draw() * picks.length) % picks.length];
 }

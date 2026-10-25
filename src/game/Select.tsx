@@ -6,11 +6,13 @@ import { BRAND } from '../engine/brand';
 import { GLYPHS } from './ActionBar';
 import { type Edition, editionOf } from './edition';
 import type { EditionArt } from './editionArt';
+import { type KeyLayout, keyLayout, LAYOUT_WORDS, MENU_KEYS, ROSTER_KEYS, setKeyLayout } from '../engine/input';
 import { type BuiltFighter, type Champion, type Fighters } from './fighters';
 import { headshotOf, storedHeadshot } from './headshot';
 import { Preview } from './Preview';
-import { championTiles, classesOf, cycleClass, factionOf, gridMove, randomTile, rosterTiles, sexFor, type Tile } from './roster';
-import { Guide, type GuidePage } from './Guide';
+import { championTiles, classesOf, CREATE_TILE, cycleClass, factionOf, gridMove, randomTile, rosterTiles, sexFor, type Tile } from './roster';
+import { Create } from './Create';
+import { madeKey, type SavedChampion, savedTiles, withoutSaved, withSaved } from './saved';
 import { LogoArt } from './Title';
 import { kitSpec, type ResourceKind } from '../engine/abilities';
 import { HP } from '../engine/stage';
@@ -23,8 +25,10 @@ const RESOURCE_WORDS: Record<ResourceKind, string> = { rage: 'Rage: builds in co
  * CHOOSE YOUR CHAMPION. Every race on a grid of the game's own portraits, the player's own
  * characters in a row above, the legends in a row above those, both players' cursors on it
  * at once, each champion drawn full size on its player's side as soon as the cursor rests
- * on it. The screen is dressed as the open game's edition: its name under our logo, one of its
- * loading screens behind, its colours; E switches to another game in the same folder.
+ * on it. After the last legend a question mark opens CREATE YOUR CHAMPION, and the champions
+ * made there follow it, newest first. The screen is dressed as the open game's edition: its name
+ * under our logo, one of its loading screens behind, its colours; E switches to another game in
+ * the same folder.
  */
 
 export type Source = 'keyboard' | 'gamepad' | 'cpu';
@@ -44,6 +48,11 @@ interface SelectProps {
   /** Race portraits by `${race.key}:${sex}` and class icons by class key, as data URLs. */
   portraits: { races: Map<string, string>; classes: Map<string, string> };
   fighters: Fighters;
+  /** The champions made on CREATE YOUR CHAMPION, oldest first as they are kept. */
+  saved: SavedChampion[];
+  onSaved: (saved: SavedChampion[]) => void;
+  /** Open with player 1 on the question mark, as the title's CREATE YOUR CHAMPION asks. */
+  startOnCreate?: boolean;
   p2: Source;
   onP2: (source: Source) => void;
   onReady: (fighters: [BuiltFighter, BuiltFighter]) => void;
@@ -74,13 +83,10 @@ const COLUMNS = 8;
 const LEGENDS_ONLY = !(typeof location !== 'undefined' && new URLSearchParams(location.search).has('all'));
 const HOVER_MS = 200;
 
-const KEYS: Record<number, Record<string, 'up' | 'down' | 'left' | 'right' | 'confirm' | 'back' | 'sex' | 'classPrev' | 'classNext'>> = {
-  0: { KeyW: 'up', KeyS: 'down', KeyA: 'left', KeyD: 'right', KeyJ: 'confirm', KeyH: 'back', KeyU: 'sex', KeyK: 'classPrev', KeyL: 'classNext' },
-  1: {
-    ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right',
-    Numpad1: 'confirm', Comma: 'confirm', Numpad4: 'back', KeyM: 'back',
-    Numpad0: 'sex', ShiftRight: 'sex', Numpad2: 'classPrev', Period: 'classPrev', Numpad3: 'classNext', Slash: 'classNext',
-  },
+/** The roster hint per player under each layout. */
+const ROSTER_HINTS: Readonly<Record<KeyLayout, readonly [[string, string], [string, string]]>> = {
+  classic: [['WASD move · J choose · H back', ' · U ♂/♀ · K/L class'], ['arrows · , or Num1 choose · M back', ' · Right Shift ♂/♀ · . / class']],
+  wow: [['arrows move · 1 choose · Backspace back', ' · 4 ♂/♀ · 2/3 class'], ['WASD move · J choose · H back', ' · U ♂/♀ · K/L class']],
 };
 
 const freshPlayer = (sex: number): Player => ({
@@ -97,9 +103,12 @@ const freshPlayer = (sex: number): Player => ({
 /** The legends' portraits are rendered once through the Mogshot command line and shipped with the game, as the browser has no portrait atlas for NPCs. */
 const legendPortrait = (slug: string) => `${import.meta.env.BASE_URL}legends/${slug}.png`;
 
-export function Select({ edition, art, others, onEdition, races, classes, records, legends, portraits, fighters, p2, onP2, onReady, onBack }: SelectProps) {
+export function Select({ edition, art, others, onEdition, races, classes, records, legends, portraits, fighters, saved, onSaved, startOnCreate, p2, onP2, onReady, onBack }: SelectProps) {
   const roster = useMemo(() => rosterTiles(races), [races]);
+  const [layout, setLayout] = useState<KeyLayout>(keyLayout());
   const champions = useMemo(() => championTiles(records, races), [records, races]);
+  // The legends' row: the legends, the question mark, and the champions made here, newest first.
+  const legendRow = useMemo(() => [...legends, CREATE_TILE, ...savedTiles([...saved].reverse(), races)], [legends, saved, races]);
   // The rows from the top, leaving out the empty ones; the cursor moves up and down through them.
   // For now the ring is for the legends only (William, 24 Oct 2026); the races and your own
   // characters come back with `?all` on the address. An install with no legend the game
@@ -107,23 +116,25 @@ export function Select({ edition, art, others, onEdition, races, classes, record
   const legendsOnly = LEGENDS_ONLY && legends.length > 0;
   const zones = useMemo(() => {
     const rows: { zone: Cursor['zone']; tiles: Tile[] }[] = [];
-    if (legends.length > 0) rows.push({ zone: 'legends', tiles: legends });
+    rows.push({ zone: 'legends', tiles: legendRow });
     if (legendsOnly) return rows;
     if (champions.length > 0) rows.push({ zone: 'champions', tiles: champions });
     rows.push({ zone: 'roster', tiles: roster });
     return rows;
-  }, [legends, champions, roster, legendsOnly]);
+  }, [legendRow, champions, roster, legendsOnly]);
   /** Where the computer and a random pick choose from: the legends alone, or the races. */
   const pool: { zone: Cursor['zone']; tiles: Tile[] } = legendsOnly ? { zone: 'legends', tiles: legends } : { zone: 'roster', tiles: roster };
   // The ring opens on Tyrande against Thrall when the folder has them; otherwise on the roster.
-  const [guide, setGuide] = useState<GuidePage>();
+  // CREATE YOUR CHAMPION, open over the roster for the player who chose the question mark.
+  const [making, setMaking] = useState<{ who: 0 | 1; editing?: SavedChampion }>();
   const [players, setPlayers] = useState<[Player, Player]>(() => {
     const opening = (slug: string, sex: number): Player => {
       const index = legends.findIndex((tile) => tile.kind === 'legend' && tile.legend.slug === slug);
       const player = freshPlayer(sex);
       return index >= 0 ? { ...player, cursor: { zone: 'legends', index } } : player;
     };
-    return [opening('tyrande', 1), opening('thrall', 0)];
+    const first = opening('tyrande', 1);
+    return [startOnCreate ? { ...first, cursor: { zone: 'legends', index: legends.length } } : first, opening('thrall', 0)];
   });
   const playersRef = useRef(players);
   playersRef.current = players;
@@ -133,8 +144,8 @@ export function Select({ edition, art, others, onEdition, races, classes, record
     const url = headshotOf(built);
     if (url) setHeadshots((current) => (current.get(built.champion.key) === url ? current : new Map(current).set(built.champion.key, url)));
   };
-  const guideRef = useRef(guide);
-  guideRef.current = guide;
+  const makingRef = useRef(making);
+  makingRef.current = making;
   const p2Ref = useRef(p2);
   p2Ref.current = p2;
   const othersRef = useRef(others);
@@ -147,8 +158,16 @@ export function Select({ edition, art, others, onEdition, races, classes, record
     return rng.current / 4294967296;
   };
 
-  const tilesOf = (zone: Cursor['zone']): Tile[] => (zone === 'legends' ? legends : zone === 'champions' ? champions : roster);
+  const tilesOf = (zone: Cursor['zone']): Tile[] => (zone === 'legends' ? legendRow : zone === 'champions' ? champions : roster);
   const tileAt = (cursor: Cursor): Tile | undefined => tilesOf(cursor.zone)[cursor.index];
+
+  /** The build key of a tile drawn ahead of time, under which its face is kept. */
+  const faceKey = (tile: Extract<Tile, { kind: 'legend' | 'record' | 'saved' }>): string =>
+    tile.kind === 'record'
+      ? `record:${tile.record.key}`
+      : tile.kind === 'saved'
+        ? madeKey(tile.saved.raceId, tile.saved.sex, tile.saved.classId, tile.saved.choices, tile.saved.gear)
+        : `legend:${tile.legend.slug}:${tile.displayId}`;
 
   const update = (who: 0 | 1, change: (player: Player) => Player) =>
     setPlayers((current) => {
@@ -161,8 +180,8 @@ export function Select({ edition, art, others, onEdition, races, classes, record
   const summon = (who: 0 | 1, player: Player): Player => {
     const tile = tileAt(player.cursor);
     const id = ++requests.current[who]!;
-    if (!tile || tile.kind === 'random') return { ...player, champion: undefined, built: undefined, building: false, error: undefined };
-    const sex = tile.kind === 'record' ? tile.record.sex : tile.kind === 'legend' ? tile.sex : sexFor(tile.race, player.sex);
+    if (!tile || tile.kind === 'random' || tile.kind === 'create') return { ...player, champion: undefined, built: undefined, building: false, error: undefined };
+    const sex = tile.kind === 'record' ? tile.record.sex : tile.kind === 'saved' ? tile.saved.sex : tile.kind === 'legend' ? tile.sex : sexFor(tile.race, player.sex);
     const classId = tile.kind !== 'race' ? undefined : (classesOf(tile.race, classes).some((c) => c.id === player.classId) ? player.classId : cycleClass(tile.race, classes, undefined, 1));
     void fighters
       .champion(tile, sex, classId)
@@ -185,7 +204,10 @@ export function Select({ edition, art, others, onEdition, races, classes, record
   // A rest on a tile summons it after a moment, so sweeping across the grid does not build every race.
   useEffect(() => {
     const timers = players.map((player, who) => {
-      if (player.locked || player.built?.champion.key === keyOf(tileAt(player.cursor), player)) return undefined;
+      if (player.locked) return undefined;
+      // A tile with no champion (random, the creator's) clears what was there, a build in flight included.
+      const want = keyOf(tileAt(player.cursor), player);
+      if (want === undefined ? !player.built && !player.building : player.built?.champion.key === want) return undefined;
       return setTimeout(() => update(who as 0 | 1, (p) => summon(who as 0 | 1, p)), HOVER_MS);
     });
     return () => timers.forEach((timer) => timer !== undefined && clearTimeout(timer));
@@ -196,14 +218,14 @@ export function Select({ edition, art, others, onEdition, races, classes, record
   // time, waiting whenever a player's own summon is in flight so the cursor never queues behind it.
   useEffect(() => {
     let stopped = false;
-    const wanted = [...legends, ...champions].filter((tile) => tile.kind === 'legend' || tile.kind === 'record');
+    const wanted = [...legendRow, ...champions].filter((tile) => tile.kind === 'legend' || tile.kind === 'record' || tile.kind === 'saved');
     const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
     void (async () => {
       await pause(800);
       for (const tile of wanted) {
         if (stopped) return;
-        if (tile.kind !== 'legend' && tile.kind !== 'record') continue;
-        const key = tile.kind === 'record' ? `record:${tile.record.key}` : `legend:${tile.legend.slug}:${tile.displayId}`;
+        if (tile.kind !== 'legend' && tile.kind !== 'record' && tile.kind !== 'saved') continue;
+        const key = faceKey(tile);
         const stored = storedHeadshot(key);
         if (stored) {
           setHeadshots((current) => (current.has(key) ? current : new Map(current).set(key, stored)));
@@ -212,7 +234,7 @@ export function Select({ edition, art, others, onEdition, races, classes, record
         while (!stopped && playersRef.current.some((player) => player.building)) await pause(250);
         if (stopped) return;
         try {
-          const champion = await fighters.champion(tile, tile.kind === 'record' ? tile.record.sex : tile.sex, undefined);
+          const champion = await fighters.champion(tile, tile.kind === 'record' ? tile.record.sex : tile.kind === 'saved' ? tile.saved.sex : tile.sex, undefined);
           if (!champion || stopped) continue;
           face(await fighters.get(champion));
         } catch (cause) {
@@ -225,12 +247,11 @@ export function Select({ edition, art, others, onEdition, races, classes, record
       stopped = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [legends, champions]);
+  }, [legendRow, champions]);
 
   const keyOf = (tile: Tile | undefined, player: Player) => {
-    if (!tile || tile.kind === 'random') return undefined;
-    if (tile.kind === 'record') return `record:${tile.record.key}`;
-    if (tile.kind === 'legend') return `legend:${tile.legend.slug}:${tile.displayId}`;
+    if (!tile || tile.kind === 'random' || tile.kind === 'create') return undefined;
+    if (tile.kind === 'record' || tile.kind === 'legend' || tile.kind === 'saved') return faceKey(tile);
     const classId = classesOf(tile.race, classes).some((c) => c.id === player.classId) ? player.classId : cycleClass(tile.race, classes, undefined, 1);
     return `race:${tile.race.id}:${sexFor(tile.race, player.sex)}:${classId ?? 0}`;
   };
@@ -252,7 +273,12 @@ export function Select({ edition, art, others, onEdition, races, classes, record
     return { ...player, cursor: { zone: 'roster', index: gridMove(cursor.index, roster.length, COLUMNS, dx, dy) } };
   };
 
-  const confirm = (who: 0 | 1) =>
+  const confirm = (who: 0 | 1) => {
+    const player = playersRef.current[who];
+    if (!player.locked && tileAt(player.cursor)?.kind === 'create') {
+      setMaking({ who });
+      return;
+    }
     update(who, (player) => {
       if (player.locked) return player;
       const tile = tileAt(player.cursor);
@@ -267,11 +293,40 @@ export function Select({ edition, art, others, onEdition, races, classes, record
       }
       return { ...player, locked: true };
     });
+  };
+
+  /** Open the creator for a player: on the made champion under their cursor to edit it, or a new one. */
+  const make = (who: 0 | 1) => {
+    const tile = tileAt(playersRef.current[who].cursor);
+    setMaking(tile?.kind === 'saved' ? { who, editing: tile.saved } : { who });
+  };
+
+  /** A made champion kept: the list stored, the player's cursor on its tile (just after the question mark when new), unlocked to choose it. */
+  const keep = (entry: SavedChampion) => {
+    if (!making) return;
+    const isNew = !saved.some((s) => s.id === entry.id);
+    const list = withSaved(saved, entry);
+    onSaved(list);
+    const at = savedTiles([...list].reverse(), races).findIndex((tile) => tile.id === `saved:${entry.id}`);
+    const index = legends.length + 1 + Math.max(0, at);
+    const other = making.who === 0 ? 1 : 0;
+    // The other player's cursor stays on the champion it was on when the new tile pushes the row along.
+    if (isNew) update(other, (p) => (p.cursor.zone === 'legends' && p.cursor.index > legends.length ? { ...p, cursor: { ...p.cursor, index: p.cursor.index + 1 } } : p));
+    update(making.who, (p) => ({ ...p, locked: false, cursor: { zone: 'legends', index } }));
+    setMaking(undefined);
+  };
+
+  const discard = (id: string) => {
+    if (!making) return;
+    onSaved(withoutSaved(saved, id));
+    update(making.who, (p) => ({ ...p, locked: false, cursor: { zone: 'legends', index: legends.length } }));
+    setMaking(undefined);
+  };
 
   // Keys: both players on one keyboard.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (guideRef.current) return;
+      if (makingRef.current) return;
       if (event.code === 'Escape') {
         const [a, b] = playersRef.current;
         if (a.locked || b.locked) setPlayers([{ ...a, locked: false }, { ...b, locked: false }]);
@@ -290,8 +345,19 @@ export function Select({ edition, art, others, onEdition, races, classes, record
         onP2(order[(order.indexOf(p2Ref.current) + 1) % order.length]!);
         return;
       }
+      if (event.code === MENU_KEYS.create) {
+        // N: the creator, on the made champion under player 1's cursor (or else player 2's), or a new one for player 1.
+        const onMade = ([0, 1] as const).find((who) => tileAt(playersRef.current[who].cursor)?.kind === 'saved' && !playersRef.current[who].locked);
+        make(onMade ?? 0);
+        return;
+      }
+      if (event.code === MENU_KEYS.layout) {
+        setKeyLayout(keyLayout() === 'wow' ? 'classic' : 'wow');
+        setLayout(keyLayout());
+        return;
+      }
       for (const who of [0, 1] as const) {
-        const action = KEYS[who]![event.code];
+        const action = ROSTER_KEYS[keyLayout()][who][event.code];
         if (!action) continue;
         if (who === 1 && p2Ref.current === 'cpu') continue;
         event.preventDefault();
@@ -316,7 +382,7 @@ export function Select({ edition, art, others, onEdition, races, classes, record
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roster, champions, legends, classes]);
+  }, [roster, champions, legendRow, classes]);
 
   // The computer picks for itself once the player has locked in: a sweep across the grid, then a lock.
   useEffect(() => {
@@ -364,21 +430,34 @@ export function Select({ edition, art, others, onEdition, races, classes, record
   const portraitOf = (tile: Tile, sex: number) => {
     if (tile.kind === 'random') return undefined;
     if (tile.kind === 'legend') return legendPortrait(tile.legend.slug);
-    return portraits.races.get(`${tile.race.key}:${tile.kind === 'record' ? tile.record.sex : sexFor(tile.race, sex)}`);
+    if (tile.kind === 'create') return undefined;
+    return portraits.races.get(`${tile.race.key}:${tile.kind === 'record' ? tile.record.sex : tile.kind === 'saved' ? tile.saved.sex : sexFor(tile.race, sex)}`);
   };
-  const nameOf = (tile: Tile) => (tile.kind === 'random' ? 'RANDOM' : tile.kind === 'record' ? tile.record.name : tile.kind === 'legend' ? tile.legend.name : tile.race.name);
+  const nameOf = (tile: Tile) =>
+    tile.kind === 'random' ? 'RANDOM' : tile.kind === 'create' ? 'CREATE' : tile.kind === 'record' ? tile.record.name : tile.kind === 'saved' ? tile.saved.name : tile.kind === 'legend' ? tile.legend.name : tile.race.name;
 
   const tileView = (tile: Tile, zone: Cursor['zone'], index: number) => {
     const here = players.map((player) => player.cursor.zone === zone && player.cursor.index === index);
-    const classKey = tile.kind === 'record' ? classes.find((c) => c.id === tile.record.classId)?.key : undefined;
+    const classId = tile.kind === 'record' ? tile.record.classId : tile.kind === 'saved' ? tile.saved.classId : undefined;
+    const classKey = classId === undefined ? undefined : classes.find((c) => c.id === classId)?.key;
     return (
       <div
         key={tile.id}
         class={`tile ${tile.kind} ${factionOf(tile)} ${here[0] ? 'p1' : ''} ${here[1] ? 'p2' : ''} ${here[0] && players[0].locked ? 'locked1' : ''} ${here[1] && players[1].locked ? 'locked2' : ''}`}
-        onClick={() => update(0, (p) => (p.locked ? p : { ...p, cursor: { zone, index } }))}
+        onClick={() => {
+          if (players[0].locked) return;
+          update(0, (p) => ({ ...p, cursor: { zone, index } }));
+          if (tile.kind === 'create') setMaking({ who: 0 });
+        }}
+        title={tile.kind === 'create' ? 'Create your champion' : undefined}
       >
         {tile.kind === 'random' ? (
           <span class="random">?</span>
+        ) : tile.kind === 'create' ? (
+          <>
+            <span class="ask">?</span>
+            <span class="name">CREATE</span>
+          </>
         ) : tile.kind === 'legend' ? (
           <>
             <img
@@ -394,18 +473,31 @@ export function Select({ edition, art, others, onEdition, races, classes, record
         ) : (
           <>
             {/* Each player's sex shows on their own cursor; otherwise the race's first. */}
-            {tile.kind === 'record' && headshots.has(`record:${tile.record.key}`) ? (
-              <img class="face" src={headshots.get(`record:${tile.record.key}`)} alt={tile.record.name} draggable={false} />
+            {(tile.kind === 'record' || tile.kind === 'saved') && headshots.has(faceKey(tile)) ? (
+              <img class="face" src={headshots.get(faceKey(tile))} alt={nameOf(tile)} draggable={false} />
             ) : portraitOf(tile, here[0] ? players[0].sex : here[1] ? players[1].sex : tile.race.sexes[0] ?? 0) ? (
               <img src={portraitOf(tile, here[0] ? players[0].sex : here[1] ? players[1].sex : tile.race.sexes[0] ?? 0)} alt={tile.race.name} draggable={false} />
             ) : (
               <span class="noface">{tile.race.name}</span>
             )}
-            {tile.kind === 'record' && (
+            {(tile.kind === 'record' || tile.kind === 'saved') && (
               <span class="name">
                 {classKey && portraits.classes.get(classKey) && <img class="class" src={portraits.classes.get(classKey)} alt="" />}
-                {tile.record.name}
+                {nameOf(tile)}
               </span>
+            )}
+            {tile.kind === 'saved' && (
+              <button
+                type="button"
+                class="edit"
+                title={`Edit ${tile.saved.name} (N)`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setMaking({ who: 0, editing: tile.saved });
+                }}
+              >
+                EDIT
+              </button>
             )}
           </>
         )}
@@ -414,7 +506,8 @@ export function Select({ edition, art, others, onEdition, races, classes, record
   };
 
   /** The quality a tile's name and border are drawn in: legends legendary, your own epic, the races rare. */
-  const qualityOf = (tile: Tile | undefined): Quality => (tile?.kind === 'legend' ? 'legendary' : tile?.kind === 'record' ? 'epic' : tile?.kind === 'race' ? 'rare' : 'common');
+  const qualityOf = (tile: Tile | undefined): Quality =>
+    tile?.kind === 'legend' ? 'legendary' : tile?.kind === 'record' || tile?.kind === 'saved' || tile?.kind === 'create' ? 'epic' : tile?.kind === 'race' ? 'rare' : 'common';
 
   /** Each player's plate reads as the champion's tooltip, the way an item lists itself in a bag. */
   const plate = (who: 0 | 1) => {
@@ -426,11 +519,17 @@ export function Select({ edition, art, others, onEdition, races, classes, record
     const classIcon = classEntry && portraits.classes.get(classEntry.key);
     const lines: Line[] = [];
     if (tile) {
-      lines.push({ left: tile.kind === 'random' ? 'Random Champion' : nameOf(tile), kind: 'name', hue: qualityOf(tile) });
+      lines.push({ left: tile.kind === 'random' ? 'Random Champion' : tile.kind === 'create' ? 'Create Your Champion' : nameOf(tile), kind: 'name', hue: qualityOf(tile) });
       if (tile.kind === 'legend') lines.push({ left: 'Unique' });
-      if (tile.kind === 'record') lines.push({ left: 'Soulbound' });
+      if (tile.kind === 'record' || tile.kind === 'saved') lines.push({ left: 'Soulbound' });
     }
-    if (tile && tile.kind !== 'random') {
+    if (tile?.kind === 'create') {
+      lines.push(
+        { left: 'Use: Make a champion of your own: race, sex, class, look, armour and name. They join this row, ready to fight.', hue: 'green' },
+        { kind: 'gap' },
+        { left: '"Kept in this browser."', hue: 'gold' },
+      );
+    } else if (tile && tile.kind !== 'random') {
       const raceName = tile.kind === 'legend' ? (tile.race?.name ?? '') : tile.race.name;
       const sex = tile.kind === 'race' ? (sexFor(tile.race, player.sex) === 1 ? ' ♀' : ' ♂') : '';
       lines.push({
@@ -501,22 +600,22 @@ export function Select({ edition, art, others, onEdition, races, classes, record
           <h1>{BRAND.choose}</h1>
         </header>
         <div class={`grid ${legendsOnly ? 'legends-only' : ''}`}>
-          {legends.length > 0 && (
-            <>
-              <div class="label">LEGENDS</div>
-              <div class="tiles legends">{legends.map((tile, i) => tileView(tile, 'legends', i))}</div>
-            </>
-          )}
+          <div class="label">{legends.length > 0 ? 'LEGENDS' : 'YOUR CHAMPIONS'}</div>
+          <div
+            class="tiles legends"
+            // Legends only: two rows, widening as the champions made here join them, then a third.
+            style={legendsOnly ? { gridTemplateColumns: `repeat(${Math.min(7, Math.max(4, Math.ceil(legendRow.length / 2)))}, minmax(0, 1fr))` } : undefined}
+          >
+            {legendRow.map((tile, i) => tileView(tile, 'legends', i))}
+          </div>
           {!legendsOnly && (
           <>
-          <div class="label">YOUR CHAMPIONS</div>
-          <div class="tiles champions">
-            {champions.map((tile, i) => tileView(tile, 'champions', i))}
-            <button class="tile create" type="button" onClick={() => setGuide('champion')} title="How to get your own characters into the ring">
-              <span class="plus">+</span>
-              {champions.length > 0 ? 'ADD A CHAMPION' : 'CREATE YOUR CHAMPION'}
-            </button>
-          </div>
+          {champions.length > 0 && (
+            <>
+              <div class="label">YOUR CHARACTERS</div>
+              <div class="tiles champions">{champions.map((tile, i) => tileView(tile, 'champions', i))}</div>
+            </>
+          )}
           <div class="label">THE RACES OF AZEROTH</div>
           <div class="tiles roster" style={{ gridTemplateColumns: `repeat(${COLUMNS}, 1fr)` }}>
             {roster.map((tile, i) => tileView(tile, 'roster', i))}
@@ -531,16 +630,28 @@ export function Select({ edition, art, others, onEdition, races, classes, record
         </div>
       </div>
       <footer class="controls">
-        <span><b>P1</b> WASD move · J choose · H back{legendsOnly ? '' : ' · U ♂/♀ · K/L class'}</span>
-        <span><b>P2</b> arrows · , or Num1 choose · M back{legendsOnly ? '' : ' · Right Shift ♂/♀ · . / class'}</span>
-        <span><b>Tab</b> player 2: {p2} · <b>Esc</b> back</span>
+        <span><b>P1</b> {ROSTER_HINTS[layout][0][0]}{legendsOnly ? '' : ROSTER_HINTS[layout][0][1]}</span>
+        <span><b>P2</b> {ROSTER_HINTS[layout][1][0]}{legendsOnly ? '' : ROSTER_HINTS[layout][1][1]}</span>
+        <span><b>Tab</b> player 2: {p2} · <b>N</b> create / edit · <b>C</b> keys: {LAYOUT_WORDS[layout]} · <b>Esc</b> back</span>
         {others.length > 0 && (
           <button class="switch-edition" type="button" onClick={() => onEdition(others[0]!.product)}>
             <b>E</b> {editionOf(others[0]!.product, others[0]!.version).name}
           </button>
         )}
       </footer>
-      {guide && <Guide page={guide} onPage={setGuide} onClose={() => setGuide(undefined)} />}
+      {making && (
+        <Create
+          races={races}
+          classes={classes}
+          portraits={portraits}
+          fighters={fighters}
+          saved={saved}
+          editing={making.editing}
+          onSave={keep}
+          onDelete={discard}
+          onCancel={() => setMaking(undefined)}
+        />
+      )}
     </div>
   );
 }

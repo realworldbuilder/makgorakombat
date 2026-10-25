@@ -92,7 +92,9 @@ Each beat is one of the winner's own animations (CombatBladeStorm, CombatExecute
 
 There is no block key: a shield blocks and a weapon parries on their own, as in the game. On a gamepad the abilities are A B X, the right trigger attacks, Y, a bumper or up jumps.
 
-On the roster: WASD / arrows move the cursor, J or , choose, H or M go back, U or Right Shift switch sex, K L or . / cycle the class. **Tab** switches player 2 between the keyboard, a gamepad and the computer. **Enter** rematches, **Esc** goes back, **M** mutes, **F3** shows frame times.
+Press **C** on the roster for the game's own keys: player 1 moves and jumps with the arrows, **1** attacks and **2 3 4** are the action bar, as in World of Warcraft; player 2 then takes WASD and J K L U. The choice is remembered in the browser.
+
+On the roster: WASD / arrows move the cursor, J or , choose, H or M go back, U or Right Shift switch sex, K L or . / cycle the class (on the game's own keys: arrows, 1 or Enter, Backspace, 4, 2 and 3). **Tab** switches player 2 between the keyboard, a gamepad and the computer. **Enter** rematches, **Esc** goes back, **M** mutes, **F3** shows frame times.
 
 The fight's sound is read from the game folder like everything else: weapon swings and impacts by the weapon's subclass, the race's own grunts, wounds, death cry and battle roar, a spell for the class (Fireball for a mage, Shadow Bolt for a warlock, Lightning Bolt for a shaman...), and a gong for each round. The music is the game's too: the login screen's theme under CHOOSE YOUR CHAMPION, and on the VS screen the zone music of the stage under the cursor (Stranglethorn's jungle for Gurubashi, Stormwind's for the Valley of Heroes...), which plays on, quieter, through the fight and drops away under a fatality. Browsers keep audio off until a key is pressed, so the first screen may start quiet.
 

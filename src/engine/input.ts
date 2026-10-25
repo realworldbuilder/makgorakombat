@@ -4,38 +4,114 @@ import { type Inputs, type Match, noInputs } from './engine';
 export type InputAction = 'left' | 'right' | 'jump' | 'attack' | 'ability1' | 'ability2' | 'ability3';
 export type InputSource = 'keyboard' | 'gamepad' | 'cpu';
 
-/**
- * KeyboardEvent.code values per player and action. Exported so the UI can show the controls.
- * Blocking is passive, as in the game: a shield blocks and a weapon parries on the hit table.
- */
-export const KEYS: readonly [Record<InputAction, readonly string[]>, Record<InputAction, readonly string[]>] = [
-  {
-    left: ['KeyA'],
-    right: ['KeyD'],
-    jump: ['KeyW'],
-    attack: ['KeyJ'],
-    ability1: ['KeyK'],
-    ability2: ['KeyL'],
-    ability3: ['KeyU'],
-  },
-  {
-    left: ['ArrowLeft'],
-    right: ['ArrowRight'],
-    jump: ['ArrowUp'],
-    attack: ['Comma', 'Numpad0'],
-    ability1: ['Period', 'Numpad1'],
-    ability2: ['Slash', 'Numpad2'],
-    ability3: ['ShiftRight', 'Numpad3'],
-  },
-];
+export type KeyMap = Record<InputAction, readonly string[]>;
 
-/** Keys the screens handle themselves. */
-export const MENU_KEYS = { rematch: 'Enter', back: 'Escape', debug: 'F3' } as const;
+/** Which keys the two players hold: the fighting-game set, or the game's own keys for player 1. */
+export type KeyLayout = 'classic' | 'wow';
+
+const WASD: KeyMap = {
+  left: ['KeyA'],
+  right: ['KeyD'],
+  jump: ['KeyW'],
+  attack: ['KeyJ'],
+  ability1: ['KeyK'],
+  ability2: ['KeyL'],
+  ability3: ['KeyU'],
+};
+
+const ARROWS_NUMPAD: KeyMap = {
+  left: ['ArrowLeft'],
+  right: ['ArrowRight'],
+  jump: ['ArrowUp'],
+  attack: ['Comma', 'Numpad0'],
+  ability1: ['Period', 'Numpad1'],
+  ability2: ['Slash', 'Numpad2'],
+  ability3: ['ShiftRight', 'Numpad3'],
+};
+
+/** The keys World of Warcraft itself is played with: the arrows move and jump, 1 is the attack, 2 3 4 the action bar. */
+const ARROWS_DIGITS: KeyMap = {
+  left: ['ArrowLeft'],
+  right: ['ArrowRight'],
+  jump: ['ArrowUp'],
+  attack: ['Digit1'],
+  ability1: ['Digit2'],
+  ability2: ['Digit3'],
+  ability3: ['Digit4'],
+};
+
+/** The two players' keys under each layout: on 'wow' player 1 takes the arrows and the digits, and player 2 the WASD set. */
+export const KEY_LAYOUTS: Readonly<Record<KeyLayout, readonly [KeyMap, KeyMap]>> = {
+  classic: [WASD, ARROWS_NUMPAD],
+  wow: [ARROWS_DIGITS, WASD],
+};
+
+/**
+ * KeyboardEvent.code values per player and action, for the layout in force. Exported so the UI
+ * can show the controls; read it when needed rather than copying it, since `setKeyLayout` swaps
+ * both entries. Blocking is passive, as in the game: a shield blocks and a weapon parries on the
+ * hit table.
+ */
+export const KEYS: [KeyMap, KeyMap] = [WASD, ARROWS_NUMPAD];
+
+const LAYOUT_STORAGE = 'makgora.keys';
+let layout: KeyLayout = 'classic';
+
+/** The layout in force. */
+export function keyLayout(): KeyLayout {
+  return layout;
+}
+
+/** Switch both players' keys, and remember the choice in this browser. */
+export function setKeyLayout(next: KeyLayout): void {
+  layout = next;
+  [KEYS[0], KEYS[1]] = KEY_LAYOUTS[next];
+  try {
+    if (typeof localStorage !== 'undefined') localStorage.setItem(LAYOUT_STORAGE, next);
+  } catch {
+    // Storage may be blocked; the choice then lasts for this visit.
+  }
+}
+
+/** A word for each layout, for the screens. */
+export const LAYOUT_WORDS: Readonly<Record<KeyLayout, string>> = { classic: 'WASD + J K L U', wow: 'arrows + 1 2 3 4' };
+
+try {
+  if (typeof localStorage !== 'undefined' && localStorage.getItem(LAYOUT_STORAGE) === 'wow') setKeyLayout('wow');
+} catch {
+  // No storage: the fighting-game keys.
+}
+
+/** Keys the screens handle themselves. N on the roster opens CREATE YOUR CHAMPION. */
+export const MENU_KEYS = { rematch: 'Enter', back: 'Escape', debug: 'F3', layout: 'KeyC', create: 'KeyN' } as const;
+
+/** What a key does on the menus that both players steer: the roster, and the creator. */
+export type RosterAction = 'up' | 'down' | 'left' | 'right' | 'confirm' | 'back' | 'sex' | 'classPrev' | 'classNext';
+export type RosterKeys = Readonly<Record<string, RosterAction>>;
+
+const WASD_ROSTER: RosterKeys = { KeyW: 'up', KeyS: 'down', KeyA: 'left', KeyD: 'right', KeyJ: 'confirm', KeyH: 'back', KeyU: 'sex', KeyK: 'classPrev', KeyL: 'classNext' };
+const ARROWS_ROSTER: RosterKeys = {
+  ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right',
+  Numpad1: 'confirm', Comma: 'confirm', Numpad4: 'back', KeyM: 'back',
+  Numpad0: 'sex', ShiftRight: 'sex', Numpad2: 'classPrev', Period: 'classPrev', Numpad3: 'classNext', Slash: 'classNext',
+};
+/** The game's own keys on the roster: the arrows move, 1 or Enter chooses, Backspace goes back, 4 switches sex, 2 and 3 cycle the class. */
+const DIGITS_ROSTER: RosterKeys = {
+  ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right',
+  Digit1: 'confirm', Enter: 'confirm', Backspace: 'back', Digit4: 'sex', Digit2: 'classPrev', Digit3: 'classNext',
+};
+
+/** The roster keys per player under each layout, matching the fight's. */
+export const ROSTER_KEYS: Readonly<Record<KeyLayout, readonly [RosterKeys, RosterKeys]>> = {
+  classic: [WASD_ROSTER, ARROWS_ROSTER],
+  wow: [DIGITS_ROSTER, WASD_ROSTER],
+};
 
 /** Short labels for the HUD's controls hint and action bar. */
 export const KEY_LABELS: Readonly<Record<string, string>> = {
   KeyA: 'A', KeyD: 'D', KeyW: 'W', KeyU: 'U', KeyJ: 'J', KeyK: 'K', KeyL: 'L',
   ArrowLeft: '←', ArrowRight: '→', ArrowUp: '↑', ArrowDown: '↓',
+  Digit1: '1', Digit2: '2', Digit3: '3', Digit4: '4', Enter: 'ENTER', Backspace: 'BACKSPACE',
   ShiftRight: 'R SHIFT', Numpad0: 'NUM 0', Numpad1: 'NUM 1', Numpad2: 'NUM 2', Numpad3: 'NUM 3',
   Comma: ',', Period: '.', Slash: '/',
 };
