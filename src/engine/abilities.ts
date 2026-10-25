@@ -139,12 +139,19 @@ function ability(spec: Spec): Ability {
 const CAST_HOLD = ['ChannelCastDirected', 'ReadySpellDirected', 'ReadySpellOmni', 'SpellCastDirected'];
 const SPELL = ['SpellCastDirected', 'ReadySpellDirected'];
 const OMNI = ['SpellCastOmni', 'SpellCastDirected'];
+// Not the priest's PriSpellCast*: they hover the body 0.5 to 1.3 yd off the floor, so Tyrande floated up and tilted with every Mind Blast.
 const STRIKE_1H = ['CombatAbility1H01', 'CombatAbility1H02', 'Special1H', 'Attack1H', 'AttackUnarmed'];
 const STRIKE_2H = ['CombatAbility2H01', 'CombatAbility2H02', 'CombatAbility2H03', 'Special2H', 'Attack2H', 'CombatAbility1H01'];
-const BIG_2H = ['CombatAbility2HBig01', 'CombatAbility2HBig02', 'CombatAbility2H01', 'Special2H', 'CombatAbility1H01', 'Special1H'];
+/**
+ * A heavy two-hander. Not CombatAbility2HBig01 or 02: measured on the legends' models (24 Oct 2026),
+ * Big01 is a leap that throws the chest 2 to 3.5 yd up, out of the top of the view, and Big02 a
+ * lunge 2 yd forward, through the target. The engine places the fighter; an ability's animation must not.
+ */
+const BIG_2H = ['CombatAbility2H02', 'CombatAbility2H03', 'CombatAbility2H01', 'Special2H', 'CombatAbility1H01', 'Special1H'];
 const SPIN = ['CombatWhirlwind', 'Whirlwind', 'CombatBladeStorm', 'SpinningKick', 'SpecialUnarmed', 'Special1H'];
 const KICK = ['Kick', 'RoundHouseKick', 'CombatAbility1H02', 'SpecialUnarmed'];
-const EXECUTE = ['CombatExecute', 'CombatFinishingMove', 'Special2H', 'Special1H'];
+/** Not CombatFinishingMove: it leaps 2 to 4 yd up and as far ahead. */
+const EXECUTE = ['CombatExecute', 'Special2H', 'Special1H'];
 
 /** The kit of each class by WoW class id, with a weapon-appropriate strike where the class wields either. */
 function classKits(twoHand: boolean): Record<number, { key: string; name: string; resource: ResourceKind; abilities: Ability[] }> {
@@ -185,9 +192,9 @@ function classKits(twoHand: boolean): Record<number, { key: string; name: string
     5: {
       key: 'priest', name: 'PRIEST', resource: 'mana',
       abilities: [
-        ability({ id: 'mindBlast', name: 'Mind Blast', short: 'MIND BLAST', kind: 'spell', cost: 25, cooldown: 4 * S, cast: 1 * S, damage: 22, anims: ['PriSpellCastBothUp', ...SPELL], holdAnims: CAST_HOLD }),
+        ability({ id: 'mindBlast', name: 'Mind Blast', short: 'MIND BLAST', kind: 'spell', cost: 25, cooldown: 4 * S, cast: 1 * S, damage: 22, anims: SPELL, holdAnims: CAST_HOLD }),
         ability({ id: 'shadowWordPain', name: 'Shadow Word: Pain', short: 'SW: PAIN', kind: 'spell', cost: 20, dot: { damage: 7, ticks: 5 }, anims: SPELL }),
-        ability({ id: 'powerWordShield', name: 'Power Word: Shield', short: 'PW: SHIELD', kind: 'self', cost: 25, cooldown: 10 * S, absorb: 25, anims: ['PriSpellCastBothUp', ...OMNI] }),
+        ability({ id: 'powerWordShield', name: 'Power Word: Shield', short: 'PW: SHIELD', kind: 'self', cost: 25, cooldown: 10 * S, absorb: 25, anims: OMNI }),
       ],
     },
     6: {

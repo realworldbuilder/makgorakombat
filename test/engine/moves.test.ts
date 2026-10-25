@@ -121,7 +121,7 @@ describe('resolveKit', () => {
     expect(warrior.abilities.map((a) => a.id)).toEqual(['charge', 'mortalStrike', 'execute']);
     expect(warrior.abilities[0].hold.animation).toBe('CombatChargeLoop');
     expect(warrior.abilities[0].move.animation).toBe('CombatChargeEnd');
-    expect(warrior.abilities[1].move.animation).toBe('CombatAbility2HBig01');
+    expect(warrior.abilities[1].move.animation).toBe('CombatAbility2H02'); // not Big01, a leap
     const mage = fakeTable(FULL_SET, 'oneHand', {}, 8).kit;
     expect(mage.resource).toBe('mana');
     expect(mage.abilities[0].cast).toBe(90);
