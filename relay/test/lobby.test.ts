@@ -1,10 +1,10 @@
 import { env, runDurableObjectAlarm, runInDurableObject, SELF } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
-import { isCode } from '../src/index';
-import { BEAT_MS, CHALLENGE_MS, cleanName, type Lobby, type Player } from '../src/lobby';
+import { isCode } from '../src/code';
+import { BEAT_MS, CHALLENGE_MS, cleanName, type Counts, type Lobby, type Player, QUEUE_MS } from '../src/lobby';
 import { Client } from './client';
 
-type Here = { players: Player[] };
+type Here = { players: Player[] } & Counts;
 type Fight = { code: string; role: 'host' | 'guest'; with: { id: string; name: string } };
 
 let lobbies = 0;
@@ -21,6 +21,22 @@ function lobby() {
 
 const send = (client: Client, message: object) => client.ws.send(JSON.stringify(message));
 const ids = { chris: 'chris-0001', will: 'will-00002', third: 'third-0003', fourth: 'fourth-004' };
+
+/** Waits for a list of who is here with the given numbers. */
+async function hereCounting(client: Client, wanted: Counts, after = 0): Promise<Here & { k: number }> {
+  for (let from = after; ; ) {
+    const here = await client.next<Here>('here', from);
+    if (here.online === wanted.online && here.waiting === wanted.waiting && here.fighting === wanted.fighting) return here;
+    from = here.k + 1;
+  }
+}
+
+/** A socket into a room as host or guest, as the page opens one. */
+async function intoRoom(code: string, role: 'host' | 'guest'): Promise<Client> {
+  const response = await SELF.fetch(`https://relay.test/rooms/${code}/ws?role=${role}`, { headers: { Upgrade: 'websocket' } });
+  expect(response.status).toBe(101);
+  return new Client(response.webSocket!);
+}
 
 /** Waits for a list of who is here that has the given ids in it, in order. */
 async function hereWith(client: Client, wanted: string[], after = 0): Promise<Here & { k: number }> {
@@ -221,5 +237,107 @@ describe('lobby', () => {
     await late.next('queued');
     expect(back.kinds()).not.toContain('fight');
     for (const c of [back, late, will, third, fourth]) c.ws.close(1000, 'bye');
+  });
+
+  it('counts who is online, waiting and fighting, with every list and at /lobby/stats', async () => {
+    const { stub, enter } = lobby();
+    const chris = await enter('Chris', ids.chris);
+    const will = await enter('Will', ids.will);
+    const third = await enter('Thrall', ids.third);
+    await hereCounting(third, { online: 3, waiting: 0, fighting: 0 });
+
+    send(third, { t: 'quick' });
+    expect(await third.next('queued')).toMatchObject({ queued: true });
+    await hereCounting(chris, { online: 3, waiting: 1, fighting: 0 });
+    expect(await stub.stats()).toEqual({ online: 3, waiting: 1, fighting: 0 });
+
+    // Chris and Will fight: once both are in their room the lobby counts them, socket here or not.
+    send(chris, { t: 'challenge', to: ids.will });
+    await will.next('challenged');
+    send(will, { t: 'accept', from: ids.chris });
+    const { code } = await chris.next<Fight>('fight');
+    const host = await intoRoom(code, 'host');
+    chris.ws.close(1000, 'fight');
+    await hereCounting(third, { online: 2, waiting: 1, fighting: 0 });
+    const guest = await intoRoom(code, 'guest');
+    will.ws.close(1000, 'fight');
+    await hereCounting(third, { online: 1, waiting: 1, fighting: 2 });
+    expect(await stub.stats()).toEqual({ online: 1, waiting: 1, fighting: 2 });
+
+    // One goes: the room is no longer a fight.
+    host.ws.close(1000, 'bye');
+    await hereCounting(third, { online: 1, waiting: 1, fighting: 0 });
+    guest.ws.close(1000, 'bye');
+    third.ws.close(1000, 'bye');
+
+    // The Worker answers the main lobby's numbers to any page that may use the relay.
+    const stats = await SELF.fetch('https://relay.test/lobby/stats', { headers: { Origin: 'https://makgora.clawdioslave.com' } });
+    expect(stats.status).toBe(200);
+    expect(stats.headers.get('Access-Control-Allow-Origin')).toBe('https://makgora.clawdioslave.com');
+    expect(Object.keys((await stats.json()) as Counts).sort()).toEqual(['fighting', 'online', 'waiting']);
+  });
+
+  it('puts a page back from a match straight into the queue when it asks for the next opponent', async () => {
+    const { enter } = lobby();
+    // Nobody waiting: in line at once.
+    const chris = await enter('Chris', ids.chris, '&busy=0&requeue=1');
+    expect(await chris.next('queued')).toMatchObject({ queued: true });
+    await hereCounting(chris, { online: 1, waiting: 1, fighting: 0 });
+    // Somebody waiting: matched at once, the one who waited hosting.
+    const will = await enter('Will', ids.will, '&busy=0&requeue=1');
+    expect(await chris.next<Fight>('fight')).toMatchObject({ role: 'host', with: { id: ids.will } });
+    expect(await will.next<Fight>('fight')).toMatchObject({ role: 'guest', with: { id: ids.chris } });
+    // Between fights of a match (busy) it is not put in line.
+    const third = await enter('Thrall', ids.third, '&busy=1&requeue=1');
+    await hereWith(third, [ids.chris, ids.will, ids.third]);
+    expect(third.kinds()).not.toContain('queued');
+    for (const c of [chris, will, third]) c.ws.close(1000, 'bye');
+  });
+
+  it('takes a player out of the queue who accepts a challenge', async () => {
+    const { enter } = lobby();
+    const chris = await enter('Chris', ids.chris);
+    const will = await enter('Will', ids.will);
+    send(will, { t: 'quick' });
+    await will.next('queued');
+    await hereCounting(chris, { online: 2, waiting: 1, fighting: 0 });
+
+    // Waiting in the queue, Will can still be challenged by name.
+    send(chris, { t: 'challenge', to: ids.will });
+    await will.next('challenged');
+    send(will, { t: 'accept', from: ids.chris });
+    expect(await will.next<Fight>('fight')).toMatchObject({ role: 'guest', with: { id: ids.chris } });
+    await hereCounting(chris, { online: 2, waiting: 0, fighting: 0 });
+
+    // Out of the queue: the next to ask waits, and is not paired with Will.
+    const third = await enter('Thrall', ids.third);
+    send(third, { t: 'quick' });
+    await third.next('queued');
+    expect(third.kinds()).not.toContain('fight');
+    for (const c of [chris, will, third]) c.ws.close(1000, 'bye');
+  });
+
+  it('lets go of a player left in the queue ten minutes with nobody coming', async () => {
+    const { stub, enter } = lobby();
+    const chris = await enter('Chris', ids.chris);
+    send(chris, { t: 'quick' });
+    await chris.next('queued');
+    const alarm = await runInDurableObject(stub, (_lobby: Lobby, state) => state.storage.getAlarm());
+    expect(alarm).toBeLessThanOrEqual(Date.now() + BEAT_MS);
+
+    // A beat is not ten minutes: still in line.
+    expect(await runDurableObjectAlarm(stub)).toBe(true);
+    expect(chris.kinds()).not.toContain('unqueued');
+    // Ten minutes pass.
+    await runInDurableObject(stub, async (_lobby: Lobby, state) => {
+      const queue = (await state.storage.get<{ id: string; at: number }[]>('quick'))!;
+      await state.storage.put('quick', queue.map((w) => ({ ...w, at: w.at - QUEUE_MS })));
+    });
+    const seen = chris.got.length;
+    expect(await runDurableObjectAlarm(stub)).toBe(true);
+    expect(await chris.next('unqueued', seen)).toMatchObject({ queued: false, reason: 'idle' });
+    await hereCounting(chris, { online: 1, waiting: 0, fighting: 0 }, seen);
+    expect(await stub.stats()).toEqual({ online: 1, waiting: 0, fighting: 0 });
+    chris.ws.close(1000, 'bye');
   });
 });

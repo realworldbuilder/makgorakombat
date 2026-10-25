@@ -30,12 +30,13 @@ export interface Framing {
 
 export const FRAMING: Framing = { yaw: -22, pitch: 8, fov: 24, halfHeight: 0.21, below: 0.07 };
 
-// For tuning from the console or a script: the fighters seen so far, drawn with any framing.
-const seen = new Map<string, BuiltFighter>();
+// For tuning from the console or a script: the fighters seen so far, drawn with any framing. Held
+// weakly, so the aid does not keep a fighter (tens of megabytes) the roster's cache has let go.
+const seen = new Map<string, WeakRef<BuiltFighter>>();
 (window as unknown as { mkHeadshot?: unknown }).mkHeadshot = {
-  keys: () => [...seen.keys()],
+  keys: () => [...seen].flatMap(([key, ref]) => (ref.deref() ? [key] : [])),
   draw: (key: string, framing: Partial<Framing>) => {
-    const fighter = seen.get(key);
+    const fighter = seen.get(key)?.deref();
     return fighter ? drawFace(fighter, { ...FRAMING, ...framing }) : undefined;
   },
 };
@@ -66,7 +67,7 @@ export function headshotOf(fighter: BuiltFighter): string | undefined {
     renderer = null;
     return undefined;
   }
-  seen.set(key, fighter);
+  seen.set(key, new WeakRef(fighter));
   try {
     const url = drawFace(fighter, FRAMING);
     cache.set(key, url);

@@ -152,6 +152,15 @@ export function Versus({ client, fighters, stages, screens, onFight, onBack, onl
     return () => cancelAnimationFrame(frame);
   }, [fighters]);
 
+  // The ring's context goes with the screen, so the fight's does not push the browser past its few.
+  useEffect(
+    () => () => {
+      arena.current?.dispose();
+      arena.current = null;
+    },
+    [],
+  );
+
   // The ground under the ring follows the cursor: a stage is raised around the fighters, a screen goes up behind them.
   useEffect(() => {
     const entry = entries[cursor];

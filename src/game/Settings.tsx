@@ -12,7 +12,12 @@ import { RELAY_URL, relayUrl, setRelayUrl } from './net/relay';
  */
 
 const RULES_STORAGE = 'makgora.rules';
-/** KOMBAT until the player chooses otherwise. */
+/**
+ * One rule set for everyone while the room is small: with a handful of players online, two
+ * rule sets would halve the chance of a fair match. Set to undefined to give the choice back.
+ */
+const ONE_RULESET: RulesName | undefined = 'warcraft';
+/** KOMBAT until the player chooses otherwise, where there is a choice. */
 let rules: RulesName = 'kombat';
 try {
   const saved = typeof localStorage !== 'undefined' ? localStorage.getItem(RULES_STORAGE) : null;
@@ -21,9 +26,9 @@ try {
   // No storage: KOMBAT.
 }
 
-/** The rules the next fight is fought under, as last chosen. */
+/** The rules the next fight is fought under: the one rule set while there is only one, else as last chosen. */
 export function chosenRules(): RulesName {
-  return rules;
+  return ONE_RULESET ?? rules;
 }
 
 export function chooseRules(next: RulesName): void {
@@ -203,6 +208,8 @@ export function Settings({ onClose }: SettingsProps) {
             Cloudflare account and put its address here.
           </p>
 
+          {ONE_RULESET === undefined && (
+          <>
           <h3>Rules</h3>
           <div class="choice" role="radiogroup" aria-label="Rules">
             <button type="button" class={ruleset === 'warcraft' ? 'here' : ''} role="radio" aria-checked={ruleset === 'warcraft'} onClick={() => pick('warcraft')}>
@@ -217,6 +224,8 @@ export function Settings({ onClose }: SettingsProps) {
           <p class="dim small">
             Under Kombat three presses in rhythm are a string, holding back blocks, a double tap forward or back dashes, and attack in the air is a jumping attack. The next fight takes the change.
           </p>
+          </>
+          )}
         </div>
       </div>
     </div>
