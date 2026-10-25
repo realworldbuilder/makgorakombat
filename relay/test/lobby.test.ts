@@ -1,6 +1,6 @@
 import { env, runDurableObjectAlarm, runInDurableObject, SELF } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
-import { isCode } from '../src/index';
+import { isCode } from '../src/code';
 import { BEAT_MS, CHALLENGE_MS, cleanName, type Counts, type Lobby, type Player, QUEUE_MS } from '../src/lobby';
 import { Client } from './client';
 

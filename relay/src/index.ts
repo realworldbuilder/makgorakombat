@@ -1,4 +1,5 @@
 import { DurableObject } from 'cloudflare:workers';
+import { isCode, newCode } from './code';
 import { LOBBY, type Lobby } from './lobby';
 
 export { Lobby } from './lobby';
@@ -20,11 +21,8 @@ export interface Env {
 
 export type Role = 'host' | 'guest';
 
-/** Consonants only, so no code spells a word, and none of the ones that pass for a digit or each other (L, Y). */
-export const ALPHABET = 'BCDFGHJKMNPQRSTVWXZ';
-export const CODE_LENGTH = 6;
 /** A room with nobody in it closes after this long. */
-export const IDLE_MS = 10 * 60 * 1000;
+const IDLE_MS = 10 * 60 * 1000;
 
 const ROLES: readonly Role[] = ['host', 'guest'];
 const other = (role: Role): Role => (role === 'host' ? 'guest' : 'host');
@@ -45,15 +43,6 @@ function corsHeaders(origin: string | null): Record<string, string> {
     'Access-Control-Max-Age': '86400',
     Vary: 'Origin',
   };
-}
-
-export function newCode(): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(CODE_LENGTH));
-  return Array.from(bytes, (b) => ALPHABET[b % ALPHABET.length]).join('');
-}
-
-export function isCode(code: string): boolean {
-  return code.length === CODE_LENGTH && [...code].every((c) => ALPHABET.includes(c));
 }
 
 /** Makes a room under a fresh code and answers it; undefined when no free code turned up. The room tells `lobby` who is in it. */
