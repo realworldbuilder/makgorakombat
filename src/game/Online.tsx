@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
+import { BoardTable } from './Board';
+import { notifyOn, setNotify } from './call';
 import { meet, mismatch } from './net/handshake';
-import { cleanName, type Lobby, type LobbyState, EMPTY, typingName } from './net/lobby';
+import { cleanName, type Lobby, type LobbyState, EMPTY, recordText, typingName } from './net/lobby';
 import { cleanCode, createRoom, Link, relayUrl, type Role } from './net/relay';
 import { useModalKeys } from './ui/modal';
 
@@ -13,6 +15,8 @@ import { useModalKeys } from './ui/modal';
  * pages meet in the room and agree on the game's version, and the roster opens with the host as
  * player 1 and the guest as player 2. A challenge that comes in shows over whatever screen is up.
  * Two players on different relays can still use a room code, behind the small link at the bottom.
+ * Beside WHO'S HERE is TOP TEN, the relay's board, and each name here carries its record tonight.
+ * A small switch asks the browser to notify the player when a fight comes while they look away.
  * The same panel as the guide, and all of it from the keyboard.
  */
 
@@ -135,7 +139,7 @@ interface OnlineProps {
   onClose: () => void;
 }
 
-type View = 'name' | 'here' | 'code';
+type View = 'name' | 'here' | 'board' | 'code';
 
 export function Online({ lobby, name, onName, product, onReady, onClose }: OnlineProps) {
   const [view, setView] = useState<View>(name ? 'here' : 'name');
@@ -146,6 +150,7 @@ export function Online({ lobby, name, onName, product, onReady, onClose }: Onlin
   const at = Math.min(chosen, others.length - 1);
   const [copied, setCopied] = useState<string>();
   const waited = useSince(state.queued ? state.queuedAt : undefined);
+  const [notify, setNotifyState] = useState(notifyOn);
   /** Shut, the panel takes this page out of the queue: nobody waits there unseen. */
   const close = () => {
     if (state.queued) lobby?.quick(false);
@@ -164,11 +169,24 @@ export function Online({ lobby, name, onName, product, onReady, onClose }: Onlin
     });
   };
 
+  // TOP TEN: Escape or B back to WHO'S HERE; the table turns its spans itself.
+  useEffect(() => {
+    if (view !== 'board') return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.code !== 'Escape' && event.code !== 'KeyB') return;
+      event.stopPropagation();
+      event.preventDefault();
+      setView('here');
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [view]);
+
   useEffect(() => {
     if (view !== 'here') return;
     const onKey = (event: KeyboardEvent) => {
       const key = event.code;
-      if (!['Escape', 'ArrowUp', 'ArrowDown', 'Enter', 'NumpadEnter', 'KeyQ', 'KeyN'].includes(key)) return;
+      if (!['Escape', 'ArrowUp', 'ArrowDown', 'Enter', 'NumpadEnter', 'KeyQ', 'KeyN', 'KeyB'].includes(key)) return;
       event.stopPropagation();
       event.preventDefault();
       if (key === 'Escape') {
@@ -180,6 +198,7 @@ export function Online({ lobby, name, onName, product, onReady, onClose }: Onlin
       else if (key === 'ArrowDown') setChosen(Math.min(others.length - 1, at + 1));
       else if (key === 'KeyQ') quick();
       else if (key === 'KeyN') setView('name');
+      else if (key === 'KeyB') setView('board');
       else if (at < 0) {
         // Enter on FIND A FIGHT goes into the queue; leaving it is Escape's.
         if (!state.queued && state.connected) quick();
@@ -196,10 +215,18 @@ export function Online({ lobby, name, onName, product, onReady, onClose }: Onlin
     <div class="guide-backdrop" onClick={close}>
       <div class="guide online" onClick={(event) => event.stopPropagation()}>
         <nav class="tabs">
-          <button class={view !== 'code' ? 'here' : ''} type="button" onClick={() => setView(name ? 'here' : 'name')}>
+          <button class={view === 'here' || view === 'name' ? 'here' : ''} type="button" onClick={() => setView(name ? 'here' : 'name')}>
             {view === 'name' ? 'YOUR NAME' : "WHO'S HERE"}
           </button>
-          {view === 'code' && <button class="here" type="button">WITH A CODE</button>}
+          {view === 'code' ? (
+            <button class="here" type="button">WITH A CODE</button>
+          ) : (
+            view !== 'name' && (
+              <button class={view === 'board' ? 'here' : ''} type="button" onClick={() => setView('board')}>
+                TOP TEN · B
+              </button>
+            )
+          )}
           <button class="close" onClick={close} aria-label="Close" type="button">✕</button>
         </nav>
         {view === 'name' ? (
@@ -211,6 +238,10 @@ export function Online({ lobby, name, onName, product, onReady, onClose }: Onlin
             }}
             onBack={() => (name ? setView('here') : close())}
           />
+        ) : view === 'board' ? (
+          <div class="body online-board">
+            <BoardTable />
+          </div>
         ) : view === 'code' ? (
           <CodeView product={product} onReady={onReady} onBack={() => setView(name ? 'here' : 'name')} />
         ) : (
@@ -264,7 +295,10 @@ export function Online({ lobby, name, onName, product, onReady, onClose }: Onlin
                   const waiting = state.outgoing?.id === player.id;
                   return (
                     <li key={player.id} class={`${k === at ? 'chosen' : ''} ${player.status}`} role="option" aria-selected={k === at} onMouseEnter={() => setChosen(k)}>
-                      <span class="name">{player.name}</span>
+                      <span class="name">
+                        {player.name}
+                        {player.night && <span class="record" title="Won and lost tonight">{recordText(player.night)}</span>}
+                      </span>
                       {player.status === 'busy' ? (
                         <span class="dim small">in a match</span>
                       ) : waiting ? (
@@ -283,8 +317,14 @@ export function Online({ lobby, name, onName, product, onReady, onClose }: Onlin
               </ul>
             )}
             {state.notice && <p class="bad">{state.notice}</p>}
+            {typeof Notification !== 'undefined' && (
+              <label class="notify dim small">
+                <input type="checkbox" checked={notify} onChange={(event) => void setNotify(event.currentTarget.checked).then(setNotifyState, () => setNotifyState(false))} />
+                notify me when a fight comes while I look away
+              </label>
+            )}
             <p class="dim small">
-              ↑ ↓ choose · Enter fight · Esc {state.queued || state.outgoing ? 'take it back' : 'close'}. Each of you needs the game open with your own World of Warcraft
+              ↑ ↓ choose · Enter fight · B the board · Esc {state.queued || state.outgoing ? 'take it back' : 'close'}. Each of you needs the game open with your own World of Warcraft
               folder. Whoever challenges is player 1 and picks the ground.{' '}
               <button type="button" class="link" onClick={() => setView('code')}>join with a code</button>
             </p>

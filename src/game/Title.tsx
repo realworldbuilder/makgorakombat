@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import type { BuildInfoEntry } from '@mogshot/casc/build-info';
 import { BRAND } from '../engine/brand';
 import { ActionBar, GLYPHS, type Slot } from './ActionBar';
+import { BoardPanel } from './Board';
 import { editionOf, type EditionKey } from './edition';
 import { lastProduct, type Phase } from './folder';
 import { Guide, type GuidePage } from './Guide';
@@ -115,6 +116,8 @@ export function Title({ phase, dragging, onPick, onChoose, onCreate, onOnline }:
     onOnline(page === 'online');
   };
   const [settings, setSettings] = useState(false);
+  // TOP TEN, from the small line under the presence line, or B.
+  const [board, setBoard] = useState(false);
   const picker = useRef<HTMLInputElement>(null);
   const opening = phase.kind === 'opening';
   // The folder is on its way: the panel gives way to the opening, and the wish to create stands.
@@ -123,12 +126,13 @@ export function Title({ phase, dragging, onPick, onChoose, onCreate, onOnline }:
   }, [opening]);
 
   // The action bar's hotkeys: 1 opens the folder picker (a key press counts as the click the
-  // browser wants), 2 how to play, 3 CREATE YOUR CHAMPION, 4 the source, 5 the settings, 6 PLAY ONLINE.
+  // browser wants), 2 how to play, 3 CREATE YOUR CHAMPION, 4 the source, 5 the settings, 6 PLAY ONLINE;
+  // and B the board.
   useEffect(() => {
     // A folder with several games takes the digits for its WHICH WORLD? slots instead.
     if (opening || phase.kind === 'choose') return;
     const onKey = (event: KeyboardEvent) => {
-      if (guide || settings || event.metaKey || event.ctrlKey || event.altKey) return;
+      if (guide || settings || board || event.metaKey || event.ctrlKey || event.altKey) return;
       switch (event.code) {
         case 'Digit1': case 'Numpad1': picker.current?.click(); break;
         case 'Digit2': case 'Numpad2': setGuide('play'); break;
@@ -136,13 +140,14 @@ export function Title({ phase, dragging, onPick, onChoose, onCreate, onOnline }:
         case 'Digit4': case 'Numpad4': window.open(SOURCE, '_blank', 'noreferrer'); break;
         case 'Digit5': case 'Numpad5': setSettings(true); break;
         case 'Digit6': case 'Numpad6': setGuide('online'); break;
+        case 'KeyB': setBoard(true); break;
         default: return;
       }
       event.preventDefault();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [opening, phase.kind, guide, settings]);
+  }, [opening, phase.kind, guide, settings, board]);
 
   // A folder with several games: 1, 2... pick one, Enter the one played last.
   useEffect(() => {
@@ -261,6 +266,11 @@ export function Title({ phase, dragging, onPick, onChoose, onCreate, onOnline }:
             ]}
           />
           <Presence online="6" />
+          <p class="board-line">
+            <button type="button" class="link" onClick={() => setBoard(true)}>
+              the board · B
+            </button>
+          </p>
           <p class="hint">
             <b>Drop your World of Warcraft folder</b> anywhere on this page, or press 1 to choose it. It is in <code>Applications</code> on a
             Mac. Your game files are read here in the browser and never leave your computer.
@@ -275,6 +285,7 @@ export function Title({ phase, dragging, onPick, onChoose, onCreate, onOnline }:
       </p>
       {guide && <Guide page={guide} onPage={setGuide} onClose={() => setGuide(undefined)} onFolder={() => picker.current?.click()} />}
       {settings && <Settings onClose={() => setSettings(false)} />}
+      {board && <BoardPanel onClose={() => setBoard(false)} />}
     </div>
   );
 }

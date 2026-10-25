@@ -19,6 +19,8 @@ export interface LobbyPlayer {
   id: string;
   name: string;
   status: 'free' | 'busy';
+  /** Tonight's wins and losses, once they have fought tonight. */
+  night?: [number, number];
 }
 
 /** The lobby's numbers, as every list of who is here and GET /lobby/stats give them. */
@@ -112,6 +114,51 @@ export async function lobbyStats(base = relayUrl()): Promise<Counts> {
   const { online, waiting, fighting } = (await response.json()) as Counts;
   return { online: Number(online) || 0, waiting: Number(waiting) || 0, fighting: Number(fighting) || 0 };
 }
+
+/** Which board: tonight's (from four in the morning in New York) or all time's. */
+export type Span = 'night' | 'all';
+
+/** A line on the board, as GET /lobby/board answers it. */
+export interface BoardRow {
+  rank: number;
+  name: string;
+  wins: number;
+  losses: number;
+  /** The longest run of wins, and the run going now. */
+  best: number;
+  streak: number;
+  /** This player's own row. */
+  me?: boolean;
+}
+
+export interface Standings {
+  span: Span;
+  /** The night, as its date in New York. */
+  night: string;
+  rows: BoardRow[];
+  /** This player's row, wherever it stands; absent when they have no record in the span. */
+  mine?: BoardRow;
+}
+
+/** The board's top and this player's own row, from GET /lobby/board. */
+export async function lobbyBoard(span: Span, id?: string, base = relayUrl()): Promise<Standings> {
+  const response = await fetch(`${base}/lobby/board?span=${span}${id ? `&id=${encodeURIComponent(id)}` : ''}`, { cache: 'no-store' });
+  if (!response.ok) throw new Error(`The relay answered ${response.status}.`);
+  return (await response.json()) as Standings;
+}
+
+/** How many the panel shows. */
+export const TOP = 10;
+
+/** The rows the TOP TEN panel shows, and this player's own row under them when it is not among them. */
+export function topTen(standings: Standings): { rows: BoardRow[]; pinned?: BoardRow } {
+  const rows = standings.rows.slice(0, TOP);
+  const pinned = standings.mine && !rows.some((row) => row.me) ? standings.mine : undefined;
+  return pinned ? { rows, pinned } : { rows };
+}
+
+/** A record as WHO'S HERE shows it: "3-1". */
+export const recordText = ([wins, losses]: [number, number]) => `${wins}-${losses}`;
 
 let visitId: string | undefined;
 /** The random id this browser keeps, made the first time it is asked for. */

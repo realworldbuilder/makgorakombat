@@ -3,6 +3,7 @@ import type { ClassEntry, Race } from '@mogshot/character/appearance';
 import type { Image } from '@mogshot/formats/blp';
 import type { LoadingScreen } from '@mogshot/worker/api';
 import { DataClient } from '@mogshot/worker/client';
+import { callToFight } from './call';
 import { type Edition, editionOf, playableProducts } from './edition';
 import { type EditionArt, loadEditionArt } from './editionArt';
 import { Fight, type NetFight, tableOf } from './Fight';
@@ -15,7 +16,7 @@ import { setWhere } from './report';
 import { LEGENDS, legendTiles, type Tile } from './roster';
 import { loadSaved, type SavedChampion, storeSaved } from './saved';
 import { type OnlinePick, Select, type Source } from './Select';
-import { championOf, decode, encode, type Hello, localize, mismatch, sameStage, type StageKey, stageKeyOf } from './net/handshake';
+import { championOf, decode, encode, type Hello, localize, mismatch, resultOf, sameStage, type StageKey, stageKeyOf } from './net/handshake';
 import { Lobby, saveName, savedName } from './net/lobby';
 import type { Link } from './net/relay';
 import { VERSION } from './net/version';
@@ -37,10 +38,13 @@ import { Versus } from './Versus';
 /** How long a match from the queue shows FOUND and the opponent's name before the roster. */
 const FOUND_MS = 2000;
 
+/** What the fight screen shows of itself through window.mk: the live match, and the lockstep's match number online. */
+type Shown = { match?: () => Parameters<typeof resultOf>[0] | undefined; net?: () => { game: number } | undefined };
+const shown = () => (window as unknown as { mk?: Shown }).mk;
+
 /** The fight on screen has ended its match, as the fight screen shows it through window.mk. */
 function matchOver(): boolean {
-  const mk = (window as unknown as { mk?: { match?: () => { phase: string } | undefined } }).mk;
-  return mk?.match?.()?.phase === 'matchEnd';
+  return shown()?.match?.()?.phase === 'matchEnd';
 }
 
 type Screen =
@@ -112,20 +116,45 @@ export function Game() {
     setOnline(session);
     setScreen({ kind: 'select' });
   }, []);
+  /**
+   * An online match over on the fight screen: this page's word on it to the room, once, for the
+   * board. The room counts it when the other page says the same.
+   */
+  const reported = useRef<string>(null);
+  const report = useCallback(() => {
+    if (!online || online.link.closed || screenRef.current.kind !== 'fight') return;
+    const mk = shown();
+    const match = mk?.match?.();
+    const id = lobbyRef.current?.id;
+    const result = match && resultOf(match, mk?.net?.()?.game ?? 0, id && name ? { id, name } : undefined);
+    if (!result) return;
+    const key = `${online.code} ${result.game} ${result.ticks}`;
+    if (reported.current === key) return;
+    reported.current = key;
+    online.link.send(result);
+  }, [online, name]);
+  useEffect(() => {
+    if (!online || screen.kind !== 'fight') return;
+    const timer = setInterval(report, 250);
+    return () => clearInterval(timer);
+  }, [online, screen.kind, report]);
+
   /** Leaves the room for the roster on this keyboard alone. */
   const leaveOnline = useCallback(() => {
+    report();
     online?.link.close();
     setOnline(undefined);
     setHello(undefined);
     setLeft(undefined);
     setScreen({ kind: 'select' });
-  }, [online]);
+  }, [online, report]);
   /**
    * NEXT OPPONENT, at the end of an online match or when the other has gone: out of the room and
    * back into the lobby's queue, the panel up with the wait counting, so a stranger can play one
    * after another without touching the mouse.
    */
   const nextOpponent = useCallback(() => {
+    report();
     lobbyRef.current?.queueAgain();
     online?.link.close();
     setOnline(undefined);
@@ -133,7 +162,7 @@ export function Game() {
     setLeft(undefined);
     setScreen({ kind: 'select' });
     setShowOnline(true);
-  }, [online]);
+  }, [online, report]);
   const rosterOnline = useMemo(() => (online ? { me: online.me, link: online.link, code: online.code } : undefined), [online]);
   const versusOnline = useMemo(() => (online ? { host: online.role === 'host', link: online.link } : undefined), [online]);
 
@@ -227,6 +256,9 @@ export function Game() {
   useEffect(() => {
     if (!lobby) return;
     return lobby.onMatch((match) => {
+      // The queue found someone, NEXT OPPONENT did, or a challenge this page made was taken up: call the player back.
+      // One who has just accepted is looking already.
+      if (match.queued || match.role === 'host') callToFight(match.queued ? `Found: ${match.with.name}. To the ring!` : `${match.with.name} accepted. To the ring!`);
       setShowOnline(false);
       setMatching({ name: match.with.name, found: match.queued });
       matchLink.current = null;
@@ -499,6 +531,14 @@ export function Game() {
   const wantOnline = (yes: boolean) => {
     onlineNext.current = yes;
   };
+  // A challenge come in, while it would show: the gong, the title, and the notification for a player who asked for one.
+  const calling = loaded && !online && !matching && screen.kind !== 'fight' ? lobbyState.incoming : undefined;
+  const callingKey = calling && `${calling.id} ${calling.until}`;
+  useEffect(() => {
+    if (calling) callToFight(`${calling.name} challenges you to Mak'gora.`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [callingKey]);
+
   if (phase.kind === 'choose') return <Title phase={phase} dragging={dragging} onPick={onPick} onChoose={(product) => void openFolder(phase.files, product)} onCreate={wantCreate} onOnline={wantOnline} />;
   if (phase.kind !== 'ready') return <Title phase={phase} dragging={dragging} onPick={onPick} onCreate={wantCreate} onOnline={wantOnline} />;
   if (loadError) return <Title phase={{ kind: 'error', message: loadError }} dragging={false} onPick={onPick} onCreate={wantCreate} onOnline={wantOnline} />;
