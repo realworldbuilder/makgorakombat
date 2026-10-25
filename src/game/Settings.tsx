@@ -31,6 +31,29 @@ export function chosenRules(): RulesName {
   return ONE_RULESET ?? rules;
 }
 
+const HAND_PICK_STORAGE = 'makgora.handPick';
+/** Online the host draws the stage at random unless the player has said they pick it themselves. */
+let handPick = false;
+try {
+  handPick = typeof localStorage !== 'undefined' && localStorage.getItem(HAND_PICK_STORAGE) === '1';
+} catch {
+  // No storage: drawn at random.
+}
+
+/** The host picks the stage on the VS screen online, as offline, rather than drawing it at random. */
+export function picksStageOnline(): boolean {
+  return handPick;
+}
+
+export function pickStageOnline(yes: boolean): void {
+  handPick = yes;
+  try {
+    if (typeof localStorage !== 'undefined') localStorage.setItem(HAND_PICK_STORAGE, yes ? '1' : '0');
+  } catch {
+    // Storage may be blocked; the choice then lasts for this visit.
+  }
+}
+
 export function chooseRules(next: RulesName): void {
   rules = next;
   try {
@@ -62,6 +85,7 @@ export function Settings({ onClose }: SettingsProps) {
   const [layout, setLayout] = useState<KeyLayout>(keyLayout());
   const [ruleset, setRuleset] = useState<RulesName>(chosenRules());
   const [relay, setRelay] = useState(relayUrl());
+  const [handPicked, setHandPicked] = useState(picksStageOnline());
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -206,6 +230,25 @@ export function Settings({ onClose }: SettingsProps) {
           <p class="dim small">
             PLAY ONLINE goes through this relay; both players must use the same one. To run your own, deploy <code>relay/</code> from the game's source to your
             Cloudflare account and put its address here.
+          </p>
+          <div class="row">
+            <label for="setting-hand-pick">I pick the stage online</label>
+            <button
+              id="setting-hand-pick"
+              type="button"
+              class={`toggle ${handPicked ? 'on' : ''}`}
+              aria-pressed={handPicked}
+              onClick={() => {
+                pickStageOnline(!handPicked);
+                setHandPicked(!handPicked);
+              }}
+            >
+              {handPicked ? 'ON' : 'OFF'}
+            </button>
+          </div>
+          <p class="dim small">
+            Off, an online match draws a stage both of you have and goes straight to the fight. On, when you are the host, you choose it on the VS screen
+            while your opponent watches.
           </p>
 
           {ONE_RULESET === undefined && (

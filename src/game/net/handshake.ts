@@ -50,6 +50,8 @@ export interface Hello {
   /** The match number, starting at 1; each rematch is the next. */
   game: number;
   stage: StageKey;
+  /** The host drew the stage at random (stages.ts drawGround): both show the NEXT STAGE card, not the VS screen. */
+  drawn?: boolean;
   fighters: [FighterSpec, FighterSpec];
   tables: [MoveTable, MoveTable];
 }

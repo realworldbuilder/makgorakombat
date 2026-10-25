@@ -1433,6 +1433,65 @@ code {
   color: var(--gold);
 }
 
+/* ---- next stage: the ground drawn for an online match ----------------------------------- */
+
+.guide .body.next-stage-card {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 24px 24px 28px;
+  text-align: center;
+}
+
+.next-stage-card p {
+  margin: 0;
+}
+
+.next-stage-card .label {
+  font-family: var(--warcraft);
+  font-size: 1.6rem;
+  letter-spacing: 0.08em;
+  color: var(--gold);
+}
+
+.next-stage-card .picture {
+  width: min(480px, 80vw);
+  aspect-ratio: 16 / 9;
+  border: 1px solid #5c5c66;
+  background: #000;
+  overflow: hidden;
+}
+
+.next-stage-card .picture img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.next-stage-card .big {
+  font-family: var(--serif);
+  font-weight: 700;
+  font-size: 1.3rem;
+  color: var(--gold);
+}
+
+.next-stage-card .names {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  margin-top: 8px;
+  font-family: var(--friz);
+  font-size: 1.1rem;
+  letter-spacing: 0.04em;
+}
+
+.next-stage-card .names .vs {
+  font-family: var(--warcraft);
+  font-size: 1.5rem;
+  color: var(--gold);
+}
+
 /* ---- report an issue ------------------------------------------------------------------ */
 
 /* The bug tab, pinned to the top of the screen as the beta pins its reporter: there on every
