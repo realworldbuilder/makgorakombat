@@ -83,13 +83,28 @@ export interface Back {
   t: 'back';
 }
 
+/**
+ * This page's word to the relay that a match is over, for the board: the match number, the
+ * winner's part, and the rounds and ticks it took, which both pages count alike. The room passes
+ * it to the lobby once the other page says the same, and not to the other page. `me` names this
+ * player, for a room the lobby did not make.
+ */
+export interface Result {
+  t: 'result';
+  game: number;
+  winner: 'host' | 'guest';
+  rounds: number;
+  ticks: number;
+  me?: { id: string; name: string };
+}
+
 /** The relay's word that the other player came or went. */
 export interface Peer {
   t: 'peer';
   joined: boolean;
 }
 
-export type Message = Meet | Hello | RosterMessage | StageMessage | Rematch | Back | Peer;
+export type Message = Meet | Hello | RosterMessage | StageMessage | Rematch | Back | Peer | Result;
 
 export function specOf(champion: Champion): FighterSpec {
   const spec: FighterSpec = {
@@ -150,6 +165,19 @@ export function decode(text: string): Message | undefined {
   const message = value as Message;
   if (message.t === 'hello' && Array.isArray(message.tables)) message.tables = [reviveTable(message.tables[0]), reviveTable(message.tables[1])];
   return message;
+}
+
+/** The result to report for a match the fight screen shows, or undefined while it is not over. Host is player 1. */
+export function resultOf(
+  match: { phase: string; winner: 0 | 1 | undefined; round: number; frame: number; phaseT: number },
+  game: number,
+  me?: { id: string; name: string },
+): Result | undefined {
+  if (match.phase !== 'matchEnd' || match.winner === undefined) return undefined;
+  // The tick the match ended on: the frame count goes on under the winner's banner, at its own pace on each machine.
+  const result: Result = { t: 'result', game, winner: match.winner === 0 ? 'host' : 'guest', rounds: match.round, ticks: match.frame - match.phaseT };
+  if (me) result.me = me;
+  return result;
 }
 
 export function meet(product: string): Meet {

@@ -15,7 +15,7 @@ import { setWhere } from './report';
 import { LEGENDS, legendTiles, type Tile } from './roster';
 import { loadSaved, type SavedChampion, storeSaved } from './saved';
 import { type OnlinePick, Select, type Source } from './Select';
-import { championOf, decode, encode, type Hello, localize, mismatch, sameStage, stageKeyOf } from './net/handshake';
+import { championOf, decode, encode, type Hello, localize, mismatch, resultOf, sameStage, stageKeyOf } from './net/handshake';
 import { Lobby, saveName, savedName } from './net/lobby';
 import type { Link } from './net/relay';
 import { VERSION } from './net/version';
@@ -35,10 +35,13 @@ import { Versus } from './Versus';
 /** How long a match from the queue shows FOUND and the opponent's name before the roster. */
 const FOUND_MS = 2000;
 
+/** What the fight screen shows of itself through window.mk: the live match, and the lockstep's match number online. */
+type Shown = { match?: () => Parameters<typeof resultOf>[0] | undefined; net?: () => { game: number } | undefined };
+const shown = () => (window as unknown as { mk?: Shown }).mk;
+
 /** The fight on screen has ended its match, as the fight screen shows it through window.mk. */
 function matchOver(): boolean {
-  const mk = (window as unknown as { mk?: { match?: () => { phase: string } | undefined } }).mk;
-  return mk?.match?.()?.phase === 'matchEnd';
+  return shown()?.match?.()?.phase === 'matchEnd';
 }
 
 type Screen =
@@ -108,20 +111,45 @@ export function Game() {
     setOnline(session);
     setScreen({ kind: 'select' });
   }, []);
+  /**
+   * An online match over on the fight screen: this page's word on it to the room, once, for the
+   * board. The room counts it when the other page says the same.
+   */
+  const reported = useRef<string>(null);
+  const report = useCallback(() => {
+    if (!online || online.link.closed || screenRef.current.kind !== 'fight') return;
+    const mk = shown();
+    const match = mk?.match?.();
+    const id = lobbyRef.current?.id;
+    const result = match && resultOf(match, mk?.net?.()?.game ?? 0, id && name ? { id, name } : undefined);
+    if (!result) return;
+    const key = `${online.code} ${result.game} ${result.ticks}`;
+    if (reported.current === key) return;
+    reported.current = key;
+    online.link.send(result);
+  }, [online, name]);
+  useEffect(() => {
+    if (!online || screen.kind !== 'fight') return;
+    const timer = setInterval(report, 250);
+    return () => clearInterval(timer);
+  }, [online, screen.kind, report]);
+
   /** Leaves the room for the roster on this keyboard alone. */
   const leaveOnline = useCallback(() => {
+    report();
     online?.link.close();
     setOnline(undefined);
     setHello(undefined);
     setLeft(undefined);
     setScreen({ kind: 'select' });
-  }, [online]);
+  }, [online, report]);
   /**
    * NEXT OPPONENT, at the end of an online match or when the other has gone: out of the room and
    * back into the lobby's queue, the panel up with the wait counting, so a stranger can play one
    * after another without touching the mouse.
    */
   const nextOpponent = useCallback(() => {
+    report();
     lobbyRef.current?.queueAgain();
     online?.link.close();
     setOnline(undefined);
@@ -129,7 +157,7 @@ export function Game() {
     setLeft(undefined);
     setScreen({ kind: 'select' });
     setShowOnline(true);
-  }, [online]);
+  }, [online, report]);
   const rosterOnline = useMemo(() => (online ? { me: online.me, link: online.link, code: online.code } : undefined), [online]);
   const versusOnline = useMemo(() => (online ? { host: online.role === 'host', link: online.link } : undefined), [online]);
 
