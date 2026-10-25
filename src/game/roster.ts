@@ -73,7 +73,8 @@ export const LEGENDS: Legend[] = [
   { slug: 'illidan', name: 'Illidan Stormrage', title: 'Captain of the Moon Guard', faction: 'neutral', displays: [72623], weapons: [{ mainHand: 32837, offHand: 32838 }, { mainHand: 18583, offHand: 18584 }], classId: 12 },
   // Young Varian (npc 68925); King Varian is a model of his own.
   { slug: 'varian', name: 'Varian Wrynn', title: 'Prince of Stormwind', faction: 'alliance', displays: [47044], weapons: [{ mainHand: 253230 }], classId: 1 },
-  { slug: 'cairne', name: 'Cairne Bloodhoof', title: 'High Chieftain', faction: 'horde', displays: [64785, 4307], weapons: [{ mainHand: 128808 }, { mainHand: 14084 }], classId: 1 },
+  // Classic's own "Cairne Totem" (14084) is a carved log gripped at its middle, so it hid his face; a Horde maul instead.
+  { slug: 'cairne', name: 'Cairne Bloodhoof', title: 'High Chieftain', faction: 'horde', displays: [64785, 4307], weapons: [{ mainHand: 128808 }, { mainHand: 14824 }], classId: 1 },
   { slug: 'voljin', name: "Vol'jin", title: 'Darkspear Chieftain', faction: 'horde', displays: [10357], weapons: [{ mainHand: 280842 }, { mainHand: 14085 }], classId: 7 },
   { slug: 'jaina', name: 'Jaina Proudmoore', title: 'Lady of Theramore', faction: 'alliance', displays: [], note: 'Every look of hers the retail files name (87892, 80015, 46819 and the rest) is a model of her own; the classic Theramore look is not named in either install.' },
   { slug: 'arthas', name: 'Arthas Menethil', title: 'The Lich King', faction: 'neutral', displays: [], note: 'Prince Arthas (27545) and the Lich King (22234, 24191, 121920) are models of their own.' },
