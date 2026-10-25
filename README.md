@@ -6,6 +6,8 @@ A one-on-one fighting game played with World of Warcraft characters, in your bro
 
 Play: https://realworldbuilder.github.io/makgorakombat/
 
+The welcome page, for sharing: https://realworldbuilder.github.io/makgorakombat/welcome/ (`welcome/`, built to the landing-page-design skill).
+
 ## How it plays
 
 1. Drag your `World of Warcraft` folder onto the page (it is in `Applications` on a Mac). Chrome on a Mac is what it is made for. A folder that holds more than one game (retail beside WoW Forever, say) asks **which world** to fight in; **E** on the champion screen switches to the other.
