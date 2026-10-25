@@ -27,7 +27,7 @@ export const CAMERA = {
   yaw: -Math.PI / 2,
   pitch: (7 * Math.PI) / 180,
   fov: (32 * Math.PI) / 180,
-  zoom: 1,
+  zoom: 1.12,
   panX: 0,
   panY: 0.1,
 };
