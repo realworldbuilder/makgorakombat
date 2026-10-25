@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { ALPHABET, isCode } from '../src/code';
 import { allowedOrigin, type Room } from '../src/index';
 import { WATCH_CAP } from '../src/record';
+import { HELD_MAX, RECONNECT_MS, SILENT_MS } from '../src/seats';
 import { Client } from './client';
 
 async function makeRoom(origin?: string): Promise<{ code: string; response: Response }> {
@@ -11,12 +12,12 @@ async function makeRoom(origin?: string): Promise<{ code: string; response: Resp
   return { code: body.code, response };
 }
 
-function join(code: string, role: string): Promise<Response> {
-  return SELF.fetch(`https://relay.test/rooms/${code}/ws?role=${role}`, { headers: { Upgrade: 'websocket' } });
+function join(code: string, role: string, id?: string): Promise<Response> {
+  return SELF.fetch(`https://relay.test/rooms/${code}/ws?role=${role}${id ? `&id=${id}` : ''}`, { headers: { Upgrade: 'websocket' } });
 }
 
-async function connect(code: string, role: string): Promise<Client> {
-  const response = await join(code, role);
+async function connect(code: string, role: string, id?: string): Promise<Client> {
+  const response = await join(code, role, id);
   expect(response.status).toBe(101);
   return new Client(response.webSocket!);
 }
@@ -77,6 +78,196 @@ describe('relay', () => {
     const back = await connect(code, 'guest');
     await back.until(1);
     expect(back.json(0)).toEqual({ t: 'peer', joined: true });
+  });
+
+  it('keeps a dropped player\'s seat: the other hears they are away, then back, and they get what was sent meanwhile', async () => {
+    const { code } = await makeRoom();
+    const host = await connect(code, 'host', 'h1');
+    const guest = await connect(code, 'guest', 'g1');
+    await host.until(1);
+    await guest.until(1);
+    // A drop, not a goodbye: any close but 1000 or 1001.
+    guest.ws.close(4000, 'wifi');
+    await host.until(2);
+    expect(host.json(1)).toEqual({ t: 'peer', joined: true, away: true });
+    host.ws.send(JSON.stringify({ t: 'rematch', game: 2, seed: 9 }));
+    host.ws.send(new Uint8Array([1, 2, 3]));
+    host.ws.send(new Uint8Array([4, 5, 6]));
+    // Nobody else may take the seat meanwhile, with another id or none.
+    expect((await join(code, 'guest', 'someone')).status).toBe(409);
+    expect((await join(code, 'guest')).status).toBe(409);
+    const back = await connect(code, 'guest', 'g1');
+    await back.until(4);
+    await host.until(3);
+    expect(host.json(2)).toEqual({ t: 'peer', joined: true, back: true });
+    expect(back.json(0)).toEqual({ t: 'peer', joined: true, back: true });
+    expect(back.got[1]).toBe('{"t":"rematch","game":2,"seed":9}');
+    expect(new Uint8Array(back.got[2] as ArrayBuffer)).toEqual(new Uint8Array([1, 2, 3]));
+    expect(new Uint8Array(back.got[3] as ArrayBuffer)).toEqual(new Uint8Array([4, 5, 6]));
+    // And the wire runs both ways again.
+    back.ws.send('{"t":"back"}');
+    await host.until(4);
+    expect(host.got[3]).toBe('{"t":"back"}');
+  });
+
+  it('gives a kept seat up after RECONNECT_MS: the other hears the player left, and the seat is free', async () => {
+    const { code } = await makeRoom();
+    const stub = env.ROOMS.getByName(code);
+    const host = await connect(code, 'host', 'h1');
+    const guest = await connect(code, 'guest', 'g1');
+    await host.until(1);
+    const dropped = Date.now();
+    guest.ws.close(4000, 'wifi');
+    await host.until(2);
+    const alarm = await runInDurableObject(stub, (_room: Room, state) => state.storage.getAlarm());
+    expect(alarm).toBeGreaterThanOrEqual(dropped + RECONNECT_MS - 1000);
+    expect(alarm).toBeLessThanOrEqual(Date.now() + RECONNECT_MS);
+    // Not yet: an early alarm keeps the seat.
+    expect(await runDurableObjectAlarm(stub)).toBe(true);
+    expect(host.got.length).toBe(2);
+    expect((await join(code, 'guest', 'other')).status).toBe(409);
+    // The window runs out.
+    await runInDurableObject(stub, async (room: Room, state) => {
+      const away = { guest: { id: 'g1', until: Date.now() - 1 } };
+      await state.storage.put('away', away);
+      (room as unknown as { away: unknown }).away = away;
+    });
+    expect(await runDurableObjectAlarm(stub)).toBe(true);
+    await host.until(3);
+    expect(host.json(2)).toEqual({ t: 'peer', joined: false });
+    // Too late for the page that dropped: it was said to have left.
+    expect((await join(code, 'guest', 'g1')).status).toBe(410);
+    const next = await connect(code, 'guest', 'someone-else');
+    await next.until(1);
+    expect(next.json(0)).toEqual({ t: 'peer', joined: true });
+    // The host is still in, so the room has no alarm.
+    expect(await runInDurableObject(stub, (_room: Room, state) => state.storage.getAlarm())).toBeNull();
+  });
+
+  it('holds at most HELD_MAX messages for an away player, giving up the oldest frames before any text', async () => {
+    const { code } = await makeRoom();
+    const host = await connect(code, 'host', 'h1');
+    const guest = await connect(code, 'guest', 'g1');
+    await host.until(1);
+    guest.ws.close(4000, 'wifi');
+    await host.until(2);
+    host.ws.send('{"t":"stage","n":1}');
+    const sent = HELD_MAX + 100;
+    for (let k = 0; k < sent; k++) host.ws.send(new Uint8Array([k & 0xff, k >> 8]));
+    // Every frame in the room before the guest comes back (a ping would not do: the runtime answers it ahead of the queue).
+    const stub = env.ROOMS.getByName(code);
+    const heldNow = () => runInDurableObject(stub, (room: Room) => (room as unknown as { held: { guest: unknown[] } }).held.guest);
+    const deadline = Date.now() + 10_000;
+    for (;;) {
+      const held = await heldNow();
+      expect(held.length).toBeLessThanOrEqual(HELD_MAX);
+      const tail = held.at(-1);
+      if (tail instanceof ArrayBuffer && new Uint8Array(tail)[0] === ((sent - 1) & 0xff) && new Uint8Array(tail)[1] === (sent - 1) >> 8) break;
+      if (Date.now() > deadline) throw new Error(`the room has ${held.length} held, not the last frame yet`);
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    const back = await connect(code, 'guest', 'g1');
+    await back.until(1 + HELD_MAX);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(back.got.length).toBe(1 + HELD_MAX);
+    expect(back.got[1]).toBe('{"t":"stage","n":1}');
+    const frames = back.got.slice(2).map((m) => {
+      const b = new Uint8Array(m as ArrayBuffer);
+      return b[0]! | (b[1]! << 8);
+    });
+    // The last HELD_MAX - 1 frames, in the order sent.
+    expect(frames[0]).toBe(sent - (HELD_MAX - 1));
+    expect(frames.at(-1)).toBe(sent - 1);
+    expect(frames.every((n, k) => k === 0 || n === frames[k - 1]! + 1)).toBe(true);
+  }, 20_000);
+
+  it('lets a page whose old socket still looks open take its own seat over', async () => {
+    const { code } = await makeRoom();
+    const host = await connect(code, 'host', 'h1');
+    const guest = await connect(code, 'guest', 'g1');
+    await host.until(1);
+    await guest.until(1);
+    expect((await join(code, 'guest', 'g2')).status).toBe(409);
+    const again = await connect(code, 'guest', 'g1');
+    await again.until(1);
+    expect(again.json(0)).toEqual({ t: 'peer', joined: true, back: true });
+    host.ws.send('{"t":"hello"}');
+    await again.until(2);
+    expect(again.got[1]).toBe('{"t":"hello"}');
+    // The old socket is shut, and its close is not news to the host.
+    for (let k = 0; k < 40 && !guest.closed; k++) await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(guest.closed).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(host.kinds(2)).toEqual([]);
+  });
+
+  it('takes a seat that has gone silent for dropped, when no close ever came', async () => {
+    const { code } = await makeRoom();
+    const stub = env.ROOMS.getByName(code);
+    const host = await connect(code, 'host', 'h1');
+    const guest = await connect(code, 'guest', 'g1');
+    await host.until(1);
+    await guest.until(1);
+    // The guest has said nothing for SILENT_MS: as if its Wi-Fi went.
+    await runInDurableObject(stub, (room: Room) => {
+      const inner = room as unknown as { heard: WeakMap<WebSocket, number>; checkedAt: number; ctx: DurableObjectState };
+      for (const ws of inner.ctx.getWebSockets('guest')) inner.heard.set(ws, Date.now() - SILENT_MS - 1);
+      inner.checkedAt = 0;
+    });
+    host.ws.send('{"t":"roster","n":1}');
+    await host.until(2);
+    expect(host.json(1)).toEqual({ t: 'peer', joined: true, away: true });
+    for (let k = 0; k < 40 && !guest.closed; k++) await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(guest.closed).toBe(true);
+    // What set it off is held for the guest, who comes back to it.
+    const back = await connect(code, 'guest', 'g1');
+    await back.until(2);
+    expect(back.got[1]).toBe('{"t":"roster","n":1}');
+  });
+
+  it('lets a quiet seat be while it pings', async () => {
+    const { code } = await makeRoom();
+    const stub = env.ROOMS.getByName(code);
+    const host = await connect(code, 'host', 'h1');
+    const guest = await connect(code, 'guest', 'g1');
+    await host.until(1);
+    await guest.until(1);
+    guest.ws.send('ping');
+    await guest.until(2);
+    await runInDurableObject(stub, (room: Room) => {
+      const inner = room as unknown as { heard: WeakMap<WebSocket, number>; checkedAt: number; ctx: DurableObjectState };
+      for (const ws of inner.ctx.getWebSockets('guest')) inner.heard.set(ws, Date.now() - SILENT_MS - 1);
+      inner.checkedAt = 0;
+    });
+    host.ws.send('{"t":"roster","n":1}');
+    await guest.until(3);
+    expect(guest.got[2]).toBe('{"t":"roster","n":1}');
+    expect(host.got.length).toBe(1);
+  });
+
+  it('tells a returning player the other left on purpose while they were away', async () => {
+    const { code } = await makeRoom();
+    const host = await connect(code, 'host', 'h1');
+    const guest = await connect(code, 'guest', 'g1');
+    await guest.until(1);
+    host.ws.close(4000, 'wifi');
+    await guest.until(2);
+    guest.ws.close(1000, 'left');
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const back = await connect(code, 'host', 'h1');
+    await back.until(1);
+    expect(back.json(0)).toEqual({ t: 'peer', joined: false });
+  });
+
+  it('lets a page without an id go at once, as before seats were kept', async () => {
+    const { code } = await makeRoom();
+    const host = await connect(code, 'host');
+    const guest = await connect(code, 'guest');
+    await host.until(1);
+    guest.ws.close(4000, 'wifi');
+    await host.until(2);
+    expect(host.json(1)).toEqual({ t: 'peer', joined: false });
+    expect((await join(code, 'guest')).status).toBe(101);
   });
 
   it('answers ping itself', async () => {
@@ -254,6 +445,65 @@ describe('watching', () => {
     const back = await connect(code, 'guest');
     await back.until(1);
     expect(back.json(0)).toEqual({ t: 'peer', joined: true });
+  });
+
+  it('keeps a dropped player in for the watchers, goes on sending them the fight, and keeps the game for a late one', async () => {
+    const { code } = await makeRoom();
+    const stub = env.ROOMS.getByName(code);
+    const host = await connect(code, 'host', 'h1');
+    const guest = await connect(code, 'guest', 'g1');
+    await host.until(1);
+    await guest.until(1);
+    const watcher = await connect(code, 'watch');
+    await watcher.until(1);
+    const hello = JSON.stringify({ t: 'hello', version: 'dev', seed: 7, game: 1 });
+    host.ws.send(hello);
+    host.ws.send(frameOf(1, 4, [1, 2]));
+    await guest.until(3);
+    guest.ws.send(frameOf(1, 4, [8]));
+    await watcher.until(4);
+
+    // The guest drops: the host hears they are away, the watchers that both are still in.
+    guest.ws.close(4000, 'wifi');
+    await host.until(3);
+    expect(host.json(2)).toEqual({ t: 'peer', joined: true, away: true });
+    await watcher.until(5);
+    expect(watcher.json(4)).toEqual({ t: 'seats', host: true, guest: true });
+    // What the host sends meanwhile is held for the guest and goes to the watchers as it comes.
+    host.ws.send(frameOf(1, 4, [1, 2, 3]));
+    await watcher.until(6);
+    expect(seen(watcher.got[5])).toEqual({ seat: 0, game: 1, first: 4, inputs: [1, 2, 3] });
+
+    // Back as the same page: it gets what it missed, sends again what was not acknowledged, and the watchers see it.
+    const back = await connect(code, 'guest', 'g1');
+    await back.until(2);
+    expect(back.json(0)).toEqual({ t: 'peer', joined: true, back: true });
+    expect(new Uint8Array(back.got[1] as ArrayBuffer)).toEqual(frameOf(1, 4, [1, 2, 3]));
+    back.ws.send(frameOf(1, 4, [8, 9], 6));
+    await watcher.until(8);
+    expect(watcher.json(6)).toEqual({ t: 'seats', host: true, guest: true });
+    expect(seen(watcher.got[7])).toEqual({ seat: 1, game: 1, first: 4, inputs: [8, 9] });
+    // The room kept the hello and the game through the drop, for a watcher who comes now.
+    const late = await connect(code, 'watch');
+    await late.until(4);
+    expect(late.got[1]).toBe(hello);
+    expect(bytesIn(late)).toEqual([
+      { seat: 0, game: 1, first: 4, inputs: [1, 2, 3] },
+      { seat: 1, game: 1, first: 4, inputs: [8, 9] },
+    ]);
+
+    // Dropped again and gone for good: now the watchers hear the guest is out.
+    back.ws.close(4000, 'wifi');
+    // (The watchers are told the seats again on the drop, the guest still in.)
+    await watcher.until(9);
+    await runInDurableObject(stub, async (room: Room, state) => {
+      const away = { guest: { id: 'g1', until: Date.now() - 1 } };
+      await state.storage.put('away', away);
+      (room as unknown as { away: unknown }).away = away;
+    });
+    expect(await runDurableObjectAlarm(stub)).toBe(true);
+    await watcher.until(10);
+    expect(watcher.json(9)).toEqual({ t: 'seats', host: true, guest: false });
   });
 
   it(`takes ${WATCH_CAP} watchers and no more`, async () => {

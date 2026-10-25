@@ -18,7 +18,7 @@ import { isRulesName, type RulesName } from '../engine/rules';
 import type { Ground } from './stages';
 import type { Hello } from './net/handshake';
 import { Lockstep, WAIT_SHOWN_MS } from './net/lockstep';
-import type { Link } from './net/relay';
+import type { Link, Wire } from './net/relay';
 import type { Spectator } from './net/watch';
 
 /*
@@ -185,6 +185,9 @@ export function Fight({ fighters, stage, p2, onBack, net, watch }: FightProps) {
   mutedRef.current = muted;
   const [netState, setNetState] = useState<NetState>();
   const [notes, setNotes] = useState<string[]>(net?.notes ?? []);
+  // A socket dropped, ours or theirs: the fight holds by itself, and the banner counts down the room's keeping of the seat.
+  const [wire, setWire] = useState<Wire>();
+  const [clock, setClock] = useState(0);
 
   useEffect(() => {
     // One ring for the screen, kept if the fight starts over on it: its canvas has one context to give.
@@ -422,6 +425,16 @@ export function Fight({ fighters, stage, p2, onBack, net, watch }: FightProps) {
     [],
   );
 
+  useEffect(() => net?.link.onWire(setWire), [net]);
+  useEffect(() => {
+    if (wire?.until === undefined) return;
+    setClock(performance.now());
+    const timer = setInterval(() => setClock(performance.now()), 250);
+    return () => clearInterval(timer);
+  }, [wire?.until]);
+  const reconnecting = wire?.until !== undefined && netState !== 'desync';
+  const secondsLeft = wire?.until === undefined ? 0 : Math.max(0, Math.ceil((wire.until - clock) / 1000));
+
   // The notes on how this install draws the fight go after a while.
   useEffect(() => {
     if (notes.length === 0) return;
@@ -439,7 +452,17 @@ export function Fight({ fighters, stage, p2, onBack, net, watch }: FightProps) {
           <span>Esc back to the lobby</span>
         </div>
       )}
-      {netState === 'waiting' && <div class="net-banner">{watch ? 'WAITING FOR THE PLAYERS' : 'WAITING FOR OPPONENT'}</div>}
+      {netState === 'waiting' && !reconnecting && <div class="net-banner">{watch ? 'WAITING FOR THE PLAYERS' : 'WAITING FOR OPPONENT'}</div>}
+      {reconnecting && (
+        <div class="net-banner">
+          RECONNECTING · {secondsLeft}
+          <span>
+            {wire?.reconnecting
+              ? `Your connection dropped. The fight holds while it comes back; in ${secondsLeft} s the match is over.`
+              : `Your opponent's connection dropped. The fight holds while they come back; in ${secondsLeft} s the match is over.`}
+          </span>
+        </div>
+      )}
       {netState === 'desync' && (
         <div class="net-banner bad">
           DESYNC

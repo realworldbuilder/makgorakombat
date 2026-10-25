@@ -3,6 +3,7 @@ import type { Fighter, Span } from './board';
 import { isCode, newCode } from './code';
 import { cleanName, isPlayerId, LOBBY, type Lobby } from './lobby';
 import { GameRecord, kindOf, WATCH_CAP } from './record';
+import { HELD_MAX, RECONNECT_MS, SILENT_MS } from './seats';
 
 export { Lobby } from './lobby';
 
@@ -11,7 +12,11 @@ export { Lobby } from './lobby';
  * Object; it holds at most a host and a guest, hands every message one of them sends to the
  * other as it came, and tells each when the other comes or goes. It never reads, keeps or
  * judges what the players send: the fight runs on both machines in lockstep, and the relay is
- * only the wire between them. A room nobody has been in for ten minutes is forgotten. The lobby
+ * only the wire between them. A player whose socket drops (a train, a Wi-Fi blip) keeps their seat
+ * for RECONNECT_MS: the other hears they are away, what is sent to them meanwhile is held, and if
+ * the same page comes back for the seat it is let in and handed what it missed. A page that comes
+ * back names itself by the id it joined with (`&id=`); a page without one, as before ids, leaves
+ * the moment its socket does. A room nobody has been in for ten minutes is forgotten. The lobby
  * (lobby.ts) is where two players find each other and are handed a room; every room tells it how
  * many are in whenever that changes, so the lobby can say how many are fighting.
  *
@@ -29,7 +34,9 @@ export { Lobby } from './lobby';
  * the host, 1 the guest). The players hand each other an input only until it is acknowledged, so
  * the room keeps the current game's inputs (record.ts) and a watcher who comes in late is sent the
  * hello and those first, and can catch up. The players' own traffic is as it was. A player's
- * {t:'result'} is the room's alone: it goes to neither the other player nor the watchers.
+ * {t:'result'} is the room's alone: it goes to neither the other player nor the watchers. A player
+ * whose seat is kept still reads as in to the watchers, who see the other's frames meanwhile and the
+ * returning page's when it is back; the game so far is kept through the drop.
  */
 
 export interface Env {
@@ -43,8 +50,11 @@ type Seat = Role | 'watch';
 
 /** A room with nobody in it closes after this long. */
 const IDLE_MS = 10 * 60 * 1000;
+/** Close codes that mean the page left on purpose (BACK TO THE ROSTER, a closed tab): no seat is kept for it. */
+const LEAVING = new Set([1000, 1001]);
 
-const SEATS: readonly Seat[] = ['host', 'guest', 'watch'];
+const ROLES: readonly Role[] = ['host', 'guest'];
+const SEATS: readonly Seat[] = [...ROLES, 'watch'];
 const other = (role: Role): Role => (role === 'host' ? 'guest' : 'host');
 
 /** Pages allowed to use the relay: the game's own, and any served from this machine while it is worked on. */
@@ -81,6 +91,20 @@ export async function openRoom(env: Env, lobby = LOBBY, players?: Pair): Promise
 }
 
 const peer = (joined: boolean) => JSON.stringify({ t: 'peer', joined });
+// Away and back say joined: true as well, so a page from before them only sees the other still in, and waits.
+const AWAY = JSON.stringify({ t: 'peer', joined: true, away: true });
+const BACK = JSON.stringify({ t: 'peer', joined: true, back: true });
+
+/** A seat whose socket dropped: who may take it back, and until when. */
+interface Away {
+  id: string;
+  until: number;
+}
+
+/** What a player's socket carries through hibernation: the id its page joined with, if it gave one. */
+interface Attachment {
+  id?: string;
+}
 
 /** A page's word that a match is over. */
 export interface Report {
@@ -120,11 +144,23 @@ export class Room extends DurableObject<Env> {
    * fight is on the frames keep the room awake, and a room that slept has nothing worth replaying.
    */
   private readonly record = new GameRecord();
+  /** The seats kept for players who dropped, as stored; read once on waking. */
+  private away: Partial<Record<Role, Away>> = {};
+  /** What came for an away player, in order, to hand them when they are back. Kept in memory only: the fight's frames are sent again anyway. */
+  private readonly held: Record<Role, (string | ArrayBuffer)[]> = { host: [], guest: [] };
+  /** Sockets already seen to close: a close and an error for one socket are one departure. */
+  private readonly gone = new WeakSet<WebSocket>();
+  /** When each socket last sent a message; its pings the runtime keeps for us. */
+  private readonly heard = new WeakMap<WebSocket, number>();
+  private checkedAt = 0;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     // A keep-alive the room answers without waking: the page sends "ping" now and then, and to time the wire.
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
+    void ctx.blockConcurrencyWhile(async () => {
+      this.away = (await ctx.storage.get<Partial<Record<Role, Away>>>('away')) ?? {};
+    });
   }
 
   /** Opens the room under its code, to report to the lobby named, for the players it matched; false when the code is taken. */
@@ -137,24 +173,49 @@ export class Room extends DurableObject<Env> {
 
   async fetch(request: Request): Promise<Response> {
     if ((await this.ctx.storage.get<number>('opened')) === undefined) return new Response('There is no room with that code.', { status: 404 });
-    const role = new URL(request.url).searchParams.get('role') as Seat | null;
+    const params = new URL(request.url).searchParams;
+    const role = params.get('role') as Seat | null;
     if (role === null || !SEATS.includes(role)) return new Response('role must be host, guest or watch', { status: 400 });
     if (request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') return new Response('Expected a WebSocket', { status: 426 });
     if (role === 'watch') return this.watch();
-    if (this.live(role).length > 0) return new Response(`The room already has a ${role}.`, { status: 409 });
+    const id = params.get('id') || undefined;
+    const seated = this.live(role);
+    const kept = this.away[role];
+    // The same page again while its old socket still looks open here (it dropped without a word): the new one takes over.
+    const again = id !== undefined && seated.length > 0 && seated.every((ws) => this.idOf(ws) === id);
+    if (seated.length > 0 && !again) return new Response(`The room already has a ${role}.`, { status: 409 });
+    if (kept && kept.id !== id) return new Response(`The room is keeping the ${role}'s seat for them.`, { status: 409 });
+    // A page back too late: the other has been told it left, so it may not walk back in as if it had not.
+    if (id !== undefined && !kept && !again && (await this.ctx.storage.get<string[]>('lost'))?.includes(id)) return new Response('That seat was given up.', { status: 410 });
 
     const pair = new WebSocketPair();
     const [client, server] = [pair[0], pair[1]];
     this.ctx.acceptWebSocket(server, [role]);
-    // Somebody is in: the room stays open for as long as they are.
-    await this.ctx.storage.deleteAlarm();
+    server.serializeAttachment({ id } satisfies Attachment);
+    this.heard.set(server, Date.now());
+    for (const ws of seated) {
+      try {
+        ws.close(4001, 'replaced');
+      } catch {
+        // Already gone.
+      }
+    }
     const others = this.live(other(role));
-    if (others.length > 0) {
+    if (kept || again) {
+      // Back in the seat: both hear it, and the returning page gets what came for it meanwhile, in order.
+      if (kept) await this.keep(role, undefined);
+      if (others.length > 0) server.send(BACK);
+      else if (this.away[other(role)]) server.send(AWAY);
+      for (const ws of others) ws.send(BACK);
+      for (const message of this.held[role].splice(0)) server.send(message);
+    } else if (others.length > 0) {
       server.send(peer(true));
       for (const ws of others) ws.send(peer(true));
-    }
+    } else if (this.away[other(role)]) server.send(AWAY);
     this.tellWatchers(this.seats());
-    await this.report(this.live().length);
+    // Somebody is in: the room stays open for as long as they are.
+    await this.schedule();
+    await this.report(this.heads());
     return new Response(null, { status: 101, webSocket: client });
   }
 
@@ -173,9 +234,16 @@ export class Room extends DurableObject<Env> {
     // A watcher's words go nowhere.
     const role = this.roleOf(ws);
     if (!role) return;
+    const now = Date.now();
+    this.heard.set(ws, now);
+    // Before passing it on, a look (once a second) at whether the other has gone quiet: then this is held for them.
+    if (now - this.checkedAt >= 1000) {
+      this.checkedAt = now;
+      await this.silence(other(role), now);
+    }
     const report = typeof message === 'string' ? readReport(message) : undefined;
     if (report) return this.reported(role, report);
-    for (const to of this.live(other(role))) to.send(message);
+    this.tell(other(role), message);
     const watchers = this.live('watch');
     if (typeof message === 'string') {
       const kind = kindOf(message);
@@ -201,35 +269,125 @@ export class Room extends DurableObject<Env> {
     } catch {
       // Already closed on this side.
     }
-    await this.left(ws);
+    await this.left(ws, LEAVING.has(code));
   }
 
   async webSocketError(ws: WebSocket): Promise<void> {
-    await this.left(ws);
+    await this.left(ws, false);
   }
 
+  /** A kept seat's time is up (its player is gone for good), or the room has been empty for ten minutes. */
   async alarm(): Promise<void> {
-    if (this.live().length > 0) return;
-    await this.ctx.storage.deleteAll();
-    // Anyone still watching an empty room is let go with it.
-    for (const ws of this.live('watch')) {
-      try {
-        ws.close(1000, 'the room closed');
-      } catch {
-        // Already closing.
+    let ended = false;
+    for (const role of ROLES) {
+      const kept = this.away[role];
+      if (!kept || kept.until > Date.now()) continue;
+      await this.keep(role, undefined);
+      await this.ctx.storage.put('lost', [...((await this.ctx.storage.get<string[]>('lost')) ?? []), kept.id]);
+      this.held[role] = [];
+      this.tell(other(role), peer(false));
+      ended = true;
+    }
+    if (!ended && this.heads() === 0) {
+      await this.ctx.storage.deleteAll();
+      this.away = {};
+      this.record.clear();
+      // Anyone still watching an empty room is let go with it.
+      for (const ws of this.live('watch')) {
+        try {
+          ws.close(1000, 'the room closed');
+        } catch {
+          // Already closing.
+        }
       }
+      return;
+    }
+    if (ended) this.tellWatchers(this.seats());
+    await this.schedule();
+    if (ended) await this.report(this.heads());
+  }
+
+  /**
+   * A socket closed. A page that left on purpose, or never said who it was, is gone at once and
+   * the other hears so; one that dropped keeps its seat for RECONNECT_MS and the other hears it is
+   * away. A socket another has already taken over from is nobody's news. A watcher going changes
+   * nothing; the watchers hear of a player gone, but a seat kept for one who dropped still reads as in.
+   */
+  private async left(ws: WebSocket, leaving: boolean): Promise<void> {
+    const role = this.roleOf(ws);
+    if (!role || this.gone.has(ws) || this.live(role).some((s) => s !== ws)) return;
+    this.gone.add(ws);
+    const id = this.idOf(ws);
+    if (leaving || id === undefined) {
+      this.tell(other(role), peer(false), ws);
+    } else if (!this.away[role]) {
+      await this.keep(role, { id, until: Date.now() + RECONNECT_MS });
+      this.tell(other(role), AWAY, ws);
+    }
+    this.tellWatchers(this.seats(ws));
+    await this.schedule(ws);
+    await this.report(this.heads(ws));
+  }
+
+  /** Takes a seat whose socket has been silent SILENT_MS for dropped, and shuts that socket. Pages without an id ping only every five seconds, and are let be. */
+  private async silence(role: Role, now: number): Promise<void> {
+    for (const ws of this.live(role)) {
+      if (this.idOf(ws) === undefined) continue;
+      const heard = this.heard.get(ws);
+      // A room just woken has forgotten: the socket gets the whole time from now.
+      if (heard === undefined) {
+        this.heard.set(ws, now);
+        continue;
+      }
+      const last = Math.max(heard, this.ctx.getWebSocketAutoResponseTimestamp(ws)?.getTime() ?? 0);
+      if (now - last < SILENT_MS) continue;
+      try {
+        ws.close(4002, 'silent');
+      } catch {
+        // Already gone.
+      }
+      await this.left(ws, false);
     }
   }
 
-  /** A player went: the other hears of it, and an empty room starts its ten minutes. A watcher going changes nothing. */
-  private async left(ws: WebSocket): Promise<void> {
-    const role = this.roleOf(ws);
-    if (!role) return;
-    for (const to of this.live(other(role)).filter((s) => s !== ws)) to.send(peer(false));
-    this.tellWatchers(this.seats(ws));
-    const still = this.live().filter((s) => s !== ws).length;
-    if (still === 0) await this.ctx.storage.setAlarm(Date.now() + IDLE_MS);
-    await this.report(still);
+  /** Sends to a role's socket, or holds it for them while they are away. `gone` is a socket closing now. */
+  private tell(role: Role, message: string | ArrayBuffer, gone?: WebSocket): void {
+    const to = this.live(role).filter((s) => s !== gone);
+    for (const ws of to) ws.send(message);
+    if (to.length > 0 || !this.away[role]) return;
+    const held = this.held[role];
+    held.push(message);
+    if (held.length > HELD_MAX) {
+      // Over the cap a frame goes, the oldest, before any of the screens' messages, which nothing sends again.
+      const frame = held.findIndex((m) => typeof m !== 'string');
+      held.splice(frame === -1 ? 0 : frame, 1);
+    }
+  }
+
+  /** Keeps a seat for its player, or stops keeping it; stored first, so a room that sleeps and wakes still knows. */
+  private async keep(role: Role, away: Away | undefined): Promise<void> {
+    const next = { ...this.away };
+    if (away) next[role] = away;
+    else delete next[role];
+    await this.ctx.storage.put('away', next);
+    this.away = next;
+  }
+
+  /** The one alarm: the soonest kept seat's end; else, with nobody in, the ten minutes; else none. `gone` is a socket closing now. */
+  private async schedule(gone?: WebSocket): Promise<void> {
+    const ends = ROLES.flatMap((role) => (this.away[role] ? [this.away[role]!.until] : []));
+    if (ends.length > 0) {
+      await this.ctx.storage.setAlarm(Math.min(...ends));
+    } else if (this.heads(gone) === 0) {
+      await this.ctx.storage.setAlarm(Date.now() + IDLE_MS);
+    } else {
+      await this.ctx.storage.deleteAlarm();
+    }
+  }
+
+  /** Players in the room: the open sockets, but `gone`, and the seats kept for those who dropped. */
+  private heads(gone?: WebSocket): number {
+    return this.live().filter((s) => s !== gone).length + ROLES.filter((role) => this.away[role]).length;
   }
 
   /**
@@ -273,6 +431,11 @@ export class Room extends DurableObject<Env> {
     }
   }
 
+  /** The id a player's page joined with, if it gave one. */
+  private idOf(ws: WebSocket): string | undefined {
+    return (ws.deserializeAttachment() as Attachment | null)?.id;
+  }
+
   private roleOf(ws: WebSocket): Role | undefined {
     const tag = this.ctx.getTags(ws)[0];
     return tag === 'host' || tag === 'guest' ? tag : undefined;
@@ -284,9 +447,9 @@ export class Room extends DurableObject<Env> {
     return sockets.filter((ws) => ws.readyState === WebSocket.OPEN);
   }
 
-  /** Which players are in, for the watchers; `gone` is a socket closing that still reads as open. */
+  /** Which players are in, for the watchers, a seat kept for one who dropped among them; `gone` is a socket closing that still reads as open. */
   private seats(gone?: WebSocket): string {
-    const here = (role: Role) => this.live(role).some((ws) => ws !== gone);
+    const here = (role: Role) => this.away[role] !== undefined || this.live(role).some((ws) => ws !== gone);
     return JSON.stringify({ t: 'seats', host: here('host'), guest: here('guest') });
   }
 
@@ -331,7 +494,7 @@ export default {
       return Response.json(standings, { headers: { ...cors, 'Cache-Control': 'no-store' } });
     }
 
-    if (url.pathname === '/') return new Response('makgora-relay: GET /lobby/ws?name=&id=[&busy=1|&requeue=1], GET /lobby/stats, GET /lobby/board?span=night|all[&id=]; or POST /rooms, then GET /rooms/:code/ws?role=host|guest|watch', { headers: cors });
+    if (url.pathname === '/') return new Response('makgora-relay: GET /lobby/ws?name=&id=[&busy=1|&requeue=1], GET /lobby/stats, GET /lobby/board?span=night|all[&id=]; or POST /rooms, then GET /rooms/:code/ws?role=host|guest|watch[&id=]', { headers: cors });
     return new Response('Not found', { status: 404, headers: cors });
   },
 } satisfies ExportedHandler<Env>;
