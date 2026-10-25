@@ -3,6 +3,7 @@ import { BRAND } from '../engine/brand';
 import { ActionBar, GLYPHS } from './ActionBar';
 import type { Phase } from './folder';
 import { Guide, type GuidePage } from './Guide';
+import { type Counts, lobbyStats } from './net/lobby';
 import { Settings } from './Settings';
 
 interface TitleProps {
@@ -35,6 +36,40 @@ export function LogoArt({ small }: { small?: boolean }) {
     <h1 class={`logo-art ${small ? 'small' : ''}`}>
       <img src={art('logo.png')} alt={BRAND.title} draggable={false} />
     </h1>
+  );
+}
+
+/** How often the presence line asks the relay again. */
+const PRESENCE_MS = 30_000;
+
+/**
+ * The line under the call once the folder is open, so a player with nobody beside them sees there
+ * is somebody to play: how many are fighting online, and how many wait in the queue for anyone.
+ * It asks the relay's lobby every thirty seconds, and says nothing until it answers, if it cannot
+ * be reached, or while nobody is there.
+ */
+export function Presence() {
+  const [counts, setCounts] = useState<Counts>();
+  useEffect(() => {
+    let live = true;
+    const read = () => void lobbyStats().then((answer) => live && setCounts(answer), () => undefined);
+    read();
+    const timer = setInterval(read, PRESENCE_MS);
+    return () => {
+      live = false;
+      clearInterval(timer);
+    };
+  }, []);
+  if (!counts || counts.online + counts.fighting === 0) return null;
+  return (
+    <p class="presence">
+      <b>{counts.fighting}</b> fighting online
+      {counts.waiting > 0 && (
+        <>
+          {' · '}<b>{counts.waiting}</b> waiting for a fight · <b>O</b> play online
+        </>
+      )}
+    </p>
   );
 }
 

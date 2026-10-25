@@ -1423,6 +1423,20 @@ code {
 
 /* ---- PLAY ONLINE ---------------------------------------------------------------------- */
 
+/* Under the roster's call: how many are fighting online and waiting in the queue. */
+.presence {
+  flex-basis: 100%;
+  margin: 4px 0 0;
+  text-align: center;
+  color: var(--dim);
+  font-size: 0.85rem;
+  letter-spacing: 0.06em;
+}
+
+.presence b {
+  color: var(--gold);
+}
+
 .guide.online {
   width: min(520px, 94vw);
 }

@@ -105,6 +105,14 @@ export function saveName(name: string): void {
   }
 }
 
+/** The lobby's numbers without coming into it, from GET /lobby/stats. */
+export async function lobbyStats(base = relayUrl()): Promise<Counts> {
+  const response = await fetch(`${base}/lobby/stats`, { cache: 'no-store' });
+  if (!response.ok) throw new Error(`The relay answered ${response.status}.`);
+  const { online, waiting, fighting } = (await response.json()) as Counts;
+  return { online: Number(online) || 0, waiting: Number(waiting) || 0, fighting: Number(fighting) || 0 };
+}
+
 let visitId: string | undefined;
 /** The random id this browser keeps, made the first time it is asked for. */
 export function playerId(): string {

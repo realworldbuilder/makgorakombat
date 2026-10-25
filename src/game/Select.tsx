@@ -9,7 +9,7 @@ import { Preview } from './Preview';
 import { championTiles, classesOf, CREATE_TILE, cycleClass, factionOf, gridMove, randomTile, rosterTiles, sexFor, type Tile } from './roster';
 import { Create } from './Create';
 import { championRow, fullName, isBuiltin, madeKey, type SavedChampion, savedTiles, withoutSaved, withSaved } from './saved';
-import { LogoArt } from './Title';
+import { LogoArt, Presence } from './Title';
 import { kitSpec, type ResourceKind } from '../engine/abilities';
 import { HP } from '../engine/stage';
 import { describeAbility } from './ui/describe';
@@ -708,6 +708,7 @@ export function Select({ races, classes, records, legends, portraits, fighters, 
         <header>
           <LogoArt small={!legendsOnly} />
           <h1>{BRAND.choose}</h1>
+          {!online && <Presence />}
         </header>
         <div class={`grid ${legendsOnly ? 'legends-only' : ''}`}>
           <div class="label">{legends.length > 0 ? 'LEGENDS' : 'YOUR CHAMPIONS'}</div>
