@@ -639,6 +639,7 @@ export function Select({ edition, art, others, onEdition, races, classes, record
           </button>
         )}
       </footer>
+      <p class="fine">A fan game, not made by or affiliated with Blizzard Entertainment. World of Warcraft is theirs; the fighters come from your own copy.</p>
       {making && (
         <Create
           races={races}
