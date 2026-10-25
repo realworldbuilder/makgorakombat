@@ -26,6 +26,8 @@ const BONE = '#f4f1e6';
 const PLATE_ABOVE = 0.45;
 /** The highest a nameplate goes, in HUD units: under the unit frames, as the game keeps a plate on screen when its head is not. */
 const PLATE_TOP = 175;
+/** Each of the fatality's letterbox bars, as a fraction of the screen's height. */
+export const LETTERBOX = 0.085;
 
 export interface HudOptions {
   /** Which fighters a person plays: a blow they take floats red, as the game shows damage taken. Both by default. */
@@ -572,7 +574,7 @@ function cinematic(ctx: CanvasRenderingContext2D, w: number, h: number, match: M
   glow.addColorStop(1, `rgba(120, 0, 0, ${strength})`);
   ctx.fillStyle = glow;
   ctx.fillRect(0, 0, w, h);
-  const bar = h * 0.085 * inset;
+  const bar = h * LETTERBOX * inset;
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, w, bar);
   ctx.fillRect(0, h - bar, w, bar);
