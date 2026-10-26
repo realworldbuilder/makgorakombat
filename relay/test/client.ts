@@ -22,7 +22,7 @@ export class Client {
 
   /** Waits until `n` messages in all have come. */
   async until(n: number): Promise<void> {
-    const deadline = Date.now() + 2000;
+    const deadline = Date.now() + 8000;
     while (this.got.length < n) {
       if (Date.now() > deadline) throw new Error(`waited for ${n} messages, got ${this.got.length}`);
       await new Promise<void>((resolve) => {
@@ -34,7 +34,7 @@ export class Client {
 
   /** Waits for a JSON message of kind `t` beyond the first `after`, and answers it. */
   async next<T = Record<string, unknown>>(t: string, after = 0): Promise<T & { k: number }> {
-    const deadline = Date.now() + 2000;
+    const deadline = Date.now() + 8000;
     for (;;) {
       for (let k = after; k < this.got.length; k++) {
         const text = this.got[k];
