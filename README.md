@@ -12,7 +12,7 @@ The welcome page, for sharing: https://realworldbuilder.github.io/makgorakombat/
 
 1. Drag your `World of Warcraft` folder onto the page (it is in `Applications` on a Mac). Chrome on a Mac is what it is made for. A folder that holds more than one game (retail beside WoW Forever, say) asks **which world** to fight in; **E** on the champion screen switches to the other.
 2. **CHOOSE YOUR CHAMPION.** Every race the game lets you create is on the grid, in the game's own portraits; your own characters, as captured by the [Mogshot addon](https://github.com/realworldbuilder/mogshot/tree/main/addon/Mogshot), are in the row above with their real gear; above those, the **LEGENDS**: Tyrande, Thrall, Sylvanas, Malfurion, Illidan, Varian, Cairne and Vol'jin, drawn exactly as the game draws them (the NPC's own gear, face and painted body), as far as your install has them. For now the ring is the legends' alone; add `?all` to the address (https://realworldbuilder.github.io/makgorakombat/?all) for every race and your own characters. Both players' cursors are on the grid at once. Resting on a tile summons that champion full size on your side; choosing makes them roar.
-3. The **VS** screen: pick the ground. The stages are real places in the game world, read from the open folder's map files and raised around the fighters while they wait: Gurubashi Arena's pit, the ring of totems in the Valley of Trials, the Crossroads, the Valley of Heroes, Goldshire's lawn, Sentinel Hill, the gardens of Darnassus, Thunder Bluff's rise, and on a retail install Dalaran and the gate of Icecrown. The strip shows the stages the open install has maps for; past them are the game's loading screens, flat pictures behind the ring, for installs that lack a map.
+3. The **VS** screen: pick the ground. The stages are real places in the game world, read from the open folder's map files and raised around the fighters while they wait: Gurubashi Arena's pit, the Crossroads, the Valley of Heroes, Goldshire's lawn, the gardens of Darnassus and Thunder Bluff's rise (`src/game/stages.ts`). The strip shows the stages the open install has maps for; the Valley of Heroes is only on a classic world, since Cataclysm rebuilt it. An install with none of those maps fights in front of the game's loading screens instead, flat pictures behind the ring.
 4. Best of three rounds, sixty seconds each. Take the other champion's health to nothing and they are dazed: **FINISH THE MAK'GORA!** You have four seconds. Enter your class's **fatality** sequence (it is shown on your side of the screen) and the execution plays; an ability that lands without it is the plain finisher; either is **DISHONOR!** A swing, or the clock, is a mere **K.O.** A round won untouched is **HONOR RESTORED**.
 
 ### Editions
@@ -43,19 +43,19 @@ The kits are deliberately unalike: a warrior's slow heavy swings and Mortal Stri
 
 | Class | 1 | 2 | 3 |
 |---|---|---|---|
-| Warrior (rage) | Charge: closes from afar, stuns 1 s, gives 20 rage | Mortal Strike: 30 rage, 14–19 damage, 6 s | Execute: 15 rage, 23–31 damage, only under 20 % health |
-| Paladin (mana) | Crusader Strike: 10–14 damage, 4.5 s | Hammer of Justice: a 2 s stun, 20 s | Holy Light: 2 s cast, heals 35 |
-| Hunter (focus) | Aimed Shot: 1.5 s aim, 19–22 damage | Disengage: leaps back, 15 s, no global cooldown | Kill Shot: 23–28 damage under 20 % |
-| Rogue (energy) | Sinister Strike: 40 energy, 8–11 damage | Kidney Shot: a 2 s stun, 20 s | Evasion: dodge up for 8 s, 30 s, no global cooldown |
-| Priest (mana) | Mind Blast: 1 s cast, 28–33 damage, 4 s | Shadow Word: Pain: 10 damage every 3 s, five times | Power Word: Shield: absorbs 25, 10 s |
-| Death Knight (runic power) | Icy Touch: 8–9 damage, slows, 6 s | Death Strike: 12–16 damage and heals 10, 6 s | Death Coil: 40 power, 13–15 damage |
-| Shaman (mana) | Lightning Bolt: 1.5 s cast, 19–23 damage | Earth Shock: 10–12 damage and interrupts, 6 s | Stormstrike: 15–20 damage, 8 s |
-| Mage (mana) | Frostbolt: 1.5 s cast, 22–26 damage, slows 4 s | Fire Blast: 15–18 damage, instant, 8 s | Blink: 3.5 yards away, 15 s |
-| Warlock (mana) | Shadow Bolt: 1.5 s cast, 29–34 damage | Corruption: 9 damage every 3 s, five times | Fear: 1 s cast, the target flees 2.5 s, 20 s |
-| Monk (energy) | Tiger Palm: 35 energy, 7–9 damage | Rising Sun Kick: 12–17 damage, 8 s | Leg Sweep: a 2 s stun, 20 s |
-| Druid (mana) | Wrath: 1.5 s cast, 18–21 damage | Moonfire: 8–10 damage and burns | Rake: 8–11 damage and bleeds |
-| Demon Hunter (fury) | Chaos Strike: 30 fury, 18–24 damage | Fel Rush: dashes 4 yards, 9–12 damage, 10 s | Blade Dance: 14–19 damage on both sides, 9 s |
-| Evoker (mana) | Living Flame: 1.5 s cast, 21–25 damage | Fire Breath: 18–21 damage and burns, 12 s | Hover: leaps back, 15 s |
+| Warrior (rage) | Charge: closes from afar, 4–5 damage, stuns 1 s, gives 20 rage, 15 s cooldown | Mortal Strike: 30 rage, 14–19 damage, 6 s cooldown | Execute: 15 rage, 23–31 damage, only under 20 % health |
+| Paladin (mana) | Crusader Strike: 15 mana, 10–14 damage, 4.5 s cooldown | Hammer of Justice: 15 mana, 3–4 damage, stuns 2 s, 20 s cooldown | Holy Light: 30 mana, 2 s cast, heals 35 |
+| Hunter (focus) | Aimed Shot: 35 focus, 1.5 s cast, 19–22 damage | Disengage: leaps back, 15 s cooldown, no global cooldown | Kill Shot: 10 focus, 23–28 damage, only under 20 % health |
+| Rogue (energy) | Sinister Strike: 40 energy, 8–11 damage | Kidney Shot: 25 energy, 4–6 damage, stuns 2 s, 20 s cooldown | Evasion: dodge up for 8 s, 30 s cooldown, no global cooldown |
+| Priest (mana) | Mind Blast: 25 mana, 1 s cast, 28–33 damage, 4 s cooldown | Shadow Word: Pain: 20 mana, 10 damage every 3 s, five times | Power Word: Shield: 25 mana, absorbs 25, 10 s cooldown |
+| Death Knight (runic power) | Icy Touch: 8–9 damage, slows 3 s, gives 15 runic power, 6 s cooldown | Death Strike: 12–16 damage, heals 10, gives 15 runic power, 6 s cooldown | Death Coil: 40 runic power, 13–15 damage |
+| Shaman (mana) | Lightning Bolt: 15 mana, 1.5 s cast, 19–23 damage | Earth Shock: 20 mana, 10–12 damage, interrupts, 6 s cooldown | Stormstrike: 20 mana, 15–20 damage, 8 s cooldown |
+| Mage (mana) | Frostbolt: 20 mana, 1.5 s cast, 22–26 damage, slows 4 s | Fire Blast: 25 mana, 15–18 damage, 8 s cooldown | Blink: 15 mana, 3.5 yards away, 15 s cooldown |
+| Warlock (mana) | Shadow Bolt: 20 mana, 1.5 s cast, 29–34 damage | Corruption: 20 mana, 9 damage every 3 s, five times | Fear: 20 mana, 1 s cast, the target flees 2.5 s, 20 s cooldown |
+| Monk (energy) | Tiger Palm: 35 energy, 7–9 damage | Rising Sun Kick: 30 energy, 12–17 damage, 8 s cooldown | Leg Sweep: 25 energy, 4–6 damage, stuns 2 s, 20 s cooldown |
+| Druid (mana) | Wrath: 15 mana, 1.5 s cast, 18–21 damage | Moonfire: 20 mana, 8–10 damage, then 5 damage every 3 s, four times | Rake: 25 mana, 8–11 damage, then 5 damage every 3 s, three times |
+| Demon Hunter (fury) | Chaos Strike: 30 fury, 18–24 damage | Fel Rush: dashes 4 yards, 9–12 damage, gives 20 fury, 10 s cooldown | Blade Dance: 30 fury, 14–19 damage on both sides, 9 s cooldown |
+| Evoker (mana) | Living Flame: 15 mana, 1.5 s cast, 21–25 damage | Fire Breath: 25 mana, 18–21 damage, then 4 damage every 3 s, three times, 12 s cooldown | Hover: leaps back, 15 s cooldown, no global cooldown |
 
 Every move is one of the character's own animations: Ready stances by weapon, Attack swings with all their variations, the class's own casts (MagSpellCastBothFront, PriSpellCastBothUp, ShaSpellCastBothFront...), CombatChargeLoop and CombatChargeEnd, CombatExecute, Stormstrike, DeathStrike, FelRush, DHBladeDance, RisingSunKick, Dodge and Parry, battle roars, cheers, combat wounds, stuns, knockdowns and deaths, as the game plays them, with a plain strike or cast standing in where a model lacks one.
 
@@ -98,9 +98,9 @@ There is no block key: a shield blocks and a weapon parries on their own, as in 
 
 Press **C** on the roster for the game's own keys: player 1 moves and jumps with the arrows, **1** attacks and **2 3 4** are the action bar, as in World of Warcraft; player 2 then takes WASD and J K L U. The choice is remembered in the browser.
 
-On the roster: WASD / arrows move the cursor, J or , choose, H or M go back, U or Right Shift switch sex, K L or . / cycle the class (on the game's own keys: arrows, 1 or Enter, Backspace, 4, 2 and 3). **Tab** switches player 2 between the keyboard, a gamepad and the computer. **Enter** rematches, **Esc** goes back, **M** mutes, **F3** shows frame times.
+On the roster: WASD / arrows move the cursor, J or , choose, H or M go back, U or Right Shift switch sex, K L or . / cycle the class (on the game's own keys: arrows, 1 or Enter, Backspace, 4, 2 and 3). **Tab** switches player 2 between the keyboard, a gamepad and the computer. **Enter** rematches, **Esc** goes back, **F3** shows frame times. **M** mutes in a fight or in SETTINGS, and **P** turns the music off and on from any screen (outside a text field).
 
-The fight's sound is read from the game folder like everything else: weapon swings and impacts by the weapon's subclass, the race's own grunts, wounds, death cry and battle roar, a spell for the class (Fireball for a mage, Shadow Bolt for a warlock, Lightning Bolt for a shaman...), and a gong for each round. The music is the game's too: the login screen's theme under CHOOSE YOUR CHAMPION, and on the VS screen the zone music of the stage under the cursor (Stranglethorn's jungle for Gurubashi, Stormwind's for the Valley of Heroes...), which plays on, quieter, through the fight and drops away under a fatality. Browsers keep audio off until a key is pressed, so the first screen may start quiet.
+The fight's sound is read from the game folder like everything else: weapon swings and impacts by the weapon's subclass, the race's own grunts, wounds, death cry and battle roar, a spell for the class (Fireball for a mage, Shadow Bolt for a warlock, Lightning Bolt for a shaman...), and a gong for each round. The music is the game's too: the login screen's theme under CHOOSE YOUR CHAMPION, and on the VS screen the zone music of the stage under the cursor (Stranglethorn's jungle for Gurubashi, Stormwind's for the Valley of Heroes...), which plays on, quieter, through the fight and drops away under a fatality. The music has its own switch, apart from the mute: **P**, the note tab beside the bug tab at the top of the roster, the VS screen and the fight, or MUSIC in SETTINGS (remembered in the browser) turns only the music off, and the fight's sounds and the call when a match is found keep playing. Browsers keep audio off until a key is pressed, so the first screen may start quiet.
 
 ### Online
 
@@ -131,7 +131,7 @@ To put up your own copy of both on a Cloudflare account (the free plan is enough
 
 ### Stages
 
-A stage is a spot in the world in `src/game/stages.ts`: the map, the coordinates the game's `/mogshot spot` prints (x north, y west, in yards), a `facing` in degrees anticlockwise from north, and the `reach` in yards the world is drawn to. The fighters stand along the line through the spot that runs the way `facing` points, and the camera looks across it, toward `facing` + 90°, so the backdrop is whatever lies that way: pick the facing so the best view is across the line, not along it. The fight itself is flat; the floor along the line is read from the place once (`src/game/ground.ts`) and each fighter and their shadow is drawn that much higher or lower, so a leaning lawn still works, but a staircase does not. A `z` picks a storey where the highest surface is the wrong one (Dalaran's streets over its sewers).
+A stage is a spot in the world in `src/game/stages.ts`: the map, the coordinates the game's `/mogshot spot` prints (x north, y west, in yards), a `facing` in degrees anticlockwise from north, and the `reach` in yards the world is drawn to. The fighters stand along the line through the spot that runs the way `facing` points, and the camera looks across it, toward `facing` + 90°, so the backdrop is whatever lies that way: pick the facing so the best view is across the line, not along it. The fight itself is flat; the floor along the line is read from the place once (`src/game/ground.ts`) and each fighter and their shadow is drawn that much higher or lower, so a leaning lawn still works, but a staircase does not. A `z` picks a storey where the highest surface is the wrong one (a city's streets over its sewers, say).
 
 To try a spot before adding it, render it through Mogshot's command line with the game's camera and look at the PNG:
 

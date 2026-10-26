@@ -48,7 +48,7 @@ export type Wielding = WeaponKind | 'unarmed';
 /** The weapon the fighter swings with: how often, how hard, and whether it shoots. */
 export interface Weapon {
   wielding: Wielding;
-  /** Frames between auto-attacks: 2.0 s one-hand and unarmed, 3.4 s two-hand, 3.0 s ranged. */
+  /** Frames between auto-attacks: 1.5 s one-hand, unarmed and thrown, 2.4 s two-hand, 2.0 s a bow, gun or crossbow (`SPEED`). */
   speed: number;
   /** The average blow; each one rolls up to `spread` of it either side, as a weapon's damage range does. */
   damage: number;

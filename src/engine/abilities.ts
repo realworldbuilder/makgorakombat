@@ -42,7 +42,7 @@ export interface Ability {
   cost: number;
   /** Frames before it can be used again; 0 is only the global cooldown. */
   cooldown: number;
-  /** Starts the 1.5 s global cooldown. */
+  /** Starts the global cooldown (`GCD_FRAMES`, 1.0 s). */
   gcd: boolean;
   /** Frames the cast bar fills before it fires; 0 is instant. */
   cast: number;

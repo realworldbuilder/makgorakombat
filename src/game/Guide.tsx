@@ -52,14 +52,18 @@ export function Guide({ page, onPage, onClose, onFolder }: GuideProps) {
                 here in the browser and never leave your computer; the first open takes a moment, later ones are instant.
               </li>
               <li>
-                <b>CHOOSE YOUR CHAMPION.</b> The legends, and after them the question mark: <b>CREATE YOUR CHAMPION</b> makes one of your
-                own, who joins the row. Rest on a tile and your champion appears on your side. Lock in and they roar.
+                <b>CHOOSE YOUR CHAMPION.</b> The legends, Cassidy Darkstar, and after them the question mark: <b>CREATE YOUR CHAMPION</b> makes
+                one of your own, who joins the row. Rest on a tile and your champion appears on your side. Lock in, or press <b>Enter World</b> at
+                their feet, and they roar.
               </li>
               <li>
-                <b>Pick the ground</b> from the game's loading screens, then fight: best of three, sixty seconds a round.
+                <b>Pick the ground</b>: a real place in the world, raised from your own files around the fighters (Gurubashi Arena, the
+                Crossroads, Goldshire, Darnassus, Thunder Bluff, and on a classic world the Valley of Heroes). An install without those maps
+                fights in front of its loading screens. Then fight: best of three, sixty seconds a round.
               </li>
               <li>
-                Take their health to nothing and they are dazed: <b>FINISH THE MAK'GORA!</b> A heavy blow then is <b>DISHONOR!</b>; a round
+                Take their health to nothing and they are dazed: <b>FINISH THE MAK'GORA!</b> Your class's fatality keys (shown on your
+                side), or any ability that lands, is <b>DISHONOR!</b>; a swing, or the clock running out, is a mere <b>K.O.</b> A round
                 won untouched is <b>HONOR RESTORED</b>.
               </li>
             </ol>
@@ -83,7 +87,9 @@ export function Guide({ page, onPage, onClose, onFolder }: GuideProps) {
             <p class="dim small">
               <b>C</b> on the roster switches the keys ({LAYOUT_WORDS[keyLayout()]} now): player 1 on the game's own keys, the arrows to move and jump
               and 1 2 3 4 for the attack and the action bar, with player 2 on WASD and J K L U · <b>Tab</b> switches player 2 between the keyboard, a gamepad
-              and the computer · <b>O</b> there plays online · <b>Enter</b> rematch · <b>Esc</b> back · <b>M</b> mute · <b>F3</b> frame times
+              and the computer · <b>O</b> there plays online · <b>E</b> there switches to the folder's other game · <b>Enter</b> rematch · <b>Esc</b> back
+              · <b>P</b> music on or off, anywhere · <b>M</b> mute, in a fight or SETTINGS · <b>F3</b> frame times · the version you are
+              playing is in the roster's bottom-left corner
             </p>
           </div>
         ) : (

@@ -369,7 +369,8 @@ const CAST_DELAY = 30;
 const CAST_DELAYS = 2;
 const LOCKOUT_FRAMES = 120;
 const ABSORB_FRAMES = 12 * 60;
-const BLINK_DISTANCE = 3.5;
+/** How far Blink carries the caster away from the target, in yards. */
+export const BLINK_DISTANCE = 3.5;
 const LEAP_V = 0.16;
 const LEAP_VX = 0.12;
 const SLOW_FACTOR = 0.5;
