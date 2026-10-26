@@ -892,6 +892,17 @@ code {
   text-align: center;
 }
 
+.select .version {
+  position: absolute;
+  left: 14px;
+  bottom: 8px;
+  font-size: 0.7rem;
+  color: var(--dim);
+  opacity: 0.8;
+  letter-spacing: 0.04em;
+  pointer-events: none;
+}
+
 /* ---- versus and the fight ------------------------------------------------------------- */
 
 .ring,

@@ -794,6 +794,8 @@ export function Select({ edition, art, others, onEdition, races, classes, record
           )}
         </footer>
       )}
+      {/* In the corner, as the game's own login screen gives its version. */}
+      <div class="version">Version {import.meta.env.VITE_VERSION ?? 'dev'}</div>
       <p class="fine">A fan game, not made by or affiliated with Blizzard Entertainment. World of Warcraft is theirs; the fighters come from your own copy.</p>
       {making && (
         <Create
