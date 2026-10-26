@@ -10,7 +10,7 @@ import { type Fighter, type Match, moveOf, type Projectile, type Spark } from '.
  * decoded once with WebAudio and kept for the last few fighters heard.
  *
  * Browsers keep audio silent until the page has seen a key or a click, so the AudioContext is
- * made on the first key press anywhere and nothing plays before it. M mutes.
+ * made on the first key press anywhere and nothing plays before it. M mutes; B turns only the music off.
  */
 
 /** The page's one audio context, made on the first key press. */
@@ -21,19 +21,25 @@ let musicBus: GainNode | undefined;
 let effectsBus: GainNode | undefined;
 const listeners = new Set<() => void>();
 
-/** The sound settings, remembered in the browser: the mute and a level for the music and for the effects, 0 to 1. */
+/**
+ * The sound settings, remembered in the browser: the mute, the music on or off, and a level for the
+ * music and for the effects, 0 to 1. Music off keeps the effects, so the lobby's call to fight is
+ * still heard while queued.
+ */
 export interface SoundSettings {
   muted: boolean;
+  musicOn: boolean;
   music: number;
   effects: number;
 }
 
 const SOUND_STORAGE = 'makgora.sound';
-const settings: SoundSettings = { muted: false, music: 1, effects: 1 };
+const settings: SoundSettings = { muted: false, musicOn: true, music: 1, effects: 1 };
 try {
   if (typeof localStorage !== 'undefined') {
     const saved = JSON.parse(localStorage.getItem(SOUND_STORAGE) ?? '{}') as Partial<SoundSettings>;
     if (typeof saved.muted === 'boolean') settings.muted = saved.muted;
+    if (typeof saved.musicOn === 'boolean') settings.musicOn = saved.musicOn;
     if (typeof saved.music === 'number') settings.music = Math.max(0, Math.min(1, saved.music));
     if (typeof saved.effects === 'number') settings.effects = Math.max(0, Math.min(1, saved.effects));
   }
@@ -60,7 +66,7 @@ function unlock(): void {
     master.gain.value = settings.muted ? 0 : 1;
     master.connect(context.destination);
     musicBus = context.createGain();
-    musicBus.gain.value = settings.music;
+    musicBus.gain.value = musicGain();
     musicBus.connect(master);
     effectsBus = context.createGain();
     effectsBus.gain.value = settings.effects;
@@ -99,12 +105,30 @@ export function toggleMute(): boolean {
   return settings.muted;
 }
 
+/** The music bus's gain: its level, or nothing while the music is off. */
+function musicGain(): number {
+  return settings.musicOn ? settings.music : 0;
+}
+
+/** Turn the music on or off, leaving the effects as they are. */
+export function setMusicOn(on: boolean): void {
+  settings.musicOn = on;
+  if (musicBus && context) musicBus.gain.setTargetAtTime(musicGain(), context.currentTime, 0.1);
+  remember();
+}
+
+/** Flip the music, and say whether it is now on. */
+export function toggleMusic(): boolean {
+  setMusicOn(!settings.musicOn);
+  return settings.musicOn;
+}
+
 /** Set the music's or the effects' level, 0 to 1. */
 export function setLevel(bus: 'music' | 'effects', level: number): void {
   const value = Math.max(0, Math.min(1, level));
   settings[bus] = value;
   const node = bus === 'music' ? musicBus : effectsBus;
-  if (node && context) node.gain.setTargetAtTime(value, context.currentTime, 0.02);
+  if (node && context) node.gain.setTargetAtTime(bus === 'music' ? musicGain() : value, context.currentTime, 0.02);
   remember();
 }
 
