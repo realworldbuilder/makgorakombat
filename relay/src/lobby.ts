@@ -134,6 +134,8 @@ function parse(message: string | ArrayBuffer): Incoming | undefined {
 export class Lobby extends DurableObject<Env> {
   private readonly board: Board;
   private readonly log: FightLog;
+  /** The last arrival's time, so two in the same millisecond still have an order. */
+  private lastAt = 0;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -161,7 +163,9 @@ export class Lobby extends DurableObject<Env> {
     const pair = new WebSocketPair();
     const [client, server] = [pair[0], pair[1]];
     // A page in an online match that comes back between fights says so, and stays busy.
-    const seat: Seat = { id, name, busy: url.searchParams.get('busy') === '1', at: Date.now() };
+    // Arrivals in one millisecond would sort however the runtime lists their sockets: each comes after the last.
+    this.lastAt = Math.max(Date.now(), this.lastAt + 1);
+    const seat: Seat = { id, name, busy: url.searchParams.get('busy') === '1', at: this.lastAt };
     this.ctx.acceptWebSocket(server, [id]);
     server.serializeAttachment(seat);
     this.log.visit(id, name, seat.at);
