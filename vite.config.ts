@@ -21,6 +21,18 @@ process.env.VITE_BUILD ??= (() => {
   }
 })();
 
+// The version on the roster: how many updates main has had, one per merged pull request, so it
+// climbs by itself with every deploy and two people never pick the same number. A PR's Check builds
+// its merge into main, so it shows the number the PR will ship as; a local checkout says so.
+process.env.VITE_VERSION ??= (() => {
+  try {
+    const count = execSync('git rev-list --count --first-parent HEAD', { encoding: 'utf8' }).trim();
+    return process.env.GITHUB_ACTIONS ? count : `${count} (local)`;
+  } catch {
+    return 'dev';
+  }
+})();
+
 // The online version: a fingerprint of the code two machines must share to fight, the engine and the
 // wire. Any change to them makes a new one, so a page left open from before a deploy is told to reload
 // before the fight instead of parting from the other on a DESYNC; a change anywhere else leaves it be.
