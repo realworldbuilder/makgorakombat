@@ -60,6 +60,29 @@ and tells each of them its code and whether they host. Nobody reads a code out.
   whether or not it is in the twenty. No ids go out on the board. `night` is the default span.
 - Everyone in the lobby is listed with tonight's `night:[wins,losses]` once they have fought tonight.
 
+## The night's report
+
+- Every match a room sees, from the host's `hello` or `rematch` to its end, becomes one record the
+  room hands the lobby: `{"code","lobby","start","end","game","host"?:{id,name},"guest"?:{id,name},"stage"?,"ended","desyncAt"?,"by"?,"winner"?,"rounds"?,"ticks"?,"reconnects","waits"?:[host,guest]}`.
+  `ended` is `finished` (both results agree), `desync` (the hashes in the two players' frames
+  differ, `desyncAt` being the first tick they do, or the two results differ), `left` (back to
+  the roster or a closed tab before the end, `by` whom), `dropped` (a socket gone and not back
+  within the 20 seconds) or `never` (the room closed with no match started in it, after the lobby
+  matched two for it or somebody came in). `reconnects` counts drops that came back in time;
+  `waits` is the seconds each waited in the queue (null for one who challenged or was
+  challenged), on a room's first record only. Times are ms since 1970; players are named by the
+  ids and names the board uses (the lobby's, or in a room made by code the `me` of a result).
+- The lobby also notes who came to it, one row per player per hour. Both are kept in the lobby's
+  storage for 30 days at most, the records 2,000 at most, the oldest going first.
+- `GET /lobby/report?span=night|day|week|all` adds them up:
+  `{"span","night","from","to","players","started","finished","desyncs","left","drops","never","reconnects","wait":{"n","median","worst"},"busiest":{"hour","fights"}|null,"hours":[24],"fights"?:[...]}`.
+  `night` is the board's night (4 AM to 4 AM in New York) and the default; `day` and `week` the
+  last 24 hours and 7 days; `all` everything kept. `players` is the different ids seen in the
+  lobby or in a match; `started` the matches begun, of which `finished`, `desyncs`, `left` and
+  `drops`; `never` the rooms with none. The queue waits are in seconds; `busiest` is the hour in
+  New York with the most matches started and `hours` those started by hour of the day there.
+  `fights`, every record oldest first, comes with `night` and `day` only.
+
 ## The room
 
 - `POST /rooms` makes a room and answers `{"code":"HXBXDC"}`.
