@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'preact/hooks';
 import { type InputAction, KEY_LABELS, KEY_LAYOUTS, type KeyLayout, keyLayout, LAYOUT_WORDS, setKeyLayout } from '../engine/input';
 import type { RulesName } from '../engine/rules';
-import { isMuted, setLevel, setMuted, soundSettings } from './sound';
+import { isMuted, setLevel, setMuted, soundSettings, toggleMusic } from './sound';
 import { RELAY_URL, relayUrl, setRelayUrl } from './net/relay';
 
 /*
- * Settings, from the title screen: the sound (mute, the music's level, the effects' level), which
+ * Settings, from the title screen: the sound (mute, the music on or off, the music's level, the effects' level), which
  * keys the two players hold, the rules the fight is fought under, and the relay online play goes
  * through. Everything is remembered in the browser; nothing here needs the folder. The same panel
  * as the guide, so it reads as one interface.
@@ -80,6 +80,7 @@ const label = (codes: readonly string[]) => codes.map((code) => KEY_LABELS[code]
 
 export function Settings({ onClose }: SettingsProps) {
   const [muted, setMutedState] = useState(isMuted());
+  const [musicOn, setMusicOnState] = useState(soundSettings().musicOn);
   const [music, setMusic] = useState(soundSettings().music);
   const [effects, setEffects] = useState(soundSettings().effects);
   const [layout, setLayout] = useState<KeyLayout>(keyLayout());
@@ -97,6 +98,8 @@ export function Settings({ onClose }: SettingsProps) {
       } else if (event.code === 'KeyM') {
         setMuted(!isMuted());
         setMutedState(isMuted());
+      } else if (event.code === 'KeyB' && !event.repeat) {
+        setMusicOnState(toggleMusic());
       }
     };
     window.addEventListener('keydown', onKey, true);
@@ -138,7 +141,19 @@ export function Settings({ onClose }: SettingsProps) {
             </button>
           </div>
           <div class="row">
-            <label for="setting-music">Music</label>
+            <label for="setting-music-on">Music</label>
+            <button
+              id="setting-music-on"
+              type="button"
+              class={`toggle ${musicOn ? 'on' : ''}`}
+              aria-pressed={musicOn}
+              onClick={() => setMusicOnState(toggleMusic())}
+            >
+              {musicOn ? 'ON · B' : 'OFF · B'}
+            </button>
+          </div>
+          <div class="row">
+            <label for="setting-music">Music level</label>
             <input
               id="setting-music"
               type="range"
@@ -169,6 +184,7 @@ export function Settings({ onClose }: SettingsProps) {
             />
             <span class="value">{Math.round(effects * 100)}</span>
           </div>
+          <p class="dim small">Music off keeps the fight's sounds and the call when a match is found. B turns it on and off in a fight too.</p>
           <p class="dim small">Browsers keep sound off until a key is pressed or the page is clicked, so the first screen may start quiet.</p>
 
           <h3>Controls</h3>

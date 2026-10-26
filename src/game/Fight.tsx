@@ -12,7 +12,7 @@ import { seedOf } from './pixels';
 import { isReporting } from './report';
 import { LEVEL, music, stageCue } from './music';
 import { usePadMode, usingPad } from './pads';
-import { isMuted, Mixer, toggleMute } from './sound';
+import { isMuted, Mixer, toggleMusic, toggleMute } from './sound';
 import type { Source } from './Select';
 import { chosenRules } from './Settings';
 import { isRulesName, type RulesName } from '../engine/rules';
@@ -381,6 +381,8 @@ export function Fight({ fighters, stage, p2, onBack, net, watch }: FightProps) {
         setDebug((d) => !d);
       } else if (event.code === 'KeyM') {
         setMuted(toggleMute());
+      } else if (event.code === 'KeyB' && !event.repeat) {
+        toggleMusic();
       } else if (event.code === 'Escape') {
         // Online both go back to the roster together; a watcher just stops watching.
         net?.link.send({ t: 'back' });
