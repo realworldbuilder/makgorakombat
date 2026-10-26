@@ -1569,6 +1569,21 @@ code {
   z-index: 40;
 }
 
+/* The music tab, the same tab just right of the bug's; dimmer still while the music is off. */
+.reporter-tab.music-tab {
+  left: calc(50% + 42px);
+}
+
+.reporter-tab.music-tab.off {
+  color: #9a8a6a;
+  opacity: 0.4;
+}
+
+.reporter-tab.music-tab.off:hover,
+.reporter-tab.music-tab.off:focus-visible {
+  opacity: 1;
+}
+
 .guide.reporter {
   width: min(560px, 94vw);
 }

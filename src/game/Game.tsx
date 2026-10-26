@@ -12,6 +12,7 @@ import { type BuiltFighter, Fighters } from './fighters';
 import { messageOf, useFolder } from './folder';
 import { setPadForPlayer2 } from './pads';
 import { LEVEL, music } from './music';
+import { MusicTab } from './MusicTab';
 import { pictureUrl } from './pixels';
 import { setWhere } from './report';
 import { LEGENDS, legendTiles, type Tile } from './roster';
@@ -673,6 +674,7 @@ export function Game() {
   return (
     <>
       {view}
+      <MusicTab />
       {showOnline && (
         <Online
           lobby={lobby}

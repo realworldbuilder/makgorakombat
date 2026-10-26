@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { type InputAction, KEY_LABELS, KEY_LAYOUTS, type KeyLayout, keyLayout, LAYOUT_WORDS, setKeyLayout } from '../engine/input';
 import type { RulesName } from '../engine/rules';
-import { isMuted, setLevel, setMuted, soundSettings, toggleMusic } from './sound';
+import { isMuted, setLevel, setMuted, soundSettings, toggleMusic, watchSound } from './sound';
 import { RELAY_URL, relayUrl, setRelayUrl } from './net/relay';
 
 /*
@@ -98,13 +98,13 @@ export function Settings({ onClose }: SettingsProps) {
       } else if (event.code === 'KeyM') {
         setMuted(!isMuted());
         setMutedState(isMuted());
-      } else if (event.code === 'KeyB' && !event.repeat) {
-        setMusicOnState(toggleMusic());
       }
     };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
   }, [onClose]);
+  // P turns the music on and off from anywhere, this panel included.
+  useEffect(() => watchSound(() => setMusicOnState(soundSettings().musicOn)), []);
 
   const choose = (next: KeyLayout) => {
     setKeyLayout(next);
@@ -149,7 +149,7 @@ export function Settings({ onClose }: SettingsProps) {
               aria-pressed={musicOn}
               onClick={() => setMusicOnState(toggleMusic())}
             >
-              {musicOn ? 'ON · B' : 'OFF · B'}
+              {musicOn ? 'ON · P' : 'OFF · P'}
             </button>
           </div>
           <div class="row">
@@ -184,7 +184,7 @@ export function Settings({ onClose }: SettingsProps) {
             />
             <span class="value">{Math.round(effects * 100)}</span>
           </div>
-          <p class="dim small">Music off keeps the fight's sounds and the call when a match is found. B turns it on and off in a fight too.</p>
+          <p class="dim small">Music off keeps the fight's sounds and the call when a match is found. P, or the note at the top of the screen, turns it on and off on any screen.</p>
           <p class="dim small">Browsers keep sound off until a key is pressed or the page is clicked, so the first screen may start quiet.</p>
 
           <h3>Controls</h3>
