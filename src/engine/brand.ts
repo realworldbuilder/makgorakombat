@@ -13,4 +13,7 @@ export const BRAND = {
   matchWin: (p: string): string => `${p} WINS THE MAK'GORA`,
   chosen: 'CHAMPION CHOSEN',
   summoning: 'SUMMONING…',
+  enter: 'Enter World',
+  ready: 'Ready',
+  waiting: (p: string): string => `Waiting for ${p}`,
 } as const;

@@ -615,6 +615,65 @@ code {
   width: 100%;
   min-height: 0;
   display: block;
+  /* Dragged sideways to turn the champion; an up-and-down swipe still scrolls on a phone. */
+  cursor: grab;
+  touch-action: pan-y;
+}
+
+.preview:active {
+  cursor: grabbing;
+}
+
+/* The champion and, at their feet, Enter World. */
+.stand {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+/* Red and gold, as the game's own Enter World. */
+.enter-world {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 200px;
+  padding: 9px 26px;
+  border: 2px solid var(--gold-dark);
+  border-radius: 6px;
+  background: linear-gradient(180deg, #b3141c 0%, #7a0b10 55%, #4e0609 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 220, 160, 0.35), 0 3px 10px rgba(0, 0, 0, 0.6);
+  color: var(--gold);
+  font-family: var(--serif);
+  font-weight: 700;
+  font-size: 1.05rem;
+  letter-spacing: 0.06em;
+  text-shadow: 0 1px 2px #000;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.enter-world:hover:not(:disabled) {
+  background: linear-gradient(180deg, #d01a23 0%, #921015 55%, #5e080c 100%);
+  border-color: var(--gold);
+  color: #fff3b0;
+}
+
+.enter-world:active:not(:disabled) {
+  transform: translateX(-50%) translateY(1px);
+}
+
+.enter-world:disabled {
+  cursor: default;
+}
+
+/* In: greyed, as the game's button is while the world loads. */
+.enter-world.in {
+  background: linear-gradient(180deg, #3a3434, #221e1e);
+  color: var(--dim);
+  border-color: #5a4a3a;
 }
 
 .plate {

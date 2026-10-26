@@ -727,12 +727,35 @@ export function Select({ edition, art, others, onEdition, races, classes, record
     );
   };
 
+  /**
+   * Under each player's champion, as under the game's own character select: Enter World, the
+   * same as their choose key. Each player at this keyboard (or on this machine, online) has their
+   * own and the fight starts once both are in; the computer has none, as it chooses for itself
+   * once player 1 is in.
+   */
+  const enterWorld = (who: 0 | 1) => {
+    if (online ? who !== online.me : who === 1 && p2 === 'cpu') return null;
+    const player = players[who];
+    const other = players[who === 0 ? 1 : 0];
+    const otherName = online ? 'your opponent' : who === 1 ? 'player 1' : p2 === 'cpu' ? 'the computer' : 'player 2';
+    const tile = tileAt(player.cursor);
+    const words = player.locked ? (other.locked ? BRAND.ready : BRAND.waiting(otherName)) : tile?.kind === 'create' ? 'Create Champion' : tile?.kind === 'random' ? 'Roll a Champion' : BRAND.enter;
+    return (
+      <button type="button" class={`enter-world ${who === 0 ? 'p1' : 'p2'} ${player.locked ? 'in' : ''}`} disabled={player.locked || paused || !!making} onClick={() => confirm(who)}>
+        {words}
+      </button>
+    );
+  };
+
   return (
     <div class={`screen select edition-${edition.key}`}>
       {art.backdrop && <div class="edition-backdrop" style={{ backgroundImage: `url(${art.backdrop})` }} aria-hidden="true" />}
       <div class="sides">
         <div class="side left">
-          <Preview fighter={players[0].built} locked={players[0].locked} side="left" />
+          <div class="stand">
+            <Preview fighter={players[0].built} locked={players[0].locked} side="left" />
+            {enterWorld(0)}
+          </div>
           {plate(0)}
         </div>
         {/* The logo and the call head the middle column, so the champions on either side stand the full height of the screen. */}
@@ -772,7 +795,10 @@ export function Select({ edition, art, others, onEdition, races, classes, record
         </div>
         </div>
         <div class="side right">
-          <Preview fighter={players[1].built} locked={players[1].locked} side="right" />
+          <div class="stand">
+            <Preview fighter={players[1].built} locked={players[1].locked} side="right" />
+            {enterWorld(1)}
+          </div>
           {plate(1)}
         </div>
       </div>
