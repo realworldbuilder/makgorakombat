@@ -19,6 +19,11 @@ interface TitleProps {
   onCreate: (open: boolean) => void;
   /** PLAY ONLINE is open (or closed): a folder chosen meanwhile opens the online panel over the roster. */
   onOnline: (open: boolean) => void;
+  /**
+   * The folder is open already: the title come back to from the roster. ENTER THE RING goes
+   * straight back to it, with no drop and no second read; `onChange` lets the folder go for another.
+   */
+  open?: { name: string; onEnter: () => void; onChange: () => void };
 }
 
 /** What each edition brings to the ring, for the slot's tooltip before anything is read. */
@@ -108,7 +113,7 @@ export function Presence({ online }: { online: string }) {
   );
 }
 
-export function Title({ phase, dragging, onPick, onChoose, onCreate, onOnline }: TitleProps) {
+export function Title({ phase, dragging, onPick, onChoose, onCreate, onOnline, open }: TitleProps) {
   const [guide, setGuidePage] = useState<GuidePage>();
   const setGuide = (page: GuidePage | undefined) => {
     setGuidePage(page);
@@ -126,7 +131,7 @@ export function Title({ phase, dragging, onPick, onChoose, onCreate, onOnline }:
   }, [opening]);
 
   // The action bar's hotkeys: 1 opens the folder picker (a key press counts as the click the
-  // browser wants), 2 how to play, 3 CREATE YOUR CHAMPION, 4 the source, 5 the settings, 6 PLAY ONLINE;
+  // browser wants), or with the folder open already 1 or Enter goes back to the roster; 2 how to play, 3 CREATE YOUR CHAMPION, 4 the source, 5 the settings, 6 PLAY ONLINE;
   // and B the board.
   useEffect(() => {
     // A folder with several games takes the digits for its WHICH WORLD? slots instead.
@@ -134,7 +139,8 @@ export function Title({ phase, dragging, onPick, onChoose, onCreate, onOnline }:
     const onKey = (event: KeyboardEvent) => {
       if (guide || settings || board || event.metaKey || event.ctrlKey || event.altKey) return;
       switch (event.code) {
-        case 'Digit1': case 'Numpad1': picker.current?.click(); break;
+        case 'Digit1': case 'Numpad1': if (open) open.onEnter(); else picker.current?.click(); break;
+        case 'Enter': case 'NumpadEnter': if (open) open.onEnter(); else return; break;
         case 'Digit2': case 'Numpad2': setGuide('play'); break;
         case 'Digit3': case 'Numpad3': setGuide('create'); break;
         case 'Digit4': case 'Numpad4': window.open(SOURCE, '_blank', 'noreferrer'); break;
@@ -147,7 +153,7 @@ export function Title({ phase, dragging, onPick, onChoose, onCreate, onOnline }:
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [opening, phase.kind, guide, settings, board]);
+  }, [opening, phase.kind, guide, settings, board, open]);
 
   // A folder with several games: 1, 2... pick one, Enter the one played last.
   useEffect(() => {
@@ -189,7 +195,19 @@ export function Title({ phase, dragging, onPick, onChoose, onCreate, onOnline }:
         <>
           <ActionBar
             slots={[
-              {
+              open ? {
+                key: '1',
+                label: 'ENTER THE RING',
+                icon: GLYPHS.folder,
+                lit: true,
+                onClick: open.onEnter,
+                tip: [
+                  { left: 'Enter the Ring', kind: 'name', hue: 'legendary' },
+                  { left: 'Unique' },
+                  { left: `Use: Back to CHOOSE YOUR CHAMPION. ${open.name} is open already, so nothing is read again.`, hue: 'green' },
+                  { left: '"Your game files never leave your computer."', hue: 'gold' },
+                ],
+              } : {
                 key: '1',
                 label: 'ENTER THE RING',
                 icon: GLYPHS.folder,
@@ -273,10 +291,19 @@ export function Title({ phase, dragging, onPick, onChoose, onCreate, onOnline }:
               the top ten · B
             </button>
           </section>
-          <p class="hint">
-            <b>Drop your World of Warcraft folder</b> anywhere on this page, or press 1 to choose it. It is in <code>Applications</code> on a
-            Mac. Your game files are read here in the browser and never leave your computer.
-          </p>
+          {open ? (
+            <p class="hint opened">
+              <b>{open.name}</b> is open. Press 1 or Enter for CHOOSE YOUR CHAMPION.{' '}
+              <button type="button" class="link" onClick={open.onChange}>
+                change folder
+              </button>
+            </p>
+          ) : (
+            <p class="hint">
+              <b>Drop your World of Warcraft folder</b> anywhere on this page, or press 1 to choose it. It is in <code>Applications</code> on a
+              Mac. Your game files are read here in the browser and never leave your computer.
+            </p>
+          )}
           {phase.kind === 'error' && <p class="bad">{phase.message}</p>}
           {!chromium && <p class="bad">Made for Chrome. Other browsers may not read the folder.</p>}
         </>
@@ -285,7 +312,7 @@ export function Title({ phase, dragging, onPick, onChoose, onCreate, onOnline }:
         A fan game. World of Warcraft is Blizzard Entertainment's; the fighters are drawn from your own copy of it with the{' '}
         <a href="https://realworldbuilder.github.io/mogshot/">Mogshot</a> engine.
       </p>
-      {guide && <Guide page={guide} onPage={setGuide} onClose={() => setGuide(undefined)} onFolder={() => picker.current?.click()} />}
+      {guide && <Guide page={guide} onPage={setGuide} onClose={() => setGuide(undefined)} onFolder={open ? open.onEnter : () => picker.current?.click()} opened={open !== undefined} />}
       {settings && <Settings onClose={() => setSettings(false)} />}
       {board && <BoardPanel onClose={() => setBoard(false)} />}
     </div>

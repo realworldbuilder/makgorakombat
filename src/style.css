@@ -278,6 +278,21 @@ code {
   color: var(--text);
 }
 
+/* The title come back to with the folder open: the way to let it go for another. */
+.title .hint.opened .link {
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--dim);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.title .hint.opened .link:hover {
+  color: var(--gold);
+}
+
 .title .opening {
   padding: 24px 32px;
   text-align: center;
