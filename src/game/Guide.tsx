@@ -14,12 +14,14 @@ interface GuideProps {
   onClose: () => void;
   /** Opens the folder picker, from the CREATE YOUR CHAMPION and PLAY ONLINE pages; a key press counts as the click the browser wants. */
   onFolder?: () => void;
+  /** The folder is open already (the title come back to from the roster): `onFolder` goes straight to the roster. */
+  opened?: boolean;
 }
 
 /** Every key bound to an action, as the action bar labels them: "J", ", or NUM 0". */
 const keys = (player: 0 | 1, action: InputAction) => KEYS[player][action].map((code) => KEY_LABELS[code] ?? code).join(' or ');
 
-export function Guide({ page, onPage, onClose, onFolder }: GuideProps) {
+export function Guide({ page, onPage, onClose, onFolder, opened }: GuideProps) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.code === 'Escape') {
@@ -88,11 +90,11 @@ export function Guide({ page, onPage, onClose, onFolder }: GuideProps) {
           </div>
         ) : (
           <div class="body create-first">
-            <p class="big">Drop your World of Warcraft folder first.</p>
+            <p class="big">{opened ? 'Your World of Warcraft folder is open.' : 'Drop your World of Warcraft folder first.'}</p>
             {page === 'online' && <p class="dim">Each player's champions and ground are drawn from their own folder; then give a name, and you find each other under WHO'S HERE: one challenges, the other accepts.</p>}
             {onFolder && (
               <button type="button" class="button" onClick={onFolder}>
-                CHOOSE THE FOLDER · 1
+                {opened ? 'ENTER THE RING · 1' : 'CHOOSE THE FOLDER · 1'}
               </button>
             )}
           </div>

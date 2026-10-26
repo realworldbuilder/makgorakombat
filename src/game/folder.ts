@@ -121,5 +121,10 @@ export function useFolder(data: DataClient) {
     input.value = '';
   };
 
-  return { phase, dragging, openFolder, onPick };
+  /** The folder let go, for another: the title's drop again. Not while one is being opened. */
+  const closeFolder = useCallback(() => {
+    if (!busy.current) setPhase({ kind: 'empty' });
+  }, []);
+
+  return { phase, dragging, openFolder, onPick, closeFolder };
 }

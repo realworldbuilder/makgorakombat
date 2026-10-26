@@ -73,10 +73,12 @@ interface Loaded {
 export function Game() {
   const client = useRef<DataClient>(null);
   client.current ??= new DataClient();
-  const { phase, dragging, openFolder, onPick } = useFolder(client.current);
+  const { phase, dragging, openFolder, onPick, closeFolder } = useFolder(client.current);
   const [loaded, setLoaded] = useState<Loaded>();
   const [loadError, setLoadError] = useState<string>();
   const [screen, setScreen] = useState<Screen>({ kind: 'select' });
+  // Back on the title from the roster with the folder still open: everything read from it stays, only the screen changes.
+  const [atTitle, setAtTitle] = useState(false);
   const screenRef = useRef(screen);
   screenRef.current = screen;
   const [p2, setP2] = useState<Source>('cpu');
@@ -183,6 +185,16 @@ export function Game() {
     setScreen({ kind: 'select' });
     setShowOnline(true);
   }, [online, report]);
+  /**
+   * To the title, the folder kept open: the roster and anything mounted under it (a fight's sound and
+   * WebGL among them) go as they would for any other screen, and ENTER THE RING comes straight back
+   * without the drop or the encoding table read again. Online, the room is left first.
+   */
+  const toTitle = useCallback(() => {
+    setShowOnline(false);
+    setScreen({ kind: 'select' });
+    setAtTitle(true);
+  }, []);
   const rosterOnline = useMemo(() => (online ? { me: online.me, link: online.link, code: online.code } : undefined), [online]);
   const versusOnline = useMemo(() => (online ? { host: online.role === 'host', link: online.link } : undefined), [online]);
 
@@ -191,6 +203,7 @@ export function Game() {
     setLoaded(undefined);
     setLoadError(undefined);
     setScreen({ kind: 'select' });
+    setAtTitle(false);
     if (openKey === undefined) return;
     let stale = false;
     const data = client.current!;
@@ -246,12 +259,28 @@ export function Game() {
     };
   }, [openKey]);
 
-  // The open game's login theme under CHOOSE YOUR CHAMPION; the VS screen and the fight play their stage's own.
+  // The open game's login theme under CHOOSE YOUR CHAMPION, and on the title come back to with the folder open;
+  // the VS screen and the fight play their stage's own.
   useEffect(() => {
     if (!loaded || openKey === undefined) return;
     music.use(client.current!, openKey);
-    if (screen.kind === 'select') music.play(loaded.edition.title, LEVEL.select);
-  }, [loaded, screen.kind]);
+    if (screen.kind === 'select' || atTitle) music.play(loaded.edition.title, LEVEL.select);
+  }, [loaded, screen.kind, atTitle]);
+
+  /** ENTER THE RING on the title with the folder open: the roster again, with the panel the title's PLAY ONLINE asked for. */
+  const enterRing = () => {
+    setAtTitle(false);
+    if (onlineNext.current) {
+      onlineNext.current = false;
+      setShowOnline(true);
+    }
+  };
+  /** The title's change folder: the folder let go and its music with it, and the drop as on a fresh page. */
+  const changeFolder = () => {
+    music.stop();
+    setAtTitle(false);
+    closeFolder();
+  };
 
   // The folder's other games, for switching edition from the select screen.
   const others = useMemo(
@@ -268,8 +297,8 @@ export function Game() {
   // The lobby's socket: closed until the roster is up and while a fight is on (its NEXT STAGE card too) or watched, busy in an online match.
   const fighting = screen.kind === 'fight' || screen.kind === 'next' || watching !== undefined;
   useEffect(() => {
-    lobby?.setMode(!loaded || fighting ? 'off' : online ? 'busy' : 'free');
-  }, [lobby, loaded, fighting, online]);
+    lobby?.setMode(!loaded || atTitle || fighting ? 'off' : online ? 'busy' : 'free');
+  }, [lobby, loaded, atTitle, fighting, online]);
   useEffect(() => () => lobbyRef.current?.close(), []);
 
   // A match from the lobby: into its room as it says, and on to the roster once both are there.
@@ -394,11 +423,14 @@ export function Game() {
       event.preventDefault();
       if (event.code === 'Enter') leaveOnline();
       else if (event.code === 'KeyN') nextOpponent();
-      else location.reload();
+      else {
+        leaveOnline();
+        toTitle();
+      }
     };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
-  }, [left, leaveOnline, nextOpponent, lobby]);
+  }, [left, leaveOnline, nextOpponent, lobby, toTitle]);
 
   // The match over in an online fight (the fight screen keeps Enter for the rematch and Escape for new champions): N for the next opponent.
   useEffect(() => {
@@ -537,14 +569,20 @@ export function Game() {
   }, [online, left, loaded]);
 
   useEffect(() => {
-    document.body.classList.toggle('ingame', phase.kind === 'ready' && loaded !== undefined);
-  }, [phase.kind, loaded]);
+    document.body.classList.toggle('ingame', phase.kind === 'ready' && loaded !== undefined && !atTitle);
+  }, [phase.kind, loaded, atTitle]);
 
   // Where the player is, for a report sent from the game (Reporter.tsx).
   useEffect(() => {
     const edition = loaded ? `${loaded.edition.game} ${loaded.edition.version} (${loaded.edition.product})` : undefined;
-    if (phase.kind !== 'ready' || !loaded) {
-      const screenName = loadError ? `Title, the folder could not be read: ${loadError}` : phase.kind === 'ready' ? 'Title, opening the folder' : `Title (${phase.kind})`;
+    if (phase.kind !== 'ready' || !loaded || atTitle) {
+      const screenName = loadError
+        ? `Title, the folder could not be read: ${loadError}`
+        : atTitle && loaded
+          ? 'Title, the folder open'
+          : phase.kind === 'ready'
+            ? 'Title, opening the folder'
+            : `Title (${phase.kind})`;
       setWhere({ screen: screenName, edition });
       return;
     }
@@ -553,7 +591,7 @@ export function Game() {
     const stage = ground && (ground.stage ? `${ground.stage.name}, ${ground.stage.where}` : ground.screen ? `loading screen ${ground.screen.fileId}` : 'none');
     const screenName = { select: 'Choose your champion', versus: 'VS screen', next: 'Next stage card', fight: 'The fight' }[screen.kind];
     setWhere({ screen: screenName, edition, fighters: names, stage });
-  }, [phase.kind, loaded, loadError, screen, p2]);
+  }, [phase.kind, loaded, loadError, atTitle, screen, p2]);
 
   const wantCreate = (yes: boolean) => {
     createNext.current = yes;
@@ -562,7 +600,7 @@ export function Game() {
     onlineNext.current = yes;
   };
   // A challenge come in, while it would show: the gong, the title, and the notification for a player who asked for one.
-  const calling = loaded && !online && !matching && screen.kind !== 'fight' && !watching ? lobbyState.incoming : undefined;
+  const calling = loaded && !atTitle && !online && !matching && screen.kind !== 'fight' && !watching ? lobbyState.incoming : undefined;
   const callingKey = calling && `${calling.id} ${calling.until}`;
   useEffect(() => {
     if (calling) callToFight(`${calling.name} challenges you to Mak'gora.`);
@@ -573,6 +611,18 @@ export function Game() {
   if (phase.kind !== 'ready') return <Title phase={phase} dragging={dragging} onPick={onPick} onCreate={wantCreate} onOnline={wantOnline} />;
   if (loadError) return <Title phase={{ kind: 'error', message: loadError }} dragging={false} onPick={onPick} onCreate={wantCreate} onOnline={wantOnline} />;
   if (!loaded) return <Title phase={{ kind: 'opening', message: 'Summoning the roster…' }} dragging={false} onPick={onPick} onCreate={wantCreate} onOnline={wantOnline} />;
+  if (atTitle) {
+    return (
+      <Title
+        phase={phase}
+        dragging={dragging}
+        onPick={onPick}
+        onCreate={wantCreate}
+        onOnline={wantOnline}
+        open={{ name: loaded.edition.game, onEnter: enterRing, onChange: changeFolder }}
+      />
+    );
+  }
 
   // A challenge shows over any screen but a fight, unless this page is already in a match.
   const challenge = !online && !matching && screen.kind !== 'fight' && !watching ? lobbyState.incoming : undefined;
@@ -617,7 +667,7 @@ export function Game() {
               if (online && pick) lockedOnline(fighters, pick);
               else setScreen({ kind: 'versus', fighters, pick });
             }}
-            onBack={online ? leaveOnline : () => location.reload()}
+            onBack={online ? leaveOnline : toTitle}
             online={rosterOnline}
             paused={showOnline || left !== undefined || matching !== undefined || challenge !== undefined}
             onOnline={() => setShowOnline(true)}
@@ -697,7 +747,16 @@ export function Game() {
               <p class="dim">The online match is over.</p>
               {lobby && <button type="button" class="button" onClick={nextOpponent}>NEXT OPPONENT · N</button>}
               <button type="button" class="button" onClick={leaveOnline}>BACK TO THE ROSTER · ENTER</button>
-              <button type="button" class="button" onClick={() => location.reload()}>THE TITLE · ESC</button>
+              <button
+                type="button"
+                class="button"
+                onClick={() => {
+                  leaveOnline();
+                  toTitle();
+                }}
+              >
+                THE TITLE · ESC
+              </button>
             </div>
           </div>
         </div>
