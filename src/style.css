@@ -561,13 +561,28 @@ code {
   gap: 14px;
 }
 
+/* One column, never wrapped: the presence line's 100% basis would otherwise open a second column
+   beside the logo whenever the relay answers, and push logo and call off centre. */
 .select .middle.legends-only header {
   flex-direction: column;
+  flex-wrap: nowrap;
+}
+
+/* Tucked under the call, so the line costs the short screens as little height as it can. */
+.select .middle.legends-only header .presence {
+  margin-top: -4px;
 }
 
 .select .middle.legends-only .logo-art {
   width: min(100%, 640px, 60vh);
   margin: -1.5vh 0 -0.5vh;
+}
+
+/* A short screen also has the presence line to fit, so the logo gives back the height of it. */
+@media (max-height: 800px) {
+  .select .middle.legends-only .logo-art {
+    width: min(100%, 640px, 52vh);
+  }
 }
 
 /* On a short screen the tiles give a little width back so logo, call and both rows still fit. */
