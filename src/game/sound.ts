@@ -10,7 +10,7 @@ import { type Fighter, type Match, moveOf, type Projectile, type Spark } from '.
  * decoded once with WebAudio and kept for the last few fighters heard.
  *
  * Browsers keep audio silent until the page has seen a key or a click, so the AudioContext is
- * made on the first key press anywhere and nothing plays before it. M mutes; B turns only the music off.
+ * made on the first key press anywhere and nothing plays before it. M mutes; P, on any screen, turns only the music off.
  */
 
 /** The page's one audio context, made on the first key press. */
@@ -20,6 +20,8 @@ let master: GainNode | undefined;
 let musicBus: GainNode | undefined;
 let effectsBus: GainNode | undefined;
 const listeners = new Set<() => void>();
+/** Who wants to hear of a change to the settings, so the music tab and the settings panel stay true. */
+const watchers = new Set<() => void>();
 
 /**
  * The sound settings, remembered in the browser: the mute, the music on or off, and a level for the
@@ -48,6 +50,7 @@ try {
 }
 
 function remember(): void {
+  for (const watcher of watchers) watcher();
   try {
     if (typeof localStorage !== 'undefined') localStorage.setItem(SOUND_STORAGE, JSON.stringify(settings));
   } catch {
@@ -78,9 +81,29 @@ function unlock(): void {
   for (const listener of listeners) listener();
 }
 
+/** The key that turns the music on and off on every screen; no screen uses it for anything else. */
+export const MUSIC_KEY = 'KeyP';
+
+/** P flips the music wherever it is pressed, unless a name or an address is being typed. */
+function musicKey(event: KeyboardEvent): void {
+  if (event.code !== MUSIC_KEY || event.repeat || event.metaKey || event.ctrlKey || event.altKey) return;
+  const target = event.target;
+  if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return;
+  if (target instanceof HTMLElement && target.isContentEditable) return;
+  toggleMusic();
+}
+
 if (typeof window !== 'undefined') {
   window.addEventListener('keydown', unlock);
   window.addEventListener('pointerdown', unlock);
+  // Capture, and added before any screen's own keys, so no screen can swallow it.
+  window.addEventListener('keydown', musicKey, true);
+}
+
+/** Call `watcher` on every change to the sound settings; returns the way to stop. */
+export function watchSound(watcher: () => void): () => void {
+  watchers.add(watcher);
+  return () => watchers.delete(watcher);
 }
 
 export function isMuted(): boolean {
