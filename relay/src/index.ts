@@ -1,6 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import type { Fighter, Span } from './board';
 import { isCode, newCode } from './code';
+import type { Ending, Fight, ReportSpan } from './fights';
 import { cleanName, isPlayerId, LOBBY, type Lobby } from './lobby';
 import { GameRecord, kindOf, WATCH_CAP } from './record';
 import { HELD_MAX, RECONNECT_MS, SILENT_MS } from './seats';
@@ -37,6 +38,13 @@ export { Lobby } from './lobby';
  * {t:'result'} is the room's alone: it goes to neither the other player nor the watchers. A player
  * whose seat is kept still reads as in to the watchers, who see the other's frames meanwhile and the
  * returning page's when it is back; the game so far is kept through the drop.
+ *
+ * For the night's report (fights.ts) a room also notes each match it sees, from the host's hello or
+ * rematch to its end, and tells the lobby one short record of it: finished (the two results
+ * agree), desync (the two players' hashes in their frames differ, the tick they first do, or
+ * their results differ), left (back to the roster or a closed tab before the end), dropped (a
+ * socket gone and not back in time), with the reconnects along the way; and a room that closes
+ * with no match ever started in it is a record of its own. Nothing the pages send changes for it.
  */
 
 export interface Env {
@@ -81,16 +89,49 @@ function corsHeaders(origin: string | null, extra?: string): Record<string, stri
 /** The two players the lobby put in a room. */
 export type Pair = Record<Role, Fighter>;
 
+/** Seconds each of the two (host, guest) waited in the queue before the lobby matched them; null for one who did not queue. */
+export type Waits = [number | null, number | null];
+
 /**
  * Makes a room under a fresh code and answers it; undefined when no free code turned up. The room
- * tells `lobby` who is in it and how its matches end, `players` being who the lobby matched.
+ * tells `lobby` who is in it and how its matches end, `players` being who the lobby matched and
+ * `waits` how long they waited for it.
  */
-export async function openRoom(env: Env, lobby = LOBBY, players?: Pair): Promise<string | undefined> {
+export async function openRoom(env: Env, lobby = LOBBY, players?: Pair, waits?: Waits): Promise<string | undefined> {
   for (let attempt = 0; attempt < 8; attempt++) {
     const code = newCode();
-    if (await env.ROOMS.getByName(code).open(code, lobby, players)) return code;
+    if (await env.ROOMS.getByName(code).open(code, lobby, players, waits)) return code;
   }
   return undefined;
+}
+
+/** The match a room has on now, for the night's report (fights.ts). */
+interface Open {
+  game: number;
+  start: number;
+  stage?: string;
+  reconnects: number;
+}
+
+/** The ground a hello names, as the night's report gives it. */
+function stageOf(stage: unknown): string | undefined {
+  const key = stage as { kind?: unknown; slug?: unknown; id?: unknown } | null;
+  if (typeof key !== 'object' || key === null) return undefined;
+  if (key.kind === 'stage' && typeof key.slug === 'string') return key.slug.slice(0, 64);
+  if (key.kind === 'screen' && typeof key.id === 'number') return `screen:${key.id}`;
+  return key.kind === 'none' ? 'none' : undefined;
+}
+
+/** The match number and the ground in a hello or a rematch. */
+function startOf(text: string): { game: number; stage?: string } {
+  try {
+    const value = JSON.parse(text) as { game?: unknown; stage?: unknown };
+    const game = typeof value.game === 'number' && Number.isInteger(value.game) && value.game >= 0 ? value.game : 0;
+    const stage = stageOf(value.stage);
+    return stage === undefined ? { game } : { game, stage };
+  } catch {
+    return { game: 0 };
+  }
 }
 
 const peer = (joined: boolean) => JSON.stringify({ t: 'peer', joined });
@@ -167,9 +208,9 @@ export class Room extends DurableObject<Env> {
   }
 
   /** Opens the room under its code, to report to the lobby named, for the players it matched; false when the code is taken. */
-  async open(code: string, lobby = LOBBY, players?: Pair): Promise<boolean> {
+  async open(code: string, lobby = LOBBY, players?: Pair, waits?: Waits): Promise<boolean> {
     if ((await this.ctx.storage.get<number>('opened')) !== undefined) return false;
-    await this.ctx.storage.put({ opened: Date.now(), code, lobby, ...(players ? { players } : {}) });
+    await this.ctx.storage.put({ opened: Date.now(), code, lobby, ...(players ? { players } : {}), ...(waits ? { waits } : {}) });
     await this.ctx.storage.setAlarm(Date.now() + IDLE_MS);
     return true;
   }
@@ -204,9 +245,11 @@ export class Room extends DurableObject<Env> {
       }
     }
     const others = this.live(other(role));
+    await this.ctx.storage.put('joined', true);
     if (kept || again) {
       // Back in the seat: both hear it, and the returning page gets what came for it meanwhile, in order.
       if (kept) await this.keep(role, undefined);
+      await this.reconnected();
       if (others.length > 0) server.send(BACK);
       else if (this.away[other(role)]) server.send(AWAY);
       for (const ws of others) ws.send(BACK);
@@ -255,15 +298,20 @@ export class Room extends DurableObject<Env> {
       else if (kind === 'back') this.record.clear();
       else return;
       for (const to of watchers) to.send(message);
+      // Then the night's log: a match begins, or one going back to the roster ends it.
+      if (kind === 'back') await this.end('left', { by: role });
+      else await this.begin(message, kind === 'rematch');
       return;
     }
     const seat = role === 'host' ? 0 : 1;
-    this.record.take(seat, new Uint8Array(message));
-    if (watchers.length === 0) return;
-    const tagged = new Uint8Array(message.byteLength + 1);
-    tagged[0] = seat;
-    tagged.set(new Uint8Array(message), 1);
-    for (const to of watchers) to.send(tagged);
+    const desync = this.record.take(seat, new Uint8Array(message));
+    if (watchers.length > 0) {
+      const tagged = new Uint8Array(message.byteLength + 1);
+      tagged[0] = seat;
+      tagged.set(new Uint8Array(message), 1);
+      for (const to of watchers) to.send(tagged);
+    }
+    if (desync !== undefined) await this.end('desync', { desyncAt: desync });
   }
 
   async webSocketClose(ws: WebSocket, code: number, reason: string): Promise<void> {
@@ -282,6 +330,7 @@ export class Room extends DurableObject<Env> {
   /** A kept seat's time is up (its player is gone for good), or the room has been empty for ten minutes. */
   async alarm(): Promise<void> {
     let ended = false;
+    const dropped: Role[] = [];
     for (const role of ROLES) {
       const kept = this.away[role];
       if (!kept || kept.until > Date.now()) continue;
@@ -290,8 +339,12 @@ export class Room extends DurableObject<Env> {
       this.held[role] = [];
       this.tell(other(role), peer(false));
       ended = true;
+      dropped.push(role);
     }
     if (!ended && this.heads() === 0) {
+      // The night's log has the match still open, or the room that never had one, before the room forgets it all.
+      const last = (await this.close('left')) ?? (await this.never());
+      const lobby = await this.ctx.storage.get<string>('lobby');
       await this.ctx.storage.deleteAll();
       this.away = {};
       this.record.clear();
@@ -303,11 +356,14 @@ export class Room extends DurableObject<Env> {
           // Already closing.
         }
       }
+      if (last) await this.logged(last, lobby);
       return;
     }
     if (ended) this.tellWatchers(this.seats());
     await this.schedule();
     if (ended) await this.report(this.heads());
+    // The match the player dropped out of is over.
+    for (const role of dropped) await this.end('dropped', { by: role });
   }
 
   /**
@@ -321,7 +377,8 @@ export class Room extends DurableObject<Env> {
     if (!role || this.gone.has(ws) || this.live(role).some((s) => s !== ws)) return;
     this.gone.add(ws);
     const id = this.idOf(ws);
-    if (leaving || id === undefined) {
+    const gone = leaving || id === undefined;
+    if (gone) {
       this.tell(other(role), peer(false), ws);
     } else if (!this.away[role]) {
       await this.keep(role, { id, until: Date.now() + RECONNECT_MS });
@@ -330,6 +387,8 @@ export class Room extends DurableObject<Env> {
     this.tellWatchers(this.seats(ws));
     await this.schedule(ws);
     await this.report(this.heads(ws));
+    // A match the player was in is over: they left it, or dropped without a seat kept.
+    if (gone) await this.end(leaving ? 'left' : 'dropped', { by: role });
   }
 
   /** Takes a seat whose socket has been silent SILENT_MS for dropped, and shuts that socket. Pages without an id ping only every five seconds, and are let be. */
@@ -399,6 +458,11 @@ export class Room extends DurableObject<Env> {
    * replaces the one kept, which the other page never matched.
    */
   private async reported(role: Role, report: Report): Promise<void> {
+    // Who a page in a room made by code says it is, for the night's log.
+    if (report.me) {
+      const mes = (await this.ctx.storage.get<Partial<Pair>>('mes')) ?? {};
+      if (mes[role]?.id !== report.me.id || mes[role]?.name !== report.me.name) await this.ctx.storage.put('mes', { ...mes, [role]: report.me });
+    }
     const reports = (await this.ctx.storage.get<Partial<Record<Role, Report>>>('reports')) ?? {};
     const theirs = reports[other(role)];
     if (!theirs || theirs.game !== report.game) {
@@ -408,8 +472,11 @@ export class Room extends DurableObject<Env> {
     await this.ctx.storage.delete('reports');
     if (!same(theirs, report)) {
       console.warn('The two pages told different ends of one match:', theirs, report);
+      // Two runs of one lockstep fight that end differently were out of step.
+      await this.end('desync', {}, report.game);
       return;
     }
+    await this.end('finished', { winner: report.winner, rounds: report.rounds, ticks: report.ticks }, report.game);
     const [players, lobby] = await Promise.all([this.ctx.storage.get<Pair>('players'), this.ctx.storage.get<string>('lobby')]);
     const both: Record<Role, Report> = role === 'host' ? { host: report, guest: theirs } : { host: theirs, guest: report };
     const host = players?.host ?? both.host.me;
@@ -420,6 +487,86 @@ export class Room extends DurableObject<Env> {
       await this.env.LOBBY.getByName(lobby ?? LOBBY).result({ t: 'result', winner, loser, rounds: report.rounds, ticks: report.ticks });
     } catch (cause) {
       console.warn('The lobby did not take the result:', cause);
+    }
+  }
+
+  /**
+   * The host's hello or rematch: a match begins, for the night's log. One still open then ended
+   * without anybody saying how, and is logged as left; a rematch is fought on the last hello's ground.
+   */
+  private async begin(text: string, rematch: boolean): Promise<void> {
+    const { game, stage: named } = startOf(text);
+    const stage = rematch ? await this.ctx.storage.get<string>('stage') : named;
+    const old = await this.close('left');
+    const open: Open = { game, start: Date.now(), reconnects: 0, ...(stage !== undefined ? { stage } : {}) };
+    await this.ctx.storage.put({ match: open, played: true, ...(!rematch && stage !== undefined ? { stage } : {}) });
+    if (!rematch && stage === undefined) await this.ctx.storage.delete('stage');
+    if (old) await this.logged(old);
+  }
+
+  /** The match on now is over, `how`; with `game`, only if it is that match. Its record goes to the lobby. */
+  private async end(how: Ending, extra: Partial<Fight> = {}, game?: number): Promise<void> {
+    const fight = await this.close(how, extra, game);
+    if (fight) await this.logged(fight);
+  }
+
+  /** Takes the match on now off the room's storage and answers its record; undefined when there is none (or it is not `game`). */
+  private async close(how: Ending, extra: Partial<Fight> = {}, game?: number): Promise<Fight | undefined> {
+    const open = await this.ctx.storage.get<Open>('match');
+    if (!open || (game !== undefined && open.game !== game)) return undefined;
+    await this.ctx.storage.delete('match');
+    const fight = await this.fight({ ...extra, game: open.game, start: open.start, ended: how, reconnects: open.reconnects, ...(open.stage !== undefined ? { stage: open.stage } : {}) });
+    return fight;
+  }
+
+  /** The record of a room that closes without a match ever started in it, if the lobby matched two for it or anybody came in. */
+  private async never(): Promise<Fight | undefined> {
+    const [played, joined, players, opened] = await Promise.all([
+      this.ctx.storage.get<boolean>('played'),
+      this.ctx.storage.get<boolean>('joined'),
+      this.ctx.storage.get<Pair>('players'),
+      this.ctx.storage.get<number>('opened'),
+    ]);
+    if (played || opened === undefined || (!joined && !players)) return undefined;
+    // The room closes IDLE_MS after the last one left it.
+    return this.fight({ game: 0, start: opened, end: Math.max(opened, Date.now() - IDLE_MS), ended: 'never', reconnects: 0 });
+  }
+
+  /** A record with the room's own parts: its code, the players, and on its first record only, how long they queued. */
+  private async fight(parts: Omit<Fight, 'code' | 'lobby' | 'end'> & { end?: number }): Promise<Fight> {
+    const [code, players, mes, waits] = await Promise.all([
+      this.ctx.storage.get<string>('code'),
+      this.ctx.storage.get<Pair>('players'),
+      this.ctx.storage.get<Partial<Pair>>('mes'),
+      this.ctx.storage.get<Waits>('waits'),
+    ]);
+    if (waits) await this.ctx.storage.delete('waits');
+    const host = players?.host ?? mes?.host;
+    const guest = players?.guest ?? mes?.guest;
+    return {
+      code: code ?? '',
+      lobby: players !== undefined,
+      ...parts,
+      end: parts.end ?? Date.now(),
+      ...(host ? { host: { id: host.id, name: host.name } } : {}),
+      ...(guest ? { guest: { id: guest.id, name: guest.name } } : {}),
+      ...(waits ? { waits } : {}),
+    };
+  }
+
+  /** A player dropped and came back in time: one more reconnect on the match on now. */
+  private async reconnected(): Promise<void> {
+    const open = await this.ctx.storage.get<Open>('match');
+    if (open) await this.ctx.storage.put('match', { ...open, reconnects: open.reconnects + 1 });
+  }
+
+  /** Hands a match's record to the lobby; one that cannot be reached loses it, and the room goes on. */
+  private async logged(fight: Fight, lobby?: string): Promise<void> {
+    lobby ??= await this.ctx.storage.get<string>('lobby');
+    try {
+      await this.env.LOBBY.getByName(lobby ?? LOBBY).fight(fight);
+    } catch (cause) {
+      console.warn('The lobby did not take the match\'s record:', cause);
     }
   }
 
@@ -497,7 +644,15 @@ export default {
       return Response.json(standings, { headers: { ...cors, 'Cache-Control': 'no-store' } });
     }
 
-    if (url.pathname === '/') return new Response('makgora-relay: GET /lobby/ws?name=&id=[&busy=1|&requeue=1], GET /lobby/stats, GET /lobby/board?span=night|all[&id=]; or POST /rooms, then GET /rooms/:code/ws?role=host|guest|watch[&id=]', { headers: cors });
+    // The night's report: who came, how long they waited, how the matches ended; the list of them for a night or a day.
+    if (url.pathname === '/lobby/report' && request.method === 'GET') {
+      const asked = url.searchParams.get('span');
+      const span: ReportSpan = asked === 'day' || asked === 'week' || asked === 'all' ? asked : 'night';
+      const report = await env.LOBBY.getByName(LOBBY).report(span);
+      return Response.json(report, { headers: { ...cors, 'Cache-Control': 'no-store' } });
+    }
+
+    if (url.pathname === '/') return new Response('makgora-relay: GET /lobby/ws?name=&id=[&busy=1|&requeue=1], GET /lobby/stats, GET /lobby/board?span=night|all[&id=], GET /lobby/report?span=night|day|week|all; or POST /rooms, then GET /rooms/:code/ws?role=host|guest|watch[&id=]', { headers: cors });
     return new Response('Not found', { status: 404, headers: cors });
   },
 } satisfies ExportedHandler<Env>;

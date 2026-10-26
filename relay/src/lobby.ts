@@ -1,5 +1,6 @@
 import { DurableObject } from 'cloudflare:workers';
 import { Board, type Fighter, type Result, type Span, type Standings } from './board';
+import { type Fight, FightLog, type NightReport, type ReportSpan } from './fights';
 import { type Env, openRoom } from './index';
 
 /*
@@ -19,7 +20,9 @@ import { type Env, openRoom } from './index';
  * between messages. The pages close their socket here for the fight itself, so who is fighting is
  * counted from the rooms, which tell the lobby whenever somebody comes in or goes. The rooms also
  * tell it how each match ended, for the board (board.ts), and everyone here is listed with what
- * they have won and lost tonight.
+ * they have won and lost tonight. They tell it too how every match went, for the night's report
+ * (fights.ts), with how long the two waited in the queue, which the lobby hands the room it makes;
+ * and the lobby notes who came, once an hour each.
  *
  * The rooms the lobby made are listed while both players are in them, with the two names and
  * the code, so anyone here can pick one to watch (the room's role=watch). A room made with a code
@@ -130,11 +133,13 @@ function parse(message: string | ArrayBuffer): Incoming | undefined {
 
 export class Lobby extends DurableObject<Env> {
   private readonly board: Board;
+  private readonly log: FightLog;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
     this.board = new Board(ctx.storage.sql);
+    this.log = new FightLog(ctx.storage.sql);
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -159,6 +164,7 @@ export class Lobby extends DurableObject<Env> {
     const seat: Seat = { id, name, busy: url.searchParams.get('busy') === '1', at: Date.now() };
     this.ctx.acceptWebSocket(server, [id]);
     server.serializeAttachment(seat);
+    this.log.visit(id, name, seat.at);
     // Back from a match for the next opponent: straight into the queue, as if they had asked.
     if (url.searchParams.get('requeue') === '1' && !seat.busy) await this.quick(server, seat);
     else await this.beat();
@@ -228,6 +234,16 @@ export class Lobby extends DurableObject<Env> {
   /** The board for GET /lobby/board. */
   async standings(span: Span, id?: string, now = Date.now()): Promise<Standings> {
     return this.board.standings(span, id, now);
+  }
+
+  /** A match's record, as its room tells it when the match ends or the room closes. */
+  async fight(fight: Fight, now = Date.now()): Promise<void> {
+    this.log.add(fight, now);
+  }
+
+  /** The night's report for GET /lobby/report. */
+  async report(span: ReportSpan, now = Date.now()): Promise<NightReport> {
+    return this.log.report(span, now);
   }
 
   /** A room's head count, which it sends whenever somebody comes in or goes; an empty room is forgotten. */
@@ -307,14 +323,17 @@ export class Lobby extends DurableObject<Env> {
     }
     // The one who waited longer hosts. They stay in the queue until the room is made, so a room
     // that cannot be made does not lose them their place.
-    await this.match(first.id, me.id, first.id);
+    const now = Date.now();
+    const seconds = (at: number) => Math.max(0, Math.round((now - at) / 1000));
+    await this.match(first.id, me.id, first.id, [seconds(first.at), mine ? seconds(mine.at) : 0]);
   }
 
   /**
    * A room for two, both told, both busy, and anything else either had open called off. `waiting`
-   * is the one the queue gave, who must still be in it.
+   * is the one the queue gave, who must still be in it; `waits` how long each waited in it, in
+   * seconds, for the night's report.
    */
-  private async match(host: string, guest: string, waiting?: string): Promise<void> {
+  private async match(host: string, guest: string, waiting?: string, waits?: [number | null, number | null]): Promise<void> {
     const pair = [host, guest];
     // The room is made with both names, as they are now; the seats are read again once it is back.
     const before = pair.map((id) => this.seatById(id));
@@ -323,7 +342,7 @@ export class Lobby extends DurableObject<Env> {
     // messages: either player may leave, take the queue back, or be matched with someone else.
     let code: string | undefined;
     try {
-      code = before[0] && before[1] ? await openRoom(this.env, this.ctx.id.name ?? LOBBY, { host: fighter(before[0]), guest: fighter(before[1]) }) : undefined;
+      code = before[0] && before[1] ? await openRoom(this.env, this.ctx.id.name ?? LOBBY, { host: fighter(before[0]), guest: fighter(before[1]) }, waits ?? [null, null]) : undefined;
     } catch {
       code = undefined;
     }
