@@ -298,3 +298,6 @@ h2 {
 .foot {
   margin-top: 18px;
 }
+.sub a {
+  color: inherit;
+}

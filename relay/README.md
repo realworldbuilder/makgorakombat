@@ -98,7 +98,7 @@ and tells each of them its code and whether they host. Nobody reads a code out.
   in the last three minutes), visitors, new visitors, page views, a series by hour (day) or by
   date in New York, how far visitors got (welcome, game, folder, fight, online), and the top
   referrers, countries, browsers, systems, devices, pages, editions, fight modes, champions and
-  errors. `week` is the default. The game's `/stats/` page, linked from nowhere, shows it.
+  errors. `week` is the default. The game's `/stats/` page, linked from the welcome page, shows it.
 
 ## The room
 

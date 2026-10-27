@@ -56,7 +56,7 @@ export default defineConfig({
   base: process.env.VITE_BASE || '/makgorakombat/',
   plugins: [preact()],
   worker: { format: 'es' },
-  // Three pages: the game, the welcome page in front of it at /welcome/, and the site's numbers at /stats/, linked from nowhere.
+  // Three pages: the game, the welcome page in front of it at /welcome/, and the site's numbers at /stats/.
   build: { rollupOptions: { input: { main: 'index.html', welcome: 'welcome/index.html', stats: 'stats/index.html' } } },
   // Only the game's own page is scanned: the submodule's pages pull in things the game does not use.
   optimizeDeps: { entries: ['index.html'] },
