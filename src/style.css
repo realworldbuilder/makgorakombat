@@ -1456,6 +1456,258 @@ code {
   text-align: center;
 }
 
+/* The character sheet's slots round the champion: head to wrist on the left, hands to feet on the right, the weapons beneath. */
+.creator .doll {
+  --slot: clamp(34px, 5.8vh, 48px);
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 6px 10px;
+  padding: 6px 16px 8px;
+}
+
+.creator .doll-side {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.creator .doll-model {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+
+.creator .doll-weapons {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+
+.creator .doll-slot {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: var(--slot);
+  height: var(--slot);
+  padding: 0;
+  border: none;
+  font-size: 16px;
+  color: var(--dim);
+  cursor: pointer;
+}
+
+.creator .doll-slot.fixed {
+  cursor: default;
+}
+
+.creator .doll-slot.small {
+  --slot: 30px;
+}
+
+.creator .doll-slot .item-icon {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  display: block;
+}
+
+/* An empty slot: the slot's name, faint, as the game's sheet shows its outline. */
+.creator .doll-slot.empty .slot-word {
+  font-family: var(--serif);
+  font-size: 0.5rem;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: 0.04em;
+  text-align: center;
+  text-transform: uppercase;
+  color: #6c6258;
+}
+
+.creator .doll-slot:not(.fixed):hover::after,
+.creator .doll-slot.here::after {
+  box-shadow:
+    inset 0 0 0 2px var(--gold),
+    inset 0 0 0 3px rgba(0, 0, 0, 0.55),
+    inset 0 0 0.8em rgba(255, 209, 0, 0.45);
+}
+
+.creator .doll-slot:not(.fixed):hover {
+  filter: brightness(1.2);
+}
+
+.creator .slot-tip {
+  position: absolute;
+  z-index: 6;
+  width: 15em;
+  text-align: left;
+  pointer-events: none;
+}
+
+.creator .slot-tip.left {
+  left: calc(100% + 8px);
+  top: 0;
+}
+
+.creator .slot-tip.right {
+  right: calc(100% + 8px);
+  top: 0;
+}
+
+.creator .slot-tip.bottom {
+  left: 50%;
+  bottom: calc(100% + 8px);
+  transform: translateX(-50%);
+}
+
+/* The Gear row: the slot the arrows are on and what is in it. */
+.creator .gear-pick {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  padding: 4px 6px;
+  background: #0b0708;
+  border: 1px solid #5a4020;
+  border-radius: 4px;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.creator .gear-pick:hover {
+  border-color: var(--gold);
+}
+
+.creator .gear-slot {
+  flex: none;
+  font-family: var(--serif);
+  font-weight: 700;
+  font-size: 0.72rem;
+  color: var(--gold);
+}
+
+.creator .gear-item {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The picker: every item the folder has for a slot, over the column. */
+.creator .item-picker {
+  position: absolute;
+  inset: 10px;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background: linear-gradient(180deg, #1e1e24, #0d0d11);
+}
+
+.creator .picker-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.creator .picker-title {
+  font-family: var(--serif);
+  font-weight: 900;
+  font-size: 1.05rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+
+.creator .picker-close {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid #5c5c66;
+  border-radius: 4px;
+  background: #1a0d06;
+  color: var(--gold);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.creator .picker-search {
+  padding: 6px 8px;
+  background: #0b0708;
+  color: var(--text);
+  border: 1px solid #5a4020;
+  border-radius: 4px;
+  font: inherit;
+  font-size: 0.9rem;
+}
+
+.creator .picker-search:focus {
+  outline: none;
+  border-color: var(--gold);
+}
+
+.creator .picker-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.creator .picker-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 6px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.creator .picker-item.here {
+  border-color: var(--gold-dark);
+  background: rgba(255, 209, 0, 0.08);
+}
+
+.creator .picker-item.worn .picker-name::after {
+  content: ' ✓';
+  color: var(--gold);
+}
+
+.creator .picker-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--friz, var(--serif));
+  font-size: 0.88rem;
+  text-shadow: 1px 1px 0 #000;
+}
+
+.creator .picker-kind {
+  flex: none;
+  font-size: 0.72rem;
+  color: var(--dim);
+}
+
+.creator .picker-count {
+  margin: 0;
+  text-align: center;
+}
+
 /* The tile that opens the creator: a gold question mark on the legends' plate. */
 .tile.create {
   display: grid;
@@ -1512,8 +1764,19 @@ code {
     border-top: 1px solid var(--line);
   }
 
-  .creator .armour-tip {
+  .creator .armour-tip,
+  .creator .slot-tip {
     display: none;
+  }
+
+  .creator .doll {
+    --slot: 32px;
+    gap: 4px;
+    padding: 4px 8px;
+  }
+
+  .creator .doll-side {
+    gap: 3px;
   }
 }
 
