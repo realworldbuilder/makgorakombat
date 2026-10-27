@@ -2,7 +2,7 @@ import { RELAY_URL } from '../src/game/net/relay';
 import { NO_TRACK } from '../src/game/track';
 
 /*
- * /stats/: the site's numbers for the two of us who make it, linked from nowhere. It reads the
+ * /stats/: the site's numbers, linked from the welcome page's footer and its privacy note. It reads the
  * relay's GET /site/report (relay/src/site.ts, fed by src/game/track.ts) and GET /lobby/report for
  * online play, for the range picked, and asks again every thirty seconds. ?relay=<url> reads
  * another relay, for trying it against a local one.
