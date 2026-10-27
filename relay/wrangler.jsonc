@@ -2,7 +2,7 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   // The room relay for online play: one Durable Object per room code, forwarding each player's
   // messages to the other, and one lobby where players find each other by name. It keeps
-  // nothing of the game; see README.md. And the site's own visit counts, one Durable Object (site.ts).
+  // nothing of the game; see README.md. With a Discord bot, a voice channel for each match (voice.ts). And the site's own visit counts, one Durable Object (site.ts).
   "name": "makgora-relay",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-20",
@@ -19,5 +19,7 @@
     { "tag": "v2", "new_sqlite_classes": ["Lobby"] },
     { "tag": "v3", "new_sqlite_classes": ["Site"] }
   ],
+  // Once an hour, the voice channels on Discord that closed rooms left behind are deleted (voice.ts).
+  "triggers": { "crons": ["17 * * * *"] },
   "observability": { "enabled": true }
 }

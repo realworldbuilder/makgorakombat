@@ -199,6 +199,21 @@ describe('the link to the room', () => {
     link.close();
   });
 
+  it('asks the room for its voice as its own seat, and keeps the invite the other player opened for a screen that comes late', async () => {
+    const link = await opened('seat-v');
+    const asked: [string, string | undefined][] = [];
+    vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
+      asked.push([url, init?.method]);
+      return new Response(JSON.stringify({ url: 'https://discord.gg/abc' }), { status: 200 });
+    });
+    expect(await link.voice()).toBe('https://discord.gg/abc');
+    expect(asked).toEqual([['http://relay.test/rooms/BCDFGH/voice?role=guest&id=seat-v', 'POST']]);
+    last().say({ t: 'voice', url: 'https://discord.gg/abc', by: 'host' });
+    const later: unknown[] = [];
+    link.listen((message) => later.push(message));
+    expect(later).toContainEqual({ t: 'voice', url: 'https://discord.gg/abc', by: 'host' });
+  });
+
   it('makes no try after it is closed here, and the room hears a goodbye', async () => {
     const link = await opened();
     let closes = 0;

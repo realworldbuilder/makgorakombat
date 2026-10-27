@@ -90,7 +90,7 @@ export function Guide({ page, onPage, onClose, onFolder, opened }: GuideProps) {
               <b>C</b> on the roster switches the keys ({LAYOUT_WORDS[keyLayout()]} now): player 1 on the game's own keys, the arrows to move and jump
               and 1 2 3 4 for the attack and the action bar, with player 2 on WASD and J K L U · <b>Tab</b> switches player 2 between the keyboard, a gamepad
               and the computer · <b>O</b> there plays online · <b>E</b> there switches to the folder's other game · <b>Enter</b> rematch · <b>Esc</b> back
-              · <b>P</b> music on or off, anywhere · <b>M</b> mute, in a fight or SETTINGS · <b>F3</b> frame times · the version you are
+              · <b>P</b> music on or off, anywhere · <b>V</b> voice on Discord with your opponent, in an online match · <b>M</b> mute, in a fight or SETTINGS · <b>F3</b> frame times · the version you are
               playing is in the roster's bottom-left corner
             </p>
           </div>

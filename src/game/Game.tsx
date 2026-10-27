@@ -13,6 +13,7 @@ import { messageOf, useFolder } from './folder';
 import { setPadForPlayer2 } from './pads';
 import { LEVEL, music } from './music';
 import { MusicTab } from './MusicTab';
+import { VoiceTab } from './VoiceTab';
 import { pictureUrl } from './pixels';
 import { setWhere } from './report';
 import { trackFight, trackFolder, trackWatch } from './track';
@@ -359,7 +360,7 @@ export function Game() {
             if (session.link.closed || !session.link.peer) {
               session.link.close();
               setMatching({ name: match.with.name, error: `${match.with.name} left the room.` });
-            } else startSession(session);
+            } else startSession({ ...session, them: match.with.name });
           }, wait);
         },
         (cause: unknown) => {
@@ -741,6 +742,7 @@ export function Game() {
     <>
       {view}
       <MusicTab />
+      {online && <VoiceTab key={online.code} link={online.link} them={online.them} />}
       {showOnline && (
         <Online
           lobby={lobby}

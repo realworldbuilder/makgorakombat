@@ -1666,6 +1666,37 @@ code {
   opacity: 1;
 }
 
+/* The voice tab, right of the music tab, in an online match only: lit while the other player is on voice and this one is not. */
+.reporter-tab.voice-tab {
+  left: calc(50% + 84px);
+}
+
+.reporter-tab.voice-tab.opening {
+  animation: pulse 0.8s ease-in-out infinite;
+}
+
+.reporter-tab.voice-tab.open {
+  color: #8fd88f;
+}
+
+.reporter-tab.voice-tab.called {
+  height: 28px;
+  opacity: 1;
+  color: #fff3c4;
+  box-shadow: 0 0 10px 2px rgba(255, 209, 0, 0.55);
+  animation: voice-call 1.2s ease-in-out infinite;
+}
+
+.reporter-tab.voice-tab.error {
+  color: #e06a5a;
+}
+
+@keyframes voice-call {
+  50% {
+    box-shadow: 0 0 3px 0 rgba(255, 209, 0, 0.2);
+  }
+}
+
 .guide.reporter {
   width: min(560px, 94vw);
 }
