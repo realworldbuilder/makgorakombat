@@ -18,27 +18,10 @@ export interface UiAssets {
 }
 
 /**
- * The spells whose icon to try, in order, for a name the build may not have: the classic client
- * has no death knight, monk, demon hunter or evoker spells, so theirs borrow a look-alike; a
- * status effect takes the icon of a spell that causes it. A name not listed is looked up as is.
+ * The spells whose icon to try, in order, for a name an install has no pinned file for: a status
+ * effect takes the icon of a spell that causes it. A name not listed is looked up as is.
  */
 const LOOKALIKES: Record<string, string[]> = {
-  'Icy Touch': ['Icy Touch', 'Frost Shock', 'Frostbolt'],
-  'Death Strike': ['Death Strike', 'Mortal Strike', 'Heroic Strike'],
-  'Death Coil': ['Death Coil', 'Shadow Bolt'],
-  'Tiger Palm': ['Tiger Palm', 'Hamstring', 'Sinister Strike'],
-  'Rising Sun Kick': ['Rising Sun Kick', 'Kick'],
-  'Leg Sweep': ['Leg Sweep', 'Kick', 'Gouge'],
-  'Chaos Strike': ['Chaos Strike', 'Mortal Strike'],
-  'Fel Rush': ['Fel Rush', 'Charge'],
-  'Blade Dance': ['Whirlwind', 'Blade Dance'],
-  'Living Flame': ['Living Flame', 'Fireball'],
-  'Fire Breath': ['Fire Breath', 'Flamestrike', 'Fireball'],
-  'Azure Strike': ['Azure Strike', 'Arcane Missiles', 'Arcane Explosion'],
-  // The build's lowest "Hover" is a creature spell wearing Fear's icon.
-  'Hover': ['Levitate', 'Slow Fall', 'Hover'],
-  'Kill Shot': ['Kill Shot', 'Aimed Shot'],
-  'Disengage': ['Disengage', 'Feign Death'],
   'Shoot': ['Shoot', 'Auto Shot'],
   'Stunned': ['Bash', 'Hammer of Justice'],
   'Feared': ['Fear', 'Psychic Scream'],
@@ -49,26 +32,75 @@ const LOOKALIKES: Record<string, string[]> = {
 };
 
 /**
- * The icon files of the player's own spell, tried before the name, where looking the name up
- * finds something else (checked against the classic beta and retail on 25 Oct 2026): retail's
- * lowest Chaos Strike, Fel Rush, Fire Breath and Living Flame are creature spells with other
- * pictures, classic's lowest Fear wears the game's placeholder, and Bash and Riposte change picture
- * from one game to the other. Retail redrew Aimed Shot and Wrath in a style unlike the rest of
- * the bar; the classic picture, which both games have, is kept so a kit looks the same in either.
- * The auto-attack, when the weapon has no icon, is Heroic Strike's sword and Shoot is the bow:
- * looked up by name they were a totem's fire, a cat's face and a wand. An install without a file
- * falls through to the name.
+ * The icon file of every ability in the kits, the player's own spell's, so no two slots in the
+ * game show the same picture (a test holds them to that). Looking a name up takes the lowest spell
+ * id of that name, often a creature's copy wearing another spell's picture: checked against the
+ * classic beta and retail on 26 Oct 2026, Crusader Strike came up as Smite, Holy Nova as Holy
+ * Light, Raptor Strike as Overpower and Hover as Fear, and the classic beta, which has no death
+ * knight, monk, demon hunter or evoker, lent Death Strike Mortal Strike's and both monk kicks
+ * Kick's. The classic beta holds the retail files, so a pin is the same picture in either game.
+ * Retail redrew Aimed Shot and Wrath in a style unlike the rest of the bar; the classic picture,
+ * which both games have, is kept, as it is for Howl of Terror. The auto-attack, when the weapon has no
+ * icon, is Heroic Strike's sword and Shoot is the bow: looked up by name they were a totem's fire,
+ * a cat's face and a wand. Fear, Bash and Riposte picture the effects they cause. An install
+ * without a file falls through to the name.
  */
-const PINNED: Record<string, number[]> = {
+export const PINNED: Record<string, number[]> = {
+  // Warrior
+  Charge: [132337],
+  'Mortal Strike': [132355],
+  Execute: [135358],
+  // Paladin
+  'Crusader Strike': [135891],
+  'Hammer of Justice': [135963],
+  'Holy Light': [135920],
+  // Hunter
   'Aimed Shot': [135130],
+  Disengage: [132294],
+  'Raptor Strike': [1376046],
+  // Rogue
+  'Sinister Strike': [136189],
+  'Kidney Shot': [132298],
+  Evasion: [136205],
+  // Priest
+  'Mind Blast': [136224],
+  'Holy Nova': [135922],
+  'Power Word: Shield': [135940],
+  // Death knight
+  'Icy Touch': [237526],
+  'Death Strike': [237517],
+  'Death Coil': [136145],
+  // Shaman
+  'Lightning Bolt': [136048],
+  'Earth Shock': [136026],
+  Stormstrike: [132314],
+  // Mage
+  Frostbolt: [135846],
+  'Frost Nova': [135848],
+  Blink: [135736],
+  // Warlock
+  'Shadow Bolt': [136197],
+  Corruption: [136118],
+  'Howl of Terror': [136147],
+  // Monk
+  'Tiger Palm': [606551],
+  'Rising Sun Kick': [642415],
+  'Leg Sweep': [642414],
+  // Druid
   Wrath: [136006],
-  Attack: [132282],
-  Shoot: [132222],
+  Moonfire: [136096],
+  Rake: [132122],
+  // Demon hunter
   'Chaos Strike': [1305152],
   'Fel Rush': [1247261],
   'Blade Dance': [1305149],
-  'Fire Breath': [4622458],
+  // Evoker
   'Living Flame': [4622464],
+  'Fire Breath': [4622458],
+  Hover: [4622463],
+  // The auto-attack and the effects.
+  Attack: [132282],
+  Shoot: [132222],
   Fear: [136183],
   Bash: [132114],
   Riposte: [132336],

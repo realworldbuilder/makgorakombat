@@ -303,14 +303,12 @@ describe('the hit table', () => {
   });
 
   it('a fear on a stunned target is IMMUNE', () => {
-    const match = fighting(3, 1, [WARLOCK, WARRIOR]);
+    const match = fighting(1.5, 1, [WARLOCK, WARRIOR]);
     const target = match.fighters[1];
     target.state = 'stun';
     target.move = 'dazed';
     target.stunT = 300;
-    press(match, 0, 2); // Fear, a 1 s cast
-    rig(match, 'hit');
-    run(match, 61);
+    press(match, 0, 2, 'hit'); // Howl of Terror
     expect(texts(match, 1)).toContain('immune:IMMUNE');
     expect(match.texts.find((t) => t.text === 'IMMUNE')).toMatchObject({ side: 1, from: 0 });
     expect(target.state).toBe('stun');
@@ -571,19 +569,19 @@ describe('abilities', () => {
   });
 
   it('a dot ticks every 3 s until its ticks are spent', () => {
-    const match = fighting(4, 1, [PRIEST, WARRIOR]);
-    press(match, 0, 1, 'hit'); // Shadow Word: Pain
+    const match = fighting(4, 1, [WARLOCK, WARRIOR]);
+    press(match, 0, 1, 'hit'); // Corruption
     expect(match.fighters[1].dots.length).toBe(1);
     expect(match.fighters[1].hp).toBe(HP);
     run(match, DOT_TICK_FRAMES);
-    expect(match.fighters[1].hp).toBe(HP - 7);
-    expect(texts(match, 1)).toContain('dot:7');
+    expect(match.fighters[1].hp).toBe(HP - 8);
+    expect(texts(match, 1)).toContain('dot:8');
     expect(match.sparks.some((s) => s.kind === 'dot')).toBe(true);
     run(match, DOT_TICK_FRAMES * 4);
-    expect(match.fighters[1].hp).toBe(HP - 35);
+    expect(match.fighters[1].hp).toBe(HP - 40);
     expect(match.fighters[1].dots.length).toBe(0);
     run(match, DOT_TICK_FRAMES);
-    expect(match.fighters[1].hp).toBe(HP - 35);
+    expect(match.fighters[1].hp).toBe(HP - 40);
   });
 
   it('a cast fills its bar, then the bolt flies and slows', () => {
@@ -622,9 +620,9 @@ describe('abilities', () => {
   });
 
   it('a damage-over-time spell lands as an impact though it deals nothing yet', () => {
-    const match = fighting(4, 1, [PRIEST, WARRIOR]);
-    press(match, 0, 1, 'hit'); // Shadow Word: Pain
-    expect(match.spellEvents.map((e) => `${e.spell}:${e.kind}`)).toEqual(['shadowWordPain:release', 'shadowWordPain:impact']);
+    const match = fighting(4, 1, [WARLOCK, WARRIOR]);
+    press(match, 0, 1, 'hit'); // Corruption
+    expect(match.spellEvents.map((e) => `${e.spell}:${e.kind}`)).toEqual(['corruption:release', 'corruption:impact']);
   });
 
   it('a blow sets a cast back half a second, twice at most, and the cast still goes', () => {
@@ -724,6 +722,33 @@ describe('abilities', () => {
     expect(match.fighters[0].resource).toBe(85);
   });
 
+  it('a nova bursts out on both sides as far as a blow reaches, and no further', () => {
+    const behind = fighting(1.5, 1, [PRIEST, WARRIOR]);
+    behind.fighters[0].facing = -1; // the warrior is at the priest's back
+    press(behind, 0, 1, 'hit'); // Holy Nova
+    expect(behind.fighters[1].hp).toBeLessThan(HP);
+    const far = fighting(4, 1, [PRIEST, WARRIOR]);
+    press(far, 0, 1, 'hit');
+    expect(texts(far, 0)).toContain('info:OUT OF RANGE');
+    expect(far.fighters[1].hp).toBe(HP);
+  });
+
+  it('Frost Nova holds the target a second', () => {
+    const match = fighting(1.5, 1, [MAGE, WARRIOR]);
+    press(match, 0, 1, 'hit');
+    expect(match.fighters[1].state).toBe('stun');
+    expect(match.fighters[1].stunT).toBeLessThanOrEqual(60);
+  });
+
+  it('a hunter strikes by hand with Raptor Strike, but not from afar', () => {
+    const match = fighting(1.5, 1, [HUNTER, WARRIOR]);
+    press(match, 0, 2, 'hit');
+    expect(until(match, (m) => m.fighters[1].hp < HP, 60)).toBeGreaterThan(0);
+    const far = fighting(5, 1, [HUNTER, WARRIOR]);
+    press(far, 0, 2, 'hit');
+    expect(texts(far, 0)).toContain('info:OUT OF RANGE');
+  });
+
   it('Disengage leaps away', () => {
     const match = fighting(1.5, 1, [HUNTER, WARRIOR]);
     const x = match.fighters[0].x;
@@ -734,11 +759,9 @@ describe('abilities', () => {
     expect(match.fighters[0].x).toBeLessThan(x - 2);
   });
 
-  it('Fear sends the target running until a blow breaks it', () => {
-    const match = fighting(3, 1, [WARLOCK, WARRIOR]);
-    press(match, 0, 2);
-    rig(match, 'hit');
-    run(match, 61);
+  it('Howl of Terror sends the target running until a blow breaks it', () => {
+    const match = fighting(1.5, 1, [WARLOCK, WARRIOR]);
+    press(match, 0, 2, 'hit');
     expect(match.fighters[1].state).toBe('fear');
     expect(match.fighters[1].facing).toBe(1);
     const x = match.fighters[1].x;
@@ -760,10 +783,8 @@ describe('abilities', () => {
   });
 
   it('a fear runs out on its own', () => {
-    const match = fighting(3, 1, [WARLOCK, WARRIOR]);
-    press(match, 0, 2);
-    rig(match, 'hit');
-    run(match, 61);
+    const match = fighting(1.5, 1, [WARLOCK, WARRIOR]);
+    press(match, 0, 2, 'hit');
     expect(match.fighters[1].state).toBe('fear');
     run(match, 150);
     expect(match.fighters[1].state).not.toBe('fear');
