@@ -108,7 +108,14 @@ export interface Peer {
   back?: boolean;
 }
 
-export type Message = Meet | Hello | RosterMessage | StageMessage | Rematch | Back | Peer | Result;
+/** The room's word that the other player opened the match's voice on Discord: the invite to the same channel. */
+export interface VoiceMessage {
+  t: 'voice';
+  url: string;
+  by: 'host' | 'guest';
+}
+
+export type Message = Meet | Hello | RosterMessage | StageMessage | Rematch | Back | Peer | Result | VoiceMessage;
 
 export function specOf(champion: Champion): FighterSpec {
   const spec: FighterSpec = {

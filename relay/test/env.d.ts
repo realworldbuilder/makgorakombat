@@ -4,5 +4,8 @@ declare namespace Cloudflare {
     ROOMS: DurableObjectNamespace<import('../src/index').Room>;
     LOBBY: DurableObjectNamespace<import('../src/lobby').Lobby>;
     SITE: DurableObjectNamespace<import('../src/site').Site>;
+    DISCORD_TOKEN?: string;
+    DISCORD_GUILD?: string;
+    DISCORD_CATEGORY?: string;
   }
 }

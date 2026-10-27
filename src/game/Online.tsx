@@ -33,6 +33,8 @@ export interface Session {
   code: string;
   /** The other install: 'wow', 'wow_classic' ... */
   theirProduct: string;
+  /** The other player's name, when the lobby matched the two. */
+  them?: string;
 }
 
 /** Waits for the other page in the room and the handshake's first step: both say their version, and a different one is refused. */

@@ -6,6 +6,7 @@ import { cleanName, isPlayerId, LOBBY, type Lobby } from './lobby';
 import { GameRecord, kindOf, WATCH_CAP } from './record';
 import { HELD_MAX, RECONNECT_MS, SILENT_MS } from './seats';
 import { readHit, SITE, type Site, type SiteSpan } from './site';
+import { channelName, closeVoice, openVoice, type Voice, type VoiceEnv, sweepVoice, voiceOn } from './voice';
 
 export { Lobby } from './lobby';
 export { Site } from './site';
@@ -47,9 +48,13 @@ export { Site } from './site';
  * their results differ), left (back to the roster or a closed tab before the end), dropped (a
  * socket gone and not back in time), with the reconnects along the way; and a room that closes
  * with no match ever started in it is a record of its own. Nothing the pages send changes for it.
+ *
+ * Either player may ask the room for voice (voice.ts): the first ask has the relay's Discord bot
+ * make a channel for the two and an invite to it, every ask after hands back the same, and the
+ * other player hears {t:'voice'} with the invite. The channel goes when the room closes.
  */
 
-export interface Env {
+export interface Env extends VoiceEnv {
   ROOMS: DurableObjectNamespace<Room>;
   LOBBY: DurableObjectNamespace<Lobby>;
   SITE: DurableObjectNamespace<Site>;
@@ -200,6 +205,8 @@ export class Room extends DurableObject<Env> {
   /** When each socket last sent a message; its pings the runtime keeps for us. */
   private readonly heard = new WeakMap<WebSocket, number>();
   private checkedAt = 0;
+  /** The channel being made for a first ask for voice, so two asks at once make one. */
+  private voicing: Promise<Voice> | undefined;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -220,8 +227,10 @@ export class Room extends DurableObject<Env> {
 
   async fetch(request: Request): Promise<Response> {
     if ((await this.ctx.storage.get<number>('opened')) === undefined) return new Response('There is no room with that code.', { status: 404 });
-    const params = new URL(request.url).searchParams;
+    const url = new URL(request.url);
+    const params = url.searchParams;
     const role = params.get('role') as Seat | null;
+    if (url.pathname.endsWith('/voice')) return this.voice(role, params.get('id') || undefined);
     if (role === null || !SEATS.includes(role)) return new Response('role must be host, guest or watch', { status: 400 });
     if (request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') return new Response('Expected a WebSocket', { status: 426 });
     if (role === 'watch') return this.watch();
@@ -266,6 +275,38 @@ export class Room extends DurableObject<Env> {
     await this.schedule();
     await this.report(this.heads());
     return new Response(null, { status: 101, webSocket: client });
+  }
+
+  /**
+   * A player asks for voice: the match's Discord channel, made on the first ask, as its invite. Only
+   * a page in one of the two seats (by the id it joined with) may ask, not a watcher or a stranger
+   * with the code. The other player is told, so their page can offer to join.
+   */
+  private async voice(role: Seat | null, id: string | undefined): Promise<Response> {
+    if (!voiceOn(this.env)) return new Response('This relay has no voice.', { status: 404 });
+    if (role !== 'host' && role !== 'guest') return new Response('role must be host or guest', { status: 400 });
+    const seated = id !== undefined && (this.live(role).some((ws) => this.idOf(ws) === id) || this.away[role]?.id === id);
+    if (!seated) return new Response('Only the two players in the room may open its voice.', { status: 403 });
+    let voice = await this.ctx.storage.get<Voice>('voice');
+    if (!voice) {
+      this.voicing ??= this.openVoice().finally(() => (this.voicing = undefined));
+      try {
+        voice = await this.voicing;
+      } catch (cause) {
+        console.warn('Discord did not make the voice channel:', cause);
+        return new Response('Discord would not make the voice channel; try again.', { status: 502 });
+      }
+    }
+    this.tell(other(role), JSON.stringify({ t: 'voice', url: voice.url, by: role }));
+    return Response.json({ url: voice.url });
+  }
+
+  /** The match's channel, under the two names the lobby matched (or the room's code), kept for the room's life. */
+  private async openVoice(): Promise<Voice> {
+    const [code, players] = await Promise.all([this.ctx.storage.get<string>('code'), this.ctx.storage.get<Pair>('players')]);
+    const voice = await openVoice(this.env, channelName(players ? [players.host.name, players.guest.name] : undefined, code ?? ''));
+    await this.ctx.storage.put('voice', voice);
+    return voice;
   }
 
   /** A watcher comes in: told who is playing, then the game so far, and from then on everything as it comes. */
@@ -347,7 +388,9 @@ export class Room extends DurableObject<Env> {
     if (!ended && this.heads() === 0) {
       // The night's log has the match still open, or the room that never had one, before the room forgets it all.
       const last = (await this.close('left')) ?? (await this.never());
-      const lobby = await this.ctx.storage.get<string>('lobby');
+      const [lobby, voice] = await Promise.all([this.ctx.storage.get<string>('lobby'), this.ctx.storage.get<Voice>('voice')]);
+      // The match's voice channel goes with the room; one left behind is the hourly sweep's.
+      if (voice) await closeVoice(this.env, voice.channel).catch((cause) => console.warn('Discord did not delete the voice channel:', cause));
       await this.ctx.storage.deleteAll();
       this.away = {};
       this.record.clear();
@@ -632,6 +675,16 @@ export default {
       return env.ROOMS.getByName(code).fetch(request);
     }
 
+    // A match's voice on Discord (voice.ts): whether this relay has it, and a player's ask for their room's channel.
+    if (url.pathname === '/voice' && request.method === 'GET') return Response.json({ on: voiceOn(env) }, { headers: cors });
+    const voice = /^\/rooms\/([A-Za-z]+)\/voice$/.exec(url.pathname);
+    if (voice && request.method === 'POST') {
+      const code = voice[1]!.toUpperCase();
+      if (!isCode(code)) return new Response('That is not a room code.', { status: 404, headers: cors });
+      const answer = await env.ROOMS.getByName(code).fetch(request);
+      return new Response(answer.body, { status: answer.status, headers: { ...cors, 'Content-Type': answer.headers.get('Content-Type') ?? 'text/plain' } });
+    }
+
     if (url.pathname === '/lobby/ws' && request.method === 'GET') return env.LOBBY.getByName(LOBBY).fetch(request);
     // The lobby's numbers, for a page that is not in it (the title) or a bot.
     if (url.pathname === '/lobby/stats' && request.method === 'GET') {
@@ -669,7 +722,12 @@ export default {
       return Response.json(report, { headers: { ...cors, 'Cache-Control': 'no-store' } });
     }
 
-    if (url.pathname === '/') return new Response('makgora-relay: GET /lobby/ws?name=&id=[&busy=1|&requeue=1], GET /lobby/stats, GET /lobby/board?span=night|all[&id=], GET /lobby/report?span=night|day|week|all; POST /site/hit, GET /site/report?span=day|week|month|all; or POST /rooms, then GET /rooms/:code/ws?role=host|guest|watch[&id=]', { headers: cors });
+    if (url.pathname === '/') return new Response('makgora-relay: GET /lobby/ws?name=&id=[&busy=1|&requeue=1], GET /lobby/stats, GET /lobby/board?span=night|all[&id=], GET /lobby/report?span=night|day|week|all; GET /voice, POST /rooms/:code/voice?role=&id=; POST /site/hit, GET /site/report?span=day|week|month|all; or POST /rooms, then GET /rooms/:code/ws?role=host|guest|watch[&id=]', { headers: cors });
     return new Response('Not found', { status: 404, headers: cors });
+  },
+
+  /** Once an hour: any voice channel a closed room left on Discord goes. */
+  async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(sweepVoice(env).then((n) => n > 0 && console.log(`Deleted ${n} voice channels closed rooms left.`)));
   },
 } satisfies ExportedHandler<Env>;
