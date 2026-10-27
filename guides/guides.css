@@ -19,6 +19,7 @@
   --muted: #a8a49a;
   --blood: #c8121c;
   --rage: #c41f3b;
+  --focus: #ff8040;
   --gold: #ffd100;
   --ease: cubic-bezier(0.32, 0.72, 0, 1);
   --font: 'Geist', ui-sans-serif, system-ui, sans-serif;
@@ -548,6 +549,20 @@ kbd {
   font-family: var(--mono);
   font-size: calc(30 * var(--u));
   font-weight: 600;
+}
+
+/* Focus, the hunter's: the game's own orange where rage is red. */
+.gains.focus b,
+.steps.focus b {
+  color: var(--focus);
+}
+
+.chips li.focus {
+  border-color: var(--focus);
+}
+
+.steps.focus i {
+  background: linear-gradient(90deg, var(--focus) calc(var(--r) * 1%), #2b2b2b calc(var(--r) * 1%));
 }
 
 /* ---- ?export: every slide at 1080 x 1350, one under the other, for the images -------------- */
