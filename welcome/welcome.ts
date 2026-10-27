@@ -1,5 +1,6 @@
 import { ALL_FATALITIES, type SequenceToken } from '../src/engine/fatalities';
 import { lobbyStats } from '../src/game/net/lobby';
+import { trackPage } from '../src/game/track';
 
 /*
  * The welcome page's few moving parts: the island nav's menu and the section it is on, the fade up
@@ -9,6 +10,9 @@ import { lobbyStats } from '../src/game/net/lobby';
  */
 
 document.documentElement.classList.add('js');
+
+// The site's numbers: this page opened (src/game/track.ts).
+trackPage('welcome');
 
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 

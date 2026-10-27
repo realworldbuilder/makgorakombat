@@ -83,6 +83,23 @@ and tells each of them its code and whether they host. Nobody reads a code out.
   New York with the most matches started and `hours` those started by hour of the day there.
   `fights`, every record oldest first, comes with `night` and `day` only.
 
+## The site's numbers
+
+- The welcome page and the game (`src/game/track.ts`) send `POST /site/hit` with a plain-text
+  body `{"v","p","k","d"?,"x"?,"r"?,"w"?}`: `v` a random id the browser keeps, `p` the page
+  (`welcome` or `game`), `k` what happened (`view` the page opened, `folder` a World of Warcraft
+  folder read with `d` its edition, `fight` a fight begun with `d` cpu, local or online and `x` the
+  champion, `watch` a fight watched, `error` a loose error with `x` its message, `ping` once a
+  minute while the page is in front), `r` the referrer and `w` the window's width on a view. The
+  relay adds the country Cloudflare reads off the request and the browser, system and device from
+  the user agent; robots and headless browsers are dropped. No address and no name are kept.
+- One Durable Object, `Site` (`src/site.ts`), keeps the hits in SQLite for 90 days, 200,000 at most.
+- `GET /site/report?span=day|week|month|all` adds them up: who is on the site now (a hit or ping
+  in the last three minutes), visitors, new visitors, page views, a series by hour (day) or by
+  date in New York, how far visitors got (welcome, game, folder, fight, online), and the top
+  referrers, countries, browsers, systems, devices, pages, editions, fight modes, champions and
+  errors. `week` is the default. The game's `/stats/` page, linked from nowhere, shows it.
+
 ## The room
 
 - `POST /rooms` makes a room and answers `{"code":"HXBXDC"}`.
