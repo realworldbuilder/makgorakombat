@@ -87,8 +87,8 @@ describe('the README', () => {
 
   it('lists every stage and counts them right', () => {
     for (const stage of STAGES) expect(README.toLowerCase()).toContain(stage.name.toLowerCase().replace(/^the /, ''));
-    const all = [0, 1, 530, 571];
-    expect(README).toContain(`| the ${NUMBERS[stagesFor(all, 'retail').length]} on the rebuilt world |`);
-    expect(README).toContain(`| all ${NUMBERS[stagesFor(all, 'classic').length]}, `);
+    // Retail has every map; WoW Forever only the two continents of 2004.
+    expect(README).toContain(`| the ${NUMBERS[stagesFor([0, 1, 530, 571, 631], 'retail').length]} on the rebuilt world |`);
+    expect(README).toContain(`| all ${NUMBERS[stagesFor([0, 1], 'classic').length]} on its two continents, `);
   });
 });

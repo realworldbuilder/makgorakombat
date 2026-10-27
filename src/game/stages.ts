@@ -16,7 +16,7 @@ export interface Stage {
   name: string;
   /** Where it is, in a word, for the strip. */
   where: string;
-  /** The game's map id: 0 Eastern Kingdoms, 1 Kalimdor, 530 Outland, 571 Northrend. */
+  /** The game's map id: 0 Eastern Kingdoms, 1 Kalimdor, 530 Outland, 571 Northrend, 631 Icecrown Citadel. */
   map: number;
   x: number;
   y: number;
@@ -39,6 +39,13 @@ export const REACH = 260;
  * Cut to the six that read clean behind a fight (William, 24 Oct 2026). Left out: the Valley of
  * Trials and Sentinel Hill, where buildings and rocks stood in front of the fighters, and
  * Dalaran, the Ring of Trials and the Gate of Icecrown. Their spots are in git history.
+ *
+ * After them, the legendary stages (26 Oct 2026): WoW's own answers to the stages every fighting
+ * game has, the walled pit, the portal, the bridge over nothing, the final boss's roof. The Frozen
+ * Throne is a raid's map, so only an install with Wrath's raids draws it; Netherstorm needs Outland.
+ * Tried and left out: Thandol Span (broken in the middle on both worlds), the Gates of Ahn'Qiraj and
+ * Karazhan (walls in front at fighting distance), Molten Core and Illidan's roof (no floor found at
+ * the raid's coordinates), the outdoor Dark Portal in Hellfire (the stair leaves no flat ground).
  */
 export const STAGES: Stage[] = [
   { slug: 'gurubashi', name: 'Gurubashi Arena', where: 'Stranglethorn Vale', map: 0, x: -13215, y: 250, facing: 0, reach: REACH, why: 'The pit: the game\'s own fighting ring, the stands all round.' },
@@ -47,6 +54,10 @@ export const STAGES: Stage[] = [
   { slug: 'goldshire', name: 'Goldshire', where: 'Elwynn Forest', map: 0, x: -9400, y: 50, facing: 315, reach: REACH, why: 'The flowered lawn beside the Lion\'s Pride, where duels have been fought since 2004.' },
   { slug: 'darnassus', name: 'The Gardens', where: 'Darnassus', map: 1, x: 9660, y: 2520, facing: 0, reach: REACH, why: 'Under the great tree, a canopy over the haze.' },
   { slug: 'thunder-bluff', name: 'Thunder Bluff', where: 'Mulgore', map: 1, x: -1300, y: 30, facing: 0, reach: REACH, why: 'The high rise: tents, totems and a drop on every side.' },
+  { slug: 'the-maul', name: 'The Maul', where: 'Dire Maul', map: 1, x: -3750, y: 1090, facing: 90, reach: REACH, why: 'The ogres\' fighting pit outside Dire Maul, walled all round: Kalimdor\'s Gurubashi.' },
+  { slug: 'dark-portal', name: 'The Dark Portal', where: 'Blasted Lands', map: 0, x: -11840, y: -3200, facing: 90, reach: REACH, why: 'On the threshold, the portal\'s green fire at the fighters\' backs; on a classic world it has not opened yet.' },
+  { slug: 'nether-bridge', name: 'The Nether Bridge', where: 'Netherstorm', map: 530, x: 3370, y: 4300, facing: 90, reach: REACH, why: 'Girders and grating over the Twisting Nether, the broken pieces of Draenor drifting past.' },
+  { slug: 'frozen-throne', name: 'The Frozen Throne', where: 'Icecrown Citadel', map: 631, x: 503, y: -2124, z: 841, facing: 270, reach: REACH, why: 'The top of the citadel, the ice stair up to the Lich King\'s throne behind: the last fight of Wrath.' },
 ];
 
 /** The stages an install can draw: those whose map it has on disk, and whose ground its game (see edition.ts) still has. */
@@ -65,10 +76,17 @@ export function worldOfProduct(product: string): 'classic' | 'retail' | undefine
   return 'retail';
 }
 
-/** The stages of this install the other one can draw too: a stage of one world only goes in when the other is surely of that world. */
+/** The two continents of 2004, which every install has; Outland, Northrend and the raids' maps only retail surely has. */
+const EVERY_INSTALL = [0, 1];
+
+/**
+ * The stages of this install the other one can draw too: a stage of one world only goes in when the
+ * other is surely of that world, and a stage off the two continents only when the other is retail,
+ * since the meeting does not say which expansion a classic client has reached.
+ */
 export function sharedStages(mine: readonly Stage[], theirProduct: string): Stage[] {
   const theirs = worldOfProduct(theirProduct);
-  return mine.filter((stage) => !stage.only || stage.only === theirs);
+  return mine.filter((stage) => (!stage.only || stage.only === theirs) && (EVERY_INSTALL.includes(stage.map) || theirs === 'retail'));
 }
 
 /** A number in [0, n) from a seed, stirred so that the seeds of one rematch after another land far apart. */

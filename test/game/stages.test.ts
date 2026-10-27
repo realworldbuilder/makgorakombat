@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { decode, encode, type StageKey } from '../../src/game/net/handshake';
 import { drawGround, sharedStages, STAGES, stagesFor, worldOfProduct } from '../../src/game/stages';
 
-const ALL_MAPS = [0, 1, 530, 571];
+const ALL_MAPS = [0, 1, 530, 571, 631];
 const slugs = (keys: StageKey[]) => keys.map((key) => (key.kind === 'stage' ? key.slug : key.kind));
 
 describe('the stage drawn for an online match', () => {
@@ -67,7 +67,7 @@ describe('the stages two installs share', () => {
   });
 
   it('keeps a classic-only stage between two classic-era installs', () => {
-    const mine = stagesFor(ALL_MAPS, 'classic');
+    const mine = stagesFor([0, 1], 'classic');
     expect(mine).toContain(valley);
     expect(sharedStages(mine, 'wow_classic_era')).toEqual(mine);
   });
@@ -79,10 +79,21 @@ describe('the stages two installs share', () => {
     expect(sharedStages(mine, 'wow').length).toBe(mine.length - 1);
   });
 
-  it('keeps every stage a retail host has for any guest, retail having no stage of its own yet', () => {
+  it('keeps every stage a retail host has for a retail guest, and those of the two continents for any guest', () => {
     const mine = stagesFor(ALL_MAPS, 'retail');
     expect(mine).not.toContain(valley);
-    for (const product of ['wow', 'wow_classic_era', 'wow_classic']) expect(sharedStages(mine, product)).toEqual(mine);
+    expect(sharedStages(mine, 'wow')).toEqual(mine);
+    for (const product of ['wowf', 'wow_classic_era', 'wow_classic']) expect(sharedStages(mine, product)).toEqual(mine.filter((stage) => stage.map === 0 || stage.map === 1));
+  });
+
+  it('never draws Outland or a raid for a guest who may not have it', () => {
+    const shared = sharedStages(stagesFor(ALL_MAPS, 'retail'), 'wowf');
+    const away = STAGES.filter((stage) => stage.map !== 0 && stage.map !== 1).map((stage) => stage.slug);
+    expect(away).toEqual(expect.arrayContaining(['nether-bridge', 'frozen-throne']));
+    for (let seed = 0; seed < 200; seed++) {
+      const key = drawGround(shared, [], seed);
+      expect(key.kind === 'stage' && away.includes(key.slug)).toBe(false);
+    }
   });
 
   it('never draws the classic-only stage for a retail guest', () => {
