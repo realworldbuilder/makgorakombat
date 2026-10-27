@@ -162,7 +162,7 @@ function classKits(twoHand: boolean): Record<number, { key: string; name: string
       abilities: [
         ability({ id: 'charge', name: 'Charge', short: 'CHARGE', kind: 'charge', cooldown: 15 * S, damage: 5, stun: 60, gain: 20, anims: ['CombatChargeEnd', ...strike], holdAnims: ['CombatChargeLoop', 'Sprint', 'Run', 'Walk'] }),
         ability({ id: 'mortalStrike', name: 'Mortal Strike', short: 'MORTAL', kind: 'melee', cost: 30, cooldown: 6 * S, damage: 18, anims: BIG_2H }),
-        ability({ id: 'execute', name: 'Execute', short: 'EXECUTE', kind: 'melee', cost: 15, damage: 30, execute: true, anims: EXECUTE }),
+        ability({ id: 'execute', name: 'Execute', short: 'EXECUTE', kind: 'melee', cost: 20, cooldown: 6 * S, damage: 30, execute: true, anims: EXECUTE }),
       ],
     },
     2: {
@@ -178,7 +178,7 @@ function classKits(twoHand: boolean): Record<number, { key: string; name: string
       abilities: [
         ability({ id: 'aimedShot', name: 'Aimed Shot', short: 'AIMED', kind: 'bolt', cost: 35, cast: 1.5 * S, damage: 24, anims: ['AttackBow', 'AttackRifle', 'AttackCrossbow', 'AttackThrown', ...SPELL], holdAnims: ['ReadyBow', 'ReadyRifle', 'ReadyCrossbow', ...CAST_HOLD] }),
         ability({ id: 'disengage', name: 'Disengage', short: 'DISENGAGE', kind: 'leap', cooldown: 15 * S, gcd: false, anims: ['JumpStart', 'Jump', 'Dodge'] }),
-        ability({ id: 'killShot', name: 'Kill Shot', short: 'KILL SHOT', kind: 'bolt', cost: 10, damage: 30, execute: true, anims: ['AttackBow', 'AttackRifle', 'AttackCrossbow', 'AttackThrown', ...SPELL] }),
+        ability({ id: 'killShot', name: 'Kill Shot', short: 'KILL SHOT', kind: 'bolt', cost: 10, cooldown: 10 * S, damage: 30, execute: true, anims: ['AttackBow', 'AttackRifle', 'AttackCrossbow', 'AttackThrown', ...SPELL] }),
       ],
     },
     4: {
@@ -272,8 +272,8 @@ function classKits(twoHand: boolean): Record<number, { key: string; name: string
  * against every other, the computer on both sides: BALANCE=1 pnpm test prints the table.
  */
 export const PVP_DAMAGE: Record<string, number> = {
-  warrior: 0.9, paladin: 0.85, hunter: 0.85, rogue: 0.8, priest: 1.4, deathknight: 0.85, shaman: 1.1,
-  mage: 1.1, warlock: 1.15, monk: 0.8, druid: 1.15, demonhunter: 1.05, evoker: 1.2,
+  warrior: 0.9, paladin: 0.85, hunter: 0.9, rogue: 0.8, priest: 1.35, deathknight: 0.9, shaman: 1.1,
+  mage: 1.1, warlock: 1.2, monk: 0.8, druid: 1.15, demonhunter: 1.05, evoker: 1.25,
 };
 
 /**
