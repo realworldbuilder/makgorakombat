@@ -269,11 +269,11 @@ const SCHOOL_COLOURS = {
   arcane: '#ff8cff',
 } as const;
 const SCHOOLS: Record<string, keyof typeof SCHOOL_COLOURS> = {
-  crusaderStrike: 'holy', hammerOfJustice: 'holy',
-  fireBlast: 'fire', livingFlame: 'fire', fireBreath: 'fire',
+  crusaderStrike: 'holy', hammerOfJustice: 'holy', holyNova: 'holy',
+  livingFlame: 'fire', fireBreath: 'fire',
   lightningBolt: 'nature', earthShock: 'nature', stormstrike: 'nature', wrath: 'nature',
-  frostbolt: 'frost', icyTouch: 'frost',
-  shadowBolt: 'shadow', corruption: 'shadow', shadowWordPain: 'shadow', mindBlast: 'shadow', deathCoil: 'shadow',
+  frostbolt: 'frost', frostNova: 'frost', icyTouch: 'frost',
+  shadowBolt: 'shadow', corruption: 'shadow', howlOfTerror: 'shadow', mindBlast: 'shadow', deathCoil: 'shadow',
   moonfire: 'arcane',
 };
 

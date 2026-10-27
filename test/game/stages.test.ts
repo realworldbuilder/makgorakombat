@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { decode, encode, type StageKey } from '../../src/game/net/handshake';
 import { drawGround, sharedStages, STAGES, stagesFor, worldOfProduct } from '../../src/game/stages';
 
-const ALL_MAPS = [0, 1, 530, 571, 631];
+const ALL_MAPS = [0, 1, 530, 571, 615, 631];
 const slugs = (keys: StageKey[]) => keys.map((key) => (key.kind === 'stage' ? key.slug : key.kind));
 
 describe('the stage drawn for an online match', () => {
@@ -89,7 +89,7 @@ describe('the stages two installs share', () => {
   it('never draws Outland or a raid for a guest who may not have it', () => {
     const shared = sharedStages(stagesFor(ALL_MAPS, 'retail'), 'wowf');
     const away = STAGES.filter((stage) => stage.map !== 0 && stage.map !== 1).map((stage) => stage.slug);
-    expect(away).toContain('frozen-throne');
+    expect(away).toEqual(expect.arrayContaining(['zangarmarsh', 'obsidian-sanctum', 'frozen-throne']));
     for (let seed = 0; seed < 200; seed++) {
       const key = drawGround(shared, [], seed);
       expect(key.kind === 'stage' && away.includes(key.slug)).toBe(false);

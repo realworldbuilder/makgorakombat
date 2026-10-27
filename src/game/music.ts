@@ -42,6 +42,8 @@ const ZONES: Record<string, Cue> = {
   'thunder-bluff': { key: 'thunder-bluff', groups: [[8180997, 8180999, 8181001], [53213, 53214, 53215]] },
   // The Maul has none of its own; Dire Maul's is Zone-EnchantedForest.
   'the-maul': { key: 'enchanted-forest', groups: [[8180792, 8180784, 8180790, 8180786, 8180788], [53457, 53453, 53456, 53454, 53455]] },
+  'obsidian-sanctum': { key: 'chamber-of-aspects', groups: [[229783, 229784, 229785, 229786, 229787, 229788, 229789, 229790, 229791, 229792, 229794]] },
+  zangarmarsh: { key: 'zangarmarsh', groups: [[53819, 53820, 53821, 53822, 53823, 53824]] },
   // The Frozen Throne's area has none, so it is the citadel's: Zone-IcecrownDungeon.
   'frozen-throne': { key: 'icecrown-citadel', groups: [[349988, 350067, 350027, 350034, 350040, 350051, 349991, 350005]] },
 };

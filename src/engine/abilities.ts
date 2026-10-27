@@ -5,6 +5,8 @@ import type { Wielding } from './moves';
  * The class kits: three abilities per class, each with a cost in the class's resource, a cooldown,
  * a cast time, a reach and what it does, resolved to the model's own animations. Frames are at
  * 60 Hz; a cooldown of 90 is 1.5 s. Everything a class can do in the ring is in this file.
+ * Every class has something for up close (a blow, a charge, a nova or a breath), so none is
+ * helpless once the other is at its elbow, and no two abilities share a name or an icon.
  */
 
 export type ResourceKind = 'rage' | 'energy' | 'mana' | 'focus' | 'runic' | 'fury';
@@ -13,7 +15,7 @@ export type ResourceKind = 'rage' | 'energy' | 'mana' | 'focus' | 'runic' | 'fur
 export type AbilityKind =
   /** Swings at the target in front, within `range`. */
   | 'melee'
-  /** Hits the target anywhere within `range` the moment it fires; a bolt of light, a thrown hammer. */
+  /** Hits the target anywhere within `range` the moment it fires; a bolt of light, a thrown hammer. With `both`, a nova all round the caster, as far as a melee blow reaches. */
   | 'spell'
   /** Fires a projectile at the target; dodged by jumping. */
   | 'bolt'
@@ -178,7 +180,8 @@ function classKits(twoHand: boolean): Record<number, { key: string; name: string
       abilities: [
         ability({ id: 'aimedShot', name: 'Aimed Shot', short: 'AIMED', kind: 'bolt', cost: 35, cast: 1.5 * S, damage: 24, anims: ['AttackBow', 'AttackRifle', 'AttackCrossbow', 'AttackThrown', ...SPELL], holdAnims: ['ReadyBow', 'ReadyRifle', 'ReadyCrossbow', ...CAST_HOLD] }),
         ability({ id: 'disengage', name: 'Disengage', short: 'DISENGAGE', kind: 'leap', cooldown: 15 * S, gcd: false, anims: ['JumpStart', 'Jump', 'Dodge'] }),
-        ability({ id: 'killShot', name: 'Kill Shot', short: 'KILL SHOT', kind: 'bolt', cost: 10, cooldown: 10 * S, damage: 30, execute: true, anims: ['AttackBow', 'AttackRifle', 'AttackCrossbow', 'AttackThrown', ...SPELL] }),
+        // A hunter in melee range is not helpless: the strike by hand of the game's survival hunters, swung with whatever is held.
+        ability({ id: 'raptorStrike', name: 'Raptor Strike', short: 'RAPTOR', kind: 'melee', cost: 15, cooldown: 6 * S, damage: 16, anims: ['AttackUnarmed', 'Attack1H', ...STRIKE_1H] }),
       ],
     },
     4: {
@@ -193,7 +196,7 @@ function classKits(twoHand: boolean): Record<number, { key: string; name: string
       key: 'priest', name: 'PRIEST', resource: 'mana',
       abilities: [
         ability({ id: 'mindBlast', name: 'Mind Blast', short: 'MIND BLAST', kind: 'spell', cost: 25, cooldown: 4 * S, cast: 1 * S, damage: 22, anims: SPELL, holdAnims: CAST_HOLD }),
-        ability({ id: 'shadowWordPain', name: 'Shadow Word: Pain', short: 'SW: PAIN', kind: 'spell', cost: 20, dot: { damage: 7, ticks: 5 }, anims: SPELL }),
+        ability({ id: 'holyNova', name: 'Holy Nova', short: 'HOLY NOVA', kind: 'spell', both: true, range: ABILITY_MELEE_RANGE, cost: 20, cooldown: 6 * S, damage: 12, heal: 8, anims: OMNI }),
         ability({ id: 'powerWordShield', name: 'Power Word: Shield', short: 'PW: SHIELD', kind: 'self', cost: 25, cooldown: 10 * S, absorb: 25, anims: OMNI }),
       ],
     },
@@ -217,7 +220,8 @@ function classKits(twoHand: boolean): Record<number, { key: string; name: string
       key: 'mage', name: 'MAGE', resource: 'mana',
       abilities: [
         ability({ id: 'frostbolt', name: 'Frostbolt', short: 'FROSTBOLT', kind: 'bolt', cost: 20, cast: 1.5 * S, damage: 22, slow: 4 * S, anims: ['MagSpellCastBothFront', ...SPELL], holdAnims: CAST_HOLD }),
-        ability({ id: 'fireBlast', name: 'Fire Blast', short: 'FIRE BLAST', kind: 'spell', cost: 25, cooldown: 8 * S, range: 6, damage: 15, anims: ['MagSpellCastBothFront', ...SPELL] }),
+        // The ring has no root: the ice holds the target where it stands for a second, long enough to Blink away.
+        ability({ id: 'frostNova', name: 'Frost Nova', short: 'FROST NOVA', kind: 'spell', both: true, range: ABILITY_MELEE_RANGE, cost: 20, cooldown: 12 * S, damage: 8, stun: 60, anims: OMNI }),
         ability({ id: 'blink', name: 'Blink', short: 'BLINK', kind: 'blink', cost: 15, cooldown: 15 * S, anims: OMNI }),
       ],
     },
@@ -226,7 +230,7 @@ function classKits(twoHand: boolean): Record<number, { key: string; name: string
       abilities: [
         ability({ id: 'shadowBolt', name: 'Shadow Bolt', short: 'SHADOW BLT', kind: 'bolt', cost: 20, cast: 1.5 * S, damage: 27, anims: ['LocSpellCastBothFront', ...SPELL], holdAnims: CAST_HOLD }),
         ability({ id: 'corruption', name: 'Corruption', short: 'CORRUPTION', kind: 'spell', cost: 20, dot: { damage: 8, ticks: 5 }, anims: SPELL }),
-        ability({ id: 'fear', name: 'Fear', short: 'FEAR', kind: 'spell', cost: 20, cooldown: 20 * S, cast: 1 * S, range: 6, fear: 150, anims: ['LocSpellCastBothFront', ...OMNI], holdAnims: CAST_HOLD }),
+        ability({ id: 'howlOfTerror', name: 'Howl of Terror', short: 'HOWL', kind: 'spell', both: true, range: ABILITY_MELEE_RANGE, cost: 20, cooldown: 20 * S, fear: 150, anims: ['LocSpellCastBothFront', ...OMNI] }),
       ],
     },
     10: {
@@ -267,13 +271,13 @@ function classKits(twoHand: boolean): Record<number, { key: string; name: string
 /**
  * Each class's PvP damage modifier: everything it deals, swings and spells alike, is scaled by it,
  * the way the game tunes specs against each other in PvP without changing what their spells do.
- * The kits keep their character (a mage's slow big bolts, a rogue's quick light strikes, a priest's
+ * The kits keep their character (a mage's slow big bolts, a rogue's quick light strikes, a warlock's
  * damage over time); these even out how hard each hits overall. They come from playing every class
  * against every other, the computer on both sides: BALANCE=1 pnpm test prints the table.
  */
 export const PVP_DAMAGE: Record<string, number> = {
-  warrior: 0.9, paladin: 0.85, hunter: 0.9, rogue: 0.8, priest: 1.35, deathknight: 0.9, shaman: 1.1,
-  mage: 1.1, warlock: 1.2, monk: 0.8, druid: 1.15, demonhunter: 1.05, evoker: 1.25,
+  warrior: 0.9, paladin: 0.9, hunter: 1, rogue: 0.8, priest: 0.85, deathknight: 0.95, shaman: 1.1,
+  mage: 1.15, warlock: 1.25, monk: 0.8, druid: 1.15, demonhunter: 1.1, evoker: 1.25,
 };
 
 /**

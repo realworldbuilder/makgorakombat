@@ -35,7 +35,8 @@ const sec = (frames: number): string => {
 
 export function describeAbility(a: Ability, resource: ResourceKind): Tooltip {
   const hit = amount(a.damage, a.spread);
-  const melee = a.kind === 'melee' || (a.kind === 'self' && a.range <= 2.5) || a.kind === 'blink' || a.kind === 'leap';
+  const nova = a.kind === 'spell' && a.both;
+  const melee = a.kind === 'melee' || nova || (a.kind === 'self' && a.range <= 2.5) || a.kind === 'blink' || a.kind === 'leap';
   const parts: string[] = [];
   switch (a.kind) {
     case 'charge':
@@ -57,7 +58,8 @@ export function describeAbility(a: Ability, resource: ResourceKind): Tooltip {
       parts.push(a.both ? `Strikes on both sides for ${hit} damage` : `Strikes the target for ${hit} damage`);
       break;
     case 'spell':
-      if (a.damage) parts.push(`Deals ${hit} damage`);
+      if (nova) parts.push(a.damage ? `Bursts out around you, dealing ${hit} damage` : 'Bursts out around you');
+      else if (a.damage) parts.push(`Deals ${hit} damage`);
       break;
     case 'self':
       break;

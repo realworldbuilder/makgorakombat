@@ -31,10 +31,11 @@ function abilityCell(a: Ability, resource: ResourceKind): string {
   if (a.kind === 'rush') parts.push(`dashes ${a.range} yards`);
   if (a.kind === 'blink') parts.push(`${BLINK_DISTANCE} yards away`);
   if (a.kind === 'leap') parts.push('leaps back');
+  if (a.kind === 'spell' && a.both) parts.push('bursts out up close on both sides');
   if (a.cast > 0) parts.push(`${sec(a.cast)} s cast`);
   if (a.damage > 0) {
     const [lo, hi] = damageRange(a.damage, a.spread);
-    parts.push(`${lo}–${hi} damage${a.both ? ' on both sides' : ''}`);
+    parts.push(`${lo}–${hi} damage${a.both && a.kind !== 'spell' ? ' on both sides' : ''}`);
   }
   if (a.dot) parts.push(`${a.damage > 0 ? 'then ' : ''}${a.dot.damage} damage every 3 s, ${COUNTS[a.dot.ticks]}`);
   if (a.heal) parts.push(`heals ${a.heal}`);
@@ -88,7 +89,7 @@ describe('the README', () => {
   it('lists every stage and counts them right', () => {
     for (const stage of STAGES) expect(README.toLowerCase()).toContain(stage.name.toLowerCase().replace(/^the /, ''));
     // Retail has every map; WoW Forever only the two continents of 2004.
-    expect(README).toContain(`| the ${NUMBERS[stagesFor([0, 1, 530, 571, 631], 'retail').length]} on the rebuilt world |`);
+    expect(README).toContain(`| the ${NUMBERS[stagesFor([0, 1, 530, 571, 615, 631], 'retail').length]} on the rebuilt world |`);
     expect(README).toContain(`| all ${NUMBERS[stagesFor([0, 1], 'classic').length]} on its two continents, `);
   });
 });

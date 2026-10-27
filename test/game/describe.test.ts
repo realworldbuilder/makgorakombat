@@ -22,8 +22,18 @@ describe('describeAbility', () => {
       range: '8 yd range',
       cast: '1.5 sec cast',
       cooldown: '',
-      description: 'Hurls a bolt that deals 22 to 26 damage; it can be jumped over and slows the target for 4 sec.',
+      description: 'Hurls a bolt that deals 23 to 27 damage; it can be jumped over and slows the target for 4 sec.',
     });
+  });
+
+  it('words a nova as bursting out up close', () => {
+    expect(describeAbility(find(priest, 'holyNova'), priest.resource)).toMatchObject({
+      range: 'Melee Range',
+      cooldown: '6 sec cooldown',
+      description: 'Bursts out around you, dealing 9 to 11 damage and heals you for 8.',
+    });
+    const warlock = kitSpec(9);
+    expect(describeAbility(find(warlock, 'howlOfTerror'), warlock.resource).description).toBe('Bursts out around you and sends the target fleeing for 2.5 sec.');
   });
 
   it('says what a charge, a shield and an execute do', () => {

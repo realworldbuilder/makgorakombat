@@ -4,7 +4,7 @@ import { ATTACH, type AnchorAt, type Point, flightAt } from './fx';
 /*
  * The spells as light over the ring, on the HUD's canvas: each ability of the kits drawn as what
  * it is (a forked bolt for Lightning Bolt, a column from the sky for Moonfire, a gold bubble for
- * Power Word: Shield, a red crescent for Mortal Strike ...), timed off the engine's spell events
+ * Power Word: Shield, a red crescent for Mortal Strike, a ring of light for Holy Nova ...), timed off the engine's spell events
  * and its projectiles, anchored to the caster's hands and the target's chest. The game's own
  * models (fx.ts) are drawn in the ring beneath where the files have them; this layer adds the
  * light the renderer cannot (particles, glows, trails) and stands alone where there is no model.
@@ -257,6 +257,7 @@ const shotAt = (c: Cast, shot: Projectile, back = 0): Screen | undefined => c.s.
 // The spells.
 
 const BLUE = '120, 170, 255';
+const ICE = '170, 230, 255';
 const STORM = '150, 200, 255';
 const PURPLE = '170, 80, 255';
 const GOLD = '255, 205, 90';
@@ -401,32 +402,49 @@ const mindBlast: Style = (c) => {
   }
 };
 
-const shadowWordPain: Style = (c) => {
-  const { ctx, match, yard } = c.s;
-  const hit = impact(c, 30);
-  const chest = chestOf(c, c.targetSide);
-  if (!chest) return;
-  if (hit) {
-    const t = hit.t;
-    const life = 1 - t / 30;
-    // Smoke closing on the target in a spiral, a violet flare where it takes hold.
-    for (let k = 0; k < 8; k++) {
-      const angle = (k / 8) * Math.PI * 2 + t * 0.15;
-      const r = yard * Math.max(0.1, 1.2 - t * 0.05);
-      puff(ctx, chest[0] + Math.cos(angle) * r, chest[1] + Math.sin(angle) * r * 0.7, yard * 0.32, SMOKE, life * 0.7);
-    }
-    puff(ctx, chest[0], chest[1], yard * 0.6, SMOKE, life * 0.6);
-    glow(ctx, chest[0], chest[1], yard * (0.35 + t * 0.02), PURPLE, life, 0.15);
+/**
+ * A nova: a ring of `rgb` bursting out from the caster over the floor and through the air, as far
+ * as a blow reaches, and a flare where it catches the target.
+ */
+function nova(c: Cast, rgb: string, frames: number): void {
+  const { ctx, yard } = c.s;
+  const burst = release(c, frames);
+  const feet = burst && feetOf(c, c.side);
+  const chest = burst && chestOf(c, c.side);
+  if (burst && feet && chest) {
+    const t = burst.t;
+    const life = 1 - t / frames;
+    const r = yard * (0.4 + 2.2 * Math.min(1, t / (frames * 0.6)));
+    glow(ctx, chest[0], chest[1], yard * (0.9 - t * 0.02), rgb, life, 0.3);
+    ring(ctx, feet[0], feet[1], r, r * 0.25, rgb, life, Math.max(1.5, yard * 0.1 * life));
+    ring(ctx, chest[0], chest[1], r * 0.85, r * 0.85, rgb, life * 0.6, Math.max(1, yard * 0.06 * life));
   }
-  // While it eats at them: wisps of smoke curling about the chest, a violet glint in each.
-  if (c.target.dots.some((d) => d.name === 'shadowWordPain' && d.source === c.side)) {
-    for (let k = 0; k < 4; k++) {
-      const angle = match.frame * 0.06 + (k / 4) * Math.PI * 2;
-      const x = chest[0] + Math.cos(angle) * yard * 0.45;
-      const y = chest[1] + Math.sin(angle) * yard * 0.25 - yard * 0.15 * Math.sin(match.frame * 0.1 + k);
-      puff(ctx, x, y, yard * 0.22, SMOKE, 0.45);
-      glow(ctx, x, y, yard * 0.08, PURPLE, 0.6);
-    }
+  const hit = impact(c, 18);
+  const target = hit && chestOf(c, c.targetSide);
+  if (hit && target) glow(ctx, target[0], target[1], yard * (0.5 + hit.t * 0.03), rgb, 1 - hit.t / 18);
+}
+
+const holyNova: Style = (c) => nova(c, HOLY, 22);
+
+const frostNova: Style = (c) => {
+  nova(c, ICE, 20);
+  // Ice about the target's feet while it holds them.
+  const feet = c.target.stunT > 0 && impact(c, 60) ? feetOf(c, c.targetSide) : undefined;
+  if (!feet) return;
+  const { ctx, yard } = c.s;
+  for (let k = -2; k <= 2; k++) glow(ctx, feet[0] + k * yard * 0.22, feet[1] - yard * (0.15 + 0.1 * (2 - Math.abs(k))), yard * 0.18, ICE, 0.7, 0.5);
+};
+
+const howlOfTerror: Style = (c) => {
+  nova(c, PURPLE, 26);
+  const cry = release(c, 26);
+  const head = cry && headOf(c, c.side);
+  if (!cry || !head) return;
+  const life = 1 - cry.t / 26;
+  for (let k = 0; k < 6; k++) {
+    const angle = (k / 6) * Math.PI * 2 + cry.t * 0.05;
+    const r = c.s.yard * (0.3 + cry.t * 0.06);
+    puff(c.s.ctx, head[0] + Math.cos(angle) * r, head[1] + Math.sin(angle) * r * 0.6, c.s.yard * 0.3, SMOKE, life * 0.6);
   }
 };
 
@@ -613,11 +631,6 @@ const aimedShot: Style = (c) => {
   shotImpact(c, GOLD, 16, 1);
 };
 
-const killShot: Style = (c) => {
-  for (const shot of c.shots) arrow(c, shot, BLOOD, 14, 0.5);
-  shotImpact(c, BLOOD, 20, 1.3);
-};
-
 const shot: Style = (c) => {
   for (const s of c.shots) arrow(c, s, '255, 245, 220', 6, 0.18);
 };
@@ -659,6 +672,8 @@ function slash(c: Cast, rgb: string, from: number, to: number, size: number, fra
   const radius = yard * size * 0.8;
   crescent(ctx, chest[0] - facing * radius * 0.55, chest[1], radius, a0, a1, progress, yard * 0.26 * size, rgb, life);
 }
+
+const raptorStrike: Style = (c) => slash(c, EMBER, -1.2, 1.0, 0.9, [4, 12, 22]);
 
 const mortalStrike: Style = (c) => {
   const { ctx, yard } = c.s;
@@ -812,9 +827,10 @@ const plainBolt: Style = (c) => {
 
 const STYLES: Record<string, Style> = {
   lightningBolt, earthShock, stormstrike,
-  mindBlast, shadowWordPain, powerWordShield,
+  mindBlast, holyNova, powerWordShield,
   wrath, moonfire, rake,
-  aimedShot, killShot, disengage, shot,
+  aimedShot, disengage, raptorStrike, shot,
+  frostNova, howlOfTerror,
   chaosStrike, felRush, bladeDance,
   charge, mortalStrike, execute,
 };

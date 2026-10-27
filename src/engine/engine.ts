@@ -657,6 +657,8 @@ export function abilityBlocked(match: Match, i: 0 | 1, n: number): string | unde
       if (!inReach(match, f, o, a.range, a.both)) return 'OUT OF RANGE';
       return undefined;
     case 'spell':
+      if (a.both ? !inReach(match, f, o, a.range, true) : dist > a.range) return 'OUT OF RANGE';
+      return undefined;
     case 'bolt':
       if (dist > a.range) return 'OUT OF RANGE';
       return undefined;
@@ -702,7 +704,8 @@ function fire(match: Match, i: 0 | 1, n: number): void {
   spellEvent(match, i, a.id, 'release', f.x, f.z);
   switch (a.kind) {
     case 'spell':
-      if (Math.abs(o.x - f.x) > a.range + REACH_SLACK) return;
+      // A nova reaches all round as far as a blow, bigger bodies standing further apart.
+      if (a.both ? !inReach(match, f, o, a.range + REACH_SLACK, true) : Math.abs(o.x - f.x) > a.range + REACH_SLACK) return;
       strike(match, i, ti, { damage: a.damage, roll: 'spell', ability: a, pushback: PUSHBACK.spell, hitstop: a.damage > 0 ? 4 : 0 }, f.facing, o.x, 1.3 + o.z);
       return;
     case 'self':
