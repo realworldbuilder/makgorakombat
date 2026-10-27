@@ -1248,7 +1248,15 @@ code {
 
 .creator .plate-name {
   text-align: center;
-  padding: 0 16px;
+  padding: 0 16px 4px;
+}
+
+.creator .plate-name .title {
+  padding: 2px 0 0;
+}
+
+.creator .plate-name .title span + span {
+  margin-left: -0.3em;
 }
 
 .creator .plate-name .name {
@@ -1515,16 +1523,24 @@ code {
   display: block;
 }
 
-/* An empty slot: the slot's name, faint, as the game's sheet shows its outline. */
-.creator .doll-slot.empty .slot-word {
-  font-family: var(--serif);
-  font-size: 0.5rem;
-  font-weight: 700;
-  line-height: 1.1;
-  letter-spacing: 0.04em;
-  text-align: center;
-  text-transform: uppercase;
-  color: #6c6258;
+/* An empty slot: the game's own outline of what goes there. */
+.creator .doll-slot .item-icon.outline {
+  opacity: 0.9;
+}
+
+/* Neck, rings and trinkets: on the sheet, but nothing worn there shows. */
+.creator .doll-slot.bare {
+  filter: saturate(0.6) brightness(0.8);
+}
+
+/* An item the champion's class could not wear: tinted red, as the game tints it. */
+.creator .doll-slot .unusable {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: rgba(255, 24, 24, 0.55);
+  mix-blend-mode: multiply;
+  pointer-events: none;
 }
 
 .creator .doll-slot:not(.fixed):hover::after,
@@ -1537,6 +1553,19 @@ code {
 
 .creator .doll-slot:not(.fixed):hover {
   filter: brightness(1.2);
+}
+
+/* The champion's item level under the name, as the sheet has it. */
+.creator .plate-name .item-level {
+  font-family: var(--friz, var(--serif));
+  font-size: 0.9rem;
+  color: var(--wow-gold, var(--gold));
+  text-shadow: 1px 1px 0 #000;
+}
+
+.creator .plate-name .item-level b {
+  color: #b552ff;
+  font-weight: 400;
 }
 
 .creator .slot-tip {
@@ -1617,6 +1646,17 @@ code {
   justify-content: space-between;
 }
 
+.creator .picker-glyph {
+  width: 26px;
+  height: 26px;
+  margin-right: 8px;
+  border-radius: 3px;
+}
+
+.creator .picker-head .picker-close {
+  margin-left: auto;
+}
+
 .creator .picker-title {
   font-family: var(--serif);
   font-weight: 900;
@@ -1655,6 +1695,7 @@ code {
 }
 
 .creator .picker-list {
+  position: relative;
   flex: 1;
   min-height: 0;
   overflow: auto;
@@ -1701,6 +1742,28 @@ code {
   flex: none;
   font-size: 0.72rem;
   color: var(--dim);
+}
+
+.creator .picker-kind.h-red {
+  color: var(--wow-red, #ff2020);
+}
+
+.creator .picker-level {
+  flex: none;
+  min-width: 2.2em;
+  font-size: 0.72rem;
+  text-align: right;
+  color: var(--wow-gold, var(--gold));
+}
+
+/* The highlighted item's tooltip, beside the picker over the champion. */
+.creator .picker-tip {
+  position: absolute;
+  right: calc(100% + 10px);
+  top: 48px;
+  width: 17em;
+  text-align: left;
+  pointer-events: none;
 }
 
 .creator .picker-count {
