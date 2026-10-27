@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { type Inputs, type Match, newMatch, poseOf, type Spark, tick } from '../engine/engine';
+import { type Inputs, type Match, newMatch, poseOf, type Projectile, type Spark, tick } from '../engine/engine';
 import { InputReader } from '../engine/input';
 import { type MoveTable, resolveMoves } from '../engine/moves';
 import { type FighterView, fighterView } from '../engine/view';
 import { CAMERA, TICK_MS } from '../engine/stage';
-import { Arena } from './arena';
+import { Arena, type Placement } from './arena';
 import { fadeFor } from './blend';
 import type { BuiltFighter } from './fighters';
 import { type FighterFx, poseFx } from './fx';
@@ -14,12 +14,14 @@ import { LEVEL, music, stageCue } from './music';
 import { isMuted, Mixer, toggleMute } from './sound';
 import type { Source } from './Select';
 import { chosenRules } from './Settings';
+import { between, easeFor, SNAP } from './smooth';
 import { measureTable } from './strike';
 import type { Ground } from './stages';
 
 /*
  * The fight. The engine steps sixty times a second whatever the screen does; each frame the
- * fighters are posed from the engine's state and the HUD is drawn over them.
+ * fighters are posed from the engine's state, drawn between its last two steps (smooth.ts) so a
+ * faster screen shows smooth motion, and the HUD is drawn over them.
  */
 
 interface FightProps {
@@ -34,8 +36,10 @@ const MAX_STEPS = 4;
 /** How hard the camera shakes for each kind of landed blow, in pan units (a fraction of half the view's height). */
 const SHAKE: Record<Spark['kind'], number> = { hit: 0.025, crit: 0.06, spell: 0.03, block: 0.012, parry: 0.015, dot: 0 };
 const SHAKE_DECAY = 0.82;
-/** How fast the camera pushes in on a fatality and comes back, per frame. */
+/** How fast the camera pushes in on a fatality and comes back, per engine step. */
 const PUSH_EASE = 0.07;
+/** How fast the camera follows the fighters, per engine step. */
+const FRAME_EASE = 0.12;
 /** The view sinks a little as it pushes in, so the feet stay in frame; in pan units per unit of push. */
 const PUSH_SINK = 0.16;
 
@@ -156,16 +160,22 @@ export function Fight({ fighters, stage, p2, onBack }: FightProps) {
     const shaker = new Shaker();
     let push = 1;
     let hitsSeen = 0;
+    const placementsOf = (m: Match): Placement[] =>
+      m.fighters.map((fighter, i) => ({ ...poseOf(m, i as 0 | 1), x: fighter.x, z: fighter.z, facing: fighter.facing, fade: fadeFor(fighter.state) }));
+    // Where the fighters and the shots were before the last step, to draw from toward where they are.
+    let before: { match: Match; fighters: Placement[]; shots: Map<Projectile, number> } | undefined;
     const loop = (now: number) => {
       frame = requestAnimationFrame(loop);
       const current = match.current!;
-      owed = held ? 0 : owed + Math.min(now - last, 250);
+      const elapsed = Math.min(now - last, 250);
+      owed = held ? 0 : owed + elapsed;
       last = now;
       let steps = 0;
       const t0 = performance.now();
       while (owed >= TICK_MS && steps < MAX_STEPS) {
         // The reader asks the CPU itself when player 2 is the computer; asking twice would lose its presses.
         const inputs: [Inputs, Inputs] = input.read(current);
+        before = { match: current, fighters: placementsOf(current), shots: new Map(current.projectiles.map((p) => [p, p.x])) };
         tick(current, inputs);
         owed -= TICK_MS;
         steps++;
@@ -188,14 +198,18 @@ export function Fight({ fighters, stage, p2, onBack }: FightProps) {
       // The camera pushes in on the pair for the fatality and eases back out with the round's end.
       const cinematic = current.fatality !== undefined && (current.phase === 'fatality' || current.phase === 'ko');
       const wantPush = cinematic ? current.tables[current.roundWinner ?? 0].fatality.spec.push : 1;
-      push += (wantPush - push) * PUSH_EASE;
+      push += (wantPush - push) * easeFor(PUSH_EASE, elapsed, TICK_MS);
       const camera = { ...CAMERA, zoom: CAMERA.zoom / push, panX: CAMERA.panX + shake.x, panY: CAMERA.panY + shake.y - (push - 1) * PUSH_SINK };
-      ring.frame(current.fighters.map((fighter) => fighter.x));
-      ring.draw(
-        current.fighters.map((fighter, i) => ({ ...poseOf(current, i as 0 | 1), x: fighter.x, z: fighter.z, facing: fighter.facing, fade: fadeFor(fighter.state) })),
-        camera,
-        (at) => poseFx(current, fxs, at).flat(),
-      );
+      // How far on from the last step this frame is; held, the frame is the step itself.
+      const alpha = held ? 1 : owed / TICK_MS;
+      const prior = before?.match === current ? before : undefined;
+      const placements = placementsOf(current).map((place, i) => (prior ? between(prior.fighters[i]!, place, alpha) : place));
+      const shotX = (shot: Projectile) => {
+        const from = prior?.shots.get(shot);
+        return from === undefined || Math.abs(shot.x - from) > SNAP ? shot.x : from + (shot.x - from) * alpha;
+      };
+      ring.frame(placements.map((place) => place.x), easeFor(FRAME_EASE, elapsed, TICK_MS));
+      ring.draw(placements, camera, (at) => poseFx(current, fxs, at, shotX).flat());
       const t2 = performance.now();
       const hud = overlay.current!;
       if (hud.width !== canvas.current!.width || hud.height !== canvas.current!.height) {

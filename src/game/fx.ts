@@ -4,7 +4,7 @@ import { posableRig, type PosableRig } from '@mogshot/model/posable';
 import type { SpellModel, SpellVisual } from '@mogshot/worker/api';
 import type { DataClient } from '@mogshot/worker/client';
 import { type Ability, kitSpec } from '../engine/abilities';
-import type { Match } from '../engine/engine';
+import type { Match, Projectile } from '../engine/engine';
 import type { Wielding } from '../engine/moves';
 import { TICK_MS } from '../engine/stage';
 
@@ -193,7 +193,7 @@ export function anchorOf(at: AnchorAt, match: Match, side: 0 | 1, attachment: nu
  * instance at a time: a second projectile of the same spell in flight flies without a model,
  * and the newest release or impact is the one shown.
  */
-export function poseFx(match: Match, fxs: readonly (FighterFx | undefined)[], at: AnchorAt): FxPose[][] {
+export function poseFx(match: Match, fxs: readonly (FighterFx | undefined)[], at: AnchorAt, shotX: (shot: Projectile) => number = (shot) => shot.x): FxPose[][] {
   return fxs.map((fx, s) => {
     const side = s as 0 | 1;
     const f = match.fighters[side];
@@ -210,7 +210,7 @@ export function poseFx(match: Match, fxs: readonly (FighterFx | undefined)[], at
           // Every missile model of the spell (an arrow and its glow) rides the first of its projectiles.
           const shot = shots.find((p) => (p.ability < 0 ? 'shot' : idOf(p.ability)) === slot.spell);
           if (!shot) return { world: HIDDEN, time: 0 };
-          return { world: place([shot.x, 0, shot.z], Math.sign(shot.vx) || 1, slot.scale * MISSILE_SCALE), time: loop(shot.t * TICK_MS) };
+          return { world: place([shotX(shot), 0, shot.z], Math.sign(shot.vx) || 1, slot.scale * MISSILE_SCALE), time: loop(shot.t * TICK_MS) };
         }
         case 'precast': {
           if (castingId !== slot.spell || !f.cast) return { world: HIDDEN, time: 0 };
