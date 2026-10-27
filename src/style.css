@@ -1525,6 +1525,14 @@ code {
   text-align: center;
 }
 
+.guide.folder-note {
+  width: min(560px, 94vw);
+}
+
+.guide.folder-note p {
+  margin: 0;
+}
+
 .guide .body.create-first .big {
   margin: 0;
   font-family: var(--serif);
