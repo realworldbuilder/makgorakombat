@@ -150,9 +150,16 @@ export function FightUi({ fighters, p2, assets, me, next }: FightUiProps) {
       ([0, 1] as const).map(async (i) => {
         const table = match.tables[i];
         const map = new Map<string, string>();
+        // No picture twice on one bar: an ability whose icon is missing, or the same as an earlier
+        // slot's, takes the class's picture once, and after that shows its name.
+        const shown = new Set<string>();
         for (const ability of table.kit.abilities) {
-          const url = byName.get(ability.name) ?? icons.classIcon(table.kit.classKey);
-          if (url) map.set(ability.id, url);
+          const own = byName.get(ability.name);
+          const classIcon = icons.classIcon(table.kit.classKey);
+          const url = own && !shown.has(own) ? own : classIcon && !shown.has(classIcon) ? classIcon : undefined;
+          if (!url) continue;
+          shown.add(url);
+          map.set(ability.id, url);
         }
         const mainHand = fighters[i].champion.gear.find(([slot]) => slot === 'mainHand')?.[1];
         const weapon = (await icons.item(mainHand)) ?? (await icons.spell(table.weapon.ranged ? 'Shoot' : 'Attack'));
