@@ -15,6 +15,7 @@ import { LEVEL, music } from './music';
 import { MusicTab } from './MusicTab';
 import { pictureUrl } from './pixels';
 import { setWhere } from './report';
+import { trackFight, trackFolder, trackWatch } from './track';
 import { LEGENDS, legendTiles, type Tile } from './roster';
 import { loadSaved, type SavedChampion, storeSaved } from './saved';
 import { type OnlinePick, Select, type Source } from './Select';
@@ -293,6 +294,21 @@ export function Game() {
 
   const records = useMemo(() => (phase.kind === 'ready' ? phase.records : []), [phase]);
   const product = phase.kind === 'ready' ? phase.opened.info.product : '';
+
+  // The site's numbers (track.ts): a folder read, each fight begun and how, a fight watched.
+  useEffect(() => {
+    if (loaded) trackFolder(loaded.edition.key);
+  }, [loaded]);
+  useEffect(() => {
+    if (screen.kind !== 'fight') return;
+    const mode = screen.net ? 'online' : p2 === 'cpu' ? 'cpu' : 'local';
+    trackFight(mode, screen.fighters[screen.net?.me ?? 0].champion.name);
+    // Each fight screen once: a rematch or the next stage is a new one.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screen]);
+  useEffect(() => {
+    if (watching) trackWatch();
+  }, [watching]);
 
   // The lobby's socket: closed until the roster is up and while a fight is on (its NEXT STAGE card too) or watched, busy in an online match.
   const fighting = screen.kind === 'fight' || screen.kind === 'next' || watching !== undefined;

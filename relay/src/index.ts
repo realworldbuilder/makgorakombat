@@ -5,8 +5,10 @@ import type { Ending, Fight, ReportSpan } from './fights';
 import { cleanName, isPlayerId, LOBBY, type Lobby } from './lobby';
 import { GameRecord, kindOf, WATCH_CAP } from './record';
 import { HELD_MAX, RECONNECT_MS, SILENT_MS } from './seats';
+import { readHit, SITE, type Site, type SiteSpan } from './site';
 
 export { Lobby } from './lobby';
+export { Site } from './site';
 
 /*
  * The relay for MAK'GORA KOMBAT's online play. A room is a six-letter code and one Durable
@@ -50,6 +52,7 @@ export { Lobby } from './lobby';
 export interface Env {
   ROOMS: DurableObjectNamespace<Room>;
   LOBBY: DurableObjectNamespace<Lobby>;
+  SITE: DurableObjectNamespace<Site>;
   /** More pages allowed to use the relay, comma separated (`https://makgora.gg,https://www.makgora.gg`): a domain of the game's own. Set at deploy, `--var ORIGINS:...`. */
   ORIGINS?: string;
 }
@@ -652,7 +655,21 @@ export default {
       return Response.json(report, { headers: { ...cors, 'Cache-Control': 'no-store' } });
     }
 
-    if (url.pathname === '/') return new Response('makgora-relay: GET /lobby/ws?name=&id=[&busy=1|&requeue=1], GET /lobby/stats, GET /lobby/board?span=night|all[&id=], GET /lobby/report?span=night|day|week|all; or POST /rooms, then GET /rooms/:code/ws?role=host|guest|watch[&id=]', { headers: cors });
+    // The site's own numbers (site.ts): a page's hit, sent as plain text so the browser asks no leave first, and the report of them.
+    if (url.pathname === '/site/hit' && request.method === 'POST') {
+      const country = (request as { cf?: { country?: string } }).cf?.country;
+      const hit = readHit(await request.text(), { country, ua: request.headers.get('User-Agent') ?? '' });
+      if (hit) await env.SITE.getByName(SITE).hit(hit);
+      return new Response(null, { status: 204, headers: cors });
+    }
+    if (url.pathname === '/site/report' && request.method === 'GET') {
+      const asked = url.searchParams.get('span');
+      const span: SiteSpan = asked === 'day' || asked === 'month' || asked === 'all' ? asked : 'week';
+      const report = await env.SITE.getByName(SITE).report(span);
+      return Response.json(report, { headers: { ...cors, 'Cache-Control': 'no-store' } });
+    }
+
+    if (url.pathname === '/') return new Response('makgora-relay: GET /lobby/ws?name=&id=[&busy=1|&requeue=1], GET /lobby/stats, GET /lobby/board?span=night|all[&id=], GET /lobby/report?span=night|day|week|all; POST /site/hit, GET /site/report?span=day|week|month|all; or POST /rooms, then GET /rooms/:code/ws?role=host|guest|watch[&id=]', { headers: cors });
     return new Response('Not found', { status: 404, headers: cors });
   },
 } satisfies ExportedHandler<Env>;
