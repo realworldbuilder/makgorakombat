@@ -381,7 +381,7 @@ const PUSHBACK = { swing: 0.035, ability: 0.07, spell: 0.03, bolt: 0.05, charge:
 /** The game's hit table, as the WARCRAFT rules roll it. */
 export const HIT_TABLE = RULES.warcraft.hitTable;
 
-/** Rage, fury and runic power earned when a swing lands, and rage when a blow is taken. */
+/** Rage and fury earned when a swing lands, and rage when a blow is taken. Runic power comes from abilities alone, as in the game. */
 const GAIN_ON_SWING = { oneHand: 10, twoHand: 17 } as const;
 const RAGE_ON_HIT = 5;
 
@@ -1346,7 +1346,7 @@ function strike(match: Match, ai: 0 | 1, ti: 0 | 1, blow: Blow, dir: number, spa
   const kit = match.tables[ai].kit;
   if (kit.resource === 'rage' || kit.resource === 'fury' || kit.resource === 'runic') {
     let gain = a ? a.gain : 0;
-    if (!a && blow.roll === 'melee') {
+    if (!a && blow.roll === 'melee' && kit.resource !== 'runic') {
       const w = match.tables[ai].weapon.wielding;
       gain = w === 'twoHand' || w === 'long' ? GAIN_ON_SWING.twoHand : GAIN_ON_SWING.oneHand;
     }
