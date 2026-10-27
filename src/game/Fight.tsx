@@ -13,6 +13,7 @@ import { LEVEL, music, stageCue } from './music';
 import { isMuted, Mixer, toggleMute } from './sound';
 import type { Source } from './Select';
 import { chosenRules } from './Settings';
+import { measureTable } from './strike';
 import type { Ground } from './stages';
 
 /*
@@ -69,13 +70,15 @@ class Shaker {
 const SHIELD_CLASSES = new Set([1, 2, 7]);
 
 /**
- * The fighter's moves and class kit, from its animations, its weapon and its class. A legend
+ * The fighter's moves and class kit, from its animations, its weapon and its class, with its
+ * blows measured off its own model so they land when and where the weapon does. A legend
  * without a class gets a warrior's kit, or a hunter's behind a bow.
  */
 function tableOf(fighter: BuiltFighter): MoveTable {
   const { champion, result } = fighter;
   const shield = result.wielding === 'oneHand' && champion.classId !== undefined && SHIELD_CLASSES.has(champion.classId) && champion.gear.some(([slot]) => slot === 'offHand');
-  return resolveMoves(result.scene.animations, result.wielding, champion.classId, shield);
+  const table = resolveMoves(result.scene.animations, result.wielding, champion.classId, shield);
+  return measureTable(table, fighter.rig, result.rig, result.scene, headHeight(fighter));
 }
 
 /** How high a fighter's head is, standing: the model's helm point, at its own size; a little under the top of its box without one. */

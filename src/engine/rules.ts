@@ -41,6 +41,12 @@ export interface Rules {
   abilityRate: number;
   /** When a swing connects and when the fighter may act again, as fractions of its clip. */
   swingHit: HitWindow;
+  /**
+   * A blow measured from the model (anim.ts Strike): it connects from `lead` before its contact
+   * until `follow` after, and the fighter may act `recover` after contact (fractions of the clip).
+   * `startup` > 0 plays the wind-up fast enough to reach contact in that many frames.
+   */
+  strike: { lead: number; follow: number; recover: number; startup: number };
   /** Frames both fighters freeze when a swing lands. */
   swingHitstop: number;
   /** The string: each blow's damage as a share of the weapon's. One entry is no string at all. */
@@ -84,6 +90,7 @@ export const RULES: Record<RulesName, Rules> = {
     swingRate: 1.35,
     abilityRate: 1.35,
     swingHit: SWING_HIT,
+    strike: { lead: 0.03, follow: 0.12, recover: 0.05, startup: 0 },
     swingHitstop: 8,
     chain: [1],
     chainGrace: 0,
@@ -110,6 +117,8 @@ export const RULES: Record<RulesName, Rules> = {
     swingRate: 1.6,
     abilityRate: 1.35,
     swingHit: { from: 0.15, to: 0.45, recover: 0.5 },
+    // A tap lands seven frames later whatever the clip's wind-up; the follow-through holds the fighter long enough that a held key cannot lock.
+    strike: { lead: 0.02, follow: 0.1, recover: 0.3, startup: 7 },
     swingHitstop: 4,
     // 8 / 8 / 12 with a one-hander, the others in proportion.
     chain: [1, 1, 1.5],
