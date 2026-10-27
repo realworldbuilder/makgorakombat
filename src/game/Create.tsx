@@ -6,12 +6,13 @@ import { keyLayout, MENU_KEYS, ROSTER_KEYS } from '../engine/input';
 import type { BuiltFighter, Champion, Fighters } from './fighters';
 import { headshotOf } from './headshot';
 import { usePadMode } from './pads';
-import { DOLL_SLOTS, equip, SLOT_NAMES } from './slots';
+import { averageLevel, CLASS_COLOURS, DOLL_SLOTS, equip, type ItemInfo, SLOT_NAMES } from './slots';
 import { ItemPicker, PaperDoll } from './PaperDoll';
 import { Preview } from './Preview';
 import { classesOf, rosterTiles, sexFor } from './roster';
 import { cleanName, defaultName, fullName, isBuiltin, madeKey, NAME_LENGTH, newSavedId, type SavedChampion } from './saved';
 import { iconsFor } from './ui/icons';
+import { BAG_CLOSE, BAG_OPEN, pickUpFile, playFile, putDownFile, SHEET_CLOSE, SHEET_OPEN } from './uiSound';
 import { type Line, type Quality, WowTooltip } from './ui/WowTooltip';
 
 /*
@@ -146,6 +147,24 @@ export function Create({ races, classes, portraits, fighters, saved, editing, on
   const [dollAt, setDollAt] = useState(0);
   const pickerKeys = useRef<((event: KeyboardEvent) => void) | undefined>(undefined);
   const icons = useMemo(() => iconsFor({ client: fighters.client, races, portraits }), [fighters, races, portraits]);
+  const sound = (fileId: number | undefined) => playFile(fighters.client, fileId);
+
+  // The sheet opens and closes with the game's own sounds, and the picker with a bag's.
+  useEffect(() => {
+    sound(SHEET_OPEN);
+    return () => sound(SHEET_CLOSE);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const wasPicking = useRef(false);
+  useEffect(() => {
+    if (picking && !wasPicking.current) sound(BAG_OPEN);
+    wasPicking.current = picking !== undefined;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [picking]);
+  const closePicker = () => {
+    sound(BAG_CLOSE);
+    setPicking(undefined);
+  };
 
   const race = races.find((r) => r.id === draft.raceId) ?? order[0]!;
   const classEntry = classes.find((c) => c.id === draft.classId);
@@ -274,8 +293,12 @@ export function Create({ races, classes, portraits, fighters, saved, editing, on
       if (set) setDraft((d) => ({ ...d, armour: { kind: 'set', id: set.id }, gear: ids(setGear(set)), worn: setGear(set) }));
     }
   };
-  // One slot changed by hand: the outfit is the player's own from then on.
-  const wear = (slot: Slot, item: ItemSummary | undefined) => setDraft((d) => ({ ...d, armour: { kind: 'own' }, ...equip(d.gear, d.worn, slot, item) }));
+  // One slot changed by hand: the outfit is the player's own from then on. It goes on with its own put-down sound, or comes off with its pick-up.
+  const wear = (slot: Slot, item: ItemSummary | undefined) => {
+    const off: ItemInfo | undefined = draft.worn.find(([s]) => s === slot)?.[1];
+    sound(item ? putDownFile((item as ItemInfo).soundGroup) : pickUpFile(off?.soundGroup));
+    setDraft((d) => ({ ...d, armour: { kind: 'own' }, ...equip(d.gear, d.worn, slot, item) }));
+  };
   const open = (value: string) => {
     const entry = saved.find((s) => s.id === value);
     setDraft(entry ? savedDraft(entry) : freshDraft(order[0]!, classes));
@@ -614,16 +637,35 @@ export function Create({ races, classes, portraits, fighters, saved, editing, on
     );
   };
 
+  const wearer = { classId: draft.classId, classes };
+  const itemLevel = averageLevel(draft.worn);
   const missing = built ? built.result.scene.problems.filter((problem) => /is not installed|is not part of this build/.test(problem)) : [];
 
   return (
     <div class="creator-backdrop">
       <div class="creator">
         <div class="stage">
+          <div class="plate-name">
+            <div class="name">{champion.name}</div>
+            <div class="title">
+              {classEntry && portraits.classes.get(classEntry.key) && <img class="class" src={portraits.classes.get(classEntry.key)} alt="" />}
+              <span>{race.name.toUpperCase()}</span>
+              {classEntry && <span style={{ color: CLASS_COLOURS[classEntry.id] }}>{classEntry.name.toUpperCase()}</span>}
+            </div>
+            {itemLevel !== undefined && (
+              <div class="item-level">
+                Item Level <b>{itemLevel}</b>
+              </div>
+            )}
+            {building && <div class="status">{BRAND.summoning}</div>}
+            {error && <div class="status bad">{error}</div>}
+            {!error && missing.length > 0 && <div class="status bad">{missing.length} piece(s) not in this install: {missing[0]}</div>}
+          </div>
           <PaperDoll
             icons={icons}
             worn={draft.worn}
             gear={draft.gear}
+            wearer={wearer}
             cursor={picking ?? (here.kind === 'gear' ? DOLL_SLOTS[dollAt] : undefined)}
             picking={picking !== undefined}
             readOnly={builtin}
@@ -634,16 +676,6 @@ export function Create({ races, classes, portraits, fighters, saved, editing, on
           >
             <Preview fighter={built} locked={false} side="middle" />
           </PaperDoll>
-          <div class="plate-name">
-            <div class="name">{champion.name}</div>
-            <div class="title">
-              {classEntry && portraits.classes.get(classEntry.key) && <img class="class" src={portraits.classes.get(classEntry.key)} alt="" />}
-              {champion.title}
-            </div>
-            {building && <div class="status">{BRAND.summoning}</div>}
-            {error && <div class="status bad">{error}</div>}
-            {!error && missing.length > 0 && <div class="status bad">{missing.length} piece(s) not in this install: {missing[0]}</div>}
-          </div>
         </div>
         <div class="column">
           <h1>{builtin ? 'BUILT-IN CHAMPION' : draft.id ? 'EDIT YOUR CHAMPION' : 'CREATE YOUR CHAMPION'}</h1>
@@ -659,13 +691,14 @@ export function Create({ races, classes, portraits, fighters, saved, editing, on
               slot={picking}
               fighters={fighters}
               icons={icons}
+              wearer={wearer}
               current={draft.gear.find(([s]) => s === picking)?.[1]}
               keys={pickerKeys}
               onChoose={(item) => {
                 wear(picking, item);
                 setPicking(undefined);
               }}
-              onClose={() => setPicking(undefined)}
+              onClose={closePicker}
             />
           )}
           <p class="dim small hint">{builtin ? 'Enter or Esc back to the roster' : '↑ ↓ or W S a row · ← → or A D change it · J on Gear picks an item · Enter save · Esc cancel'}</p>

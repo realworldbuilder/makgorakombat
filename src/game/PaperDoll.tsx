@@ -2,25 +2,27 @@ import type { ComponentChildren } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { ItemSummary, Slot } from '@mogshot/character/equipment';
 import type { Fighters } from './fighters';
-import { kindOf, LEFT_SLOTS, RIGHT_SLOTS, SLOT_NAMES, WEAPON_SLOTS } from './slots';
+import { canWear, EMPTY_ICONS, heldAs, isBare, type ItemInfo, itemLines, LEFT_PLACES, type Place, qualityOf, RIGHT_PLACES, SLOT_NAMES, WEAPON_SLOTS } from './slots';
 import type { Icons } from './ui/icons';
-import { type Line, type Quality, WowTooltip } from './ui/WowTooltip';
+import { type Line, WowTooltip } from './ui/WowTooltip';
 
 /*
  * The slots round the champion on CREATE YOUR CHAMPION, as the game's character sheet has them,
- * each with the icon of what is worn there in its quality's colour, and a tooltip on hover. A
- * click on one opens the picker over the column: every item this folder has for the slot, found
- * by name as one types, and an empty slot at the top to take the piece off.
+ * each with the icon of what is worn there in its quality's colour, the game's own outline of
+ * the slot when it is empty, and the game's tooltip on hover. A click on one opens the picker
+ * over the column: every item this folder has for the slot, found by name as one types, and an
+ * empty slot at the top to take the piece off.
  */
-
-const QUALITIES: readonly Quality[] = ['poor', 'common', 'uncommon', 'rare', 'epic', 'legendary'];
-export const qualityOf = (item: ItemSummary): Quality => QUALITIES[Math.min(Math.max(item.quality, 0), 5)] ?? 'common';
 
 /** How long the picker waits after the last key before it searches. */
 const SEARCH_MS = 150;
 
-/** An item's icon, read through the worker once and kept; the slot is dark until it comes. */
-function ItemIcon({ icons, fileId }: { icons: Icons; fileId: number }) {
+/** The game's unfinished and test items ("[PH] Brilliant Dawn Helm", "AHNQIRAJ TEST ITEM A CLOTH"): in the files, never in a player's bags. */
+const UNFINISHED = /\[PH\]|\bTEST\b|^zz|^QA\b|DEPRECATED|\bUNUSED\b/i;
+export const finished = (item: ItemSummary): boolean => !UNFINISHED.test(item.name);
+
+/** A picture by file id, read through the worker once and kept; the slot is dark until it comes. */
+function FileIcon({ icons, fileId, class: extra = 'item-icon' }: { icons: Icons; fileId: number; class?: string }) {
   const [url, setUrl] = useState<string>();
   useEffect(() => {
     let stale = false;
@@ -30,7 +32,13 @@ function ItemIcon({ icons, fileId }: { icons: Icons; fileId: number }) {
       stale = true;
     };
   }, [icons, fileId]);
-  return url ? <img class="item-icon" src={url} alt="" draggable={false} /> : null;
+  return url ? <img class={extra} src={url} alt="" draggable={false} /> : null;
+}
+
+/** Who the tooltips judge the items for: the champion's class, and every class this game has. */
+export interface Wearer {
+  classId: number | undefined;
+  classes: readonly { id: number; name: string }[];
 }
 
 interface PaperDollProps {
@@ -38,6 +46,7 @@ interface PaperDollProps {
   /** What is worn, as the items; a piece known only by id until it is read is in `gear` alone. */
   worn: readonly [Slot, ItemSummary][];
   gear: readonly [Slot, number][];
+  wearer: Wearer;
   /** The slot the keys are on, or the one whose picker is open. */
   cursor: Slot | undefined;
   /** The picker is open: the slots keep their tooltips to themselves. */
@@ -48,47 +57,46 @@ interface PaperDollProps {
   children: ComponentChildren;
 }
 
-export function PaperDoll({ icons, worn, gear, cursor, picking, readOnly, onPick, children }: PaperDollProps) {
-  const [hover, setHover] = useState<Slot>();
-  const items = new Map(worn);
+export function PaperDoll({ icons, worn, gear, wearer, cursor, picking, readOnly, onPick, children }: PaperDollProps) {
+  const [hover, setHover] = useState<Place>();
+  const items = new Map<Slot, ItemInfo>(worn);
   const ids = new Map(gear);
 
-  const tip = (slot: Slot): Line[] => {
-    const item = items.get(slot);
-    const hint: Line[] = readOnly ? [] : [{ kind: 'gap' }, { left: item ? 'Click to change, or to take it off.' : 'Click to choose an item.', hue: 'green', kind: 'small' }];
-    if (!item) {
-      return ids.has(slot)
-        ? [{ left: SLOT_NAMES[slot], kind: 'name' }, { left: `Item ${ids.get(slot)}`, hue: 'grey' }, ...hint]
-        : [{ left: SLOT_NAMES[slot], kind: 'name' }, { left: 'Empty', hue: 'grey' }, ...hint];
-    }
-    const kind = kindOf(item, slot);
-    return [{ left: item.name, kind: 'name', hue: qualityOf(item) }, { left: SLOT_NAMES[slot], ...(kind !== SLOT_NAMES[slot] && { right: kind }) }, ...hint];
+  const tip = (place: Place): Line[] => {
+    if (isBare(place)) return [{ left: SLOT_NAMES[place], kind: 'name' }, { left: 'Nothing worn here shows on a champion.', hue: 'grey', kind: 'small' }];
+    const item = items.get(place);
+    const hint: Line[] = readOnly ? [] : [{ kind: 'gap' }, { left: item ? '<Click to change or take off>' : '<Click to choose an item>', hue: 'green', kind: 'small' }];
+    if (item) return [...itemLines(item, place, wearer.classId, wearer.classes), ...hint];
+    return [{ left: SLOT_NAMES[place], kind: 'name' }, ...(ids.has(place) ? [{ left: `Item ${ids.get(place)}`, hue: 'grey' as const }] : []), ...hint];
   };
 
-  const slotView = (slot: Slot, side: 'left' | 'right' | 'bottom') => {
-    const item = items.get(slot);
+  const slotView = (place: Place, side: 'left' | 'right' | 'bottom') => {
+    const bare = isBare(place);
+    const item = bare ? undefined : items.get(place);
+    const fixed = readOnly || bare;
     return (
       <button
-        key={slot}
+        key={place}
         type="button"
         tabIndex={-1}
-        class={`doll-slot wow-slot ${item ? `q-${qualityOf(item)}` : 'empty'} ${cursor === slot ? 'here' : ''} ${readOnly ? 'fixed' : ''}`}
-        aria-label={item ? `${SLOT_NAMES[slot]}: ${item.name}` : `${SLOT_NAMES[slot]}: empty`}
-        onMouseEnter={() => setHover(slot)}
-        onMouseLeave={() => setHover((h) => (h === slot ? undefined : h))}
-        onClick={() => !readOnly && onPick(slot)}
+        class={`doll-slot wow-slot ${item ? `q-${qualityOf(item)}` : 'empty'} ${bare ? 'bare' : ''} ${cursor === place ? 'here' : ''} ${fixed ? 'fixed' : ''}`}
+        aria-label={item ? `${SLOT_NAMES[place]}: ${item.name}` : `${SLOT_NAMES[place]}: empty`}
+        onMouseEnter={() => setHover(place)}
+        onMouseLeave={() => setHover((h) => (h === place ? undefined : h))}
+        onClick={() => !fixed && onPick(place as Slot)}
       >
-        {item ? <ItemIcon icons={icons} fileId={item.iconFileId} /> : <span class="slot-word">{SLOT_NAMES[slot]}</span>}
-        {!picking && (hover === slot || (hover === undefined && cursor === slot)) && <WowTooltip class={`slot-tip ${side}`} lines={tip(slot)} />}
+        {item ? <FileIcon icons={icons} fileId={item.iconFileId} /> : <FileIcon icons={icons} fileId={EMPTY_ICONS[place]} class="item-icon outline" />}
+        {item && !canWear(item, wearer.classId) && <span class="unusable" />}
+        {!picking && (hover === place || (hover === undefined && cursor === place)) && <WowTooltip class={`slot-tip ${side}`} lines={tip(place)} />}
       </button>
     );
   };
 
   return (
     <div class="doll">
-      <div class="doll-side left">{LEFT_SLOTS.map((slot) => slotView(slot, 'left'))}</div>
+      <div class="doll-side left">{LEFT_PLACES.map((place) => slotView(place, 'left'))}</div>
       <div class="doll-model">{children}</div>
-      <div class="doll-side right">{RIGHT_SLOTS.map((slot) => slotView(slot, 'right'))}</div>
+      <div class="doll-side right">{RIGHT_PLACES.map((place) => slotView(place, 'right'))}</div>
       <div class="doll-weapons">{WEAPON_SLOTS.map((slot) => slotView(slot, 'bottom'))}</div>
     </div>
   );
@@ -98,6 +106,7 @@ interface ItemPickerProps {
   slot: Slot;
   fighters: Fighters;
   icons: Icons;
+  wearer: Wearer;
   /** What the slot has on now, marked in the list. */
   current: number | undefined;
   onChoose: (item: ItemSummary | undefined) => void;
@@ -106,9 +115,9 @@ interface ItemPickerProps {
   keys: { current: ((event: KeyboardEvent) => void) | undefined };
 }
 
-export function ItemPicker({ slot, fighters, icons, current, onChoose, onClose, keys }: ItemPickerProps) {
+export function ItemPicker({ slot, fighters, icons, wearer, current, onChoose, onClose, keys }: ItemPickerProps) {
   const [query, setQuery] = useState('');
-  const [found, setFound] = useState<{ query: string; items: ItemSummary[]; total: number }>();
+  const [found, setFound] = useState<{ query: string; items: ItemInfo[]; total: number }>();
   const [failed, setFailed] = useState(false);
   // 0 is the empty slot; 1 on are the items; -1 is nothing yet, so an Enter straight away takes nothing off.
   const [at, setAt] = useState(-1);
@@ -142,15 +151,23 @@ export function ItemPicker({ slot, fighters, icons, current, onChoose, onClose, 
     };
   }, [slot, query, fighters]);
 
-  const items = found?.items ?? [];
+  const items = (found?.items ?? []).filter(finished);
   const count = items.length + 1;
   // The list on screen is the one for what is typed: Enter before the search has answered does nothing, rather than choose from the old list.
   const answered = found?.query === query.trim();
   const choose = (i: number) => onChoose(i === 0 ? undefined : items[i - 1]);
 
+  // The highlighted row is kept in view, and its tooltip stands level with it.
+  const [tipTop, setTipTop] = useState(48);
+  const placeTip = () => {
+    const row = list.current?.querySelector<HTMLElement>(`[data-at="${at}"]`);
+    if (row && list.current) setTipTop(list.current.offsetTop + Math.max(0, row.offsetTop - list.current.scrollTop));
+  };
   useEffect(() => {
     list.current?.querySelector<HTMLElement>(`[data-at="${at}"]`)?.scrollIntoView({ block: 'nearest' });
-  }, [at]);
+    placeTip();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [at, found]);
 
   const state = useRef({ at, count, choose, onClose, ready: answered });
   state.current = { at, count, choose, onClose, ready: answered };
@@ -184,10 +201,12 @@ export function ItemPicker({ slot, fighters, icons, current, onChoose, onClose, 
     keys.current = undefined;
   }, [keys]);
 
-  const more = found && found.total > items.length;
+  const more = found && found.total > found.items.length;
+  const shown = at > 0 ? items[at - 1] : undefined;
   return (
     <div class="item-picker wow-panel">
       <div class="picker-head">
+        <FileIcon icons={icons} fileId={EMPTY_ICONS[slot]} class="picker-glyph" />
         <span class="picker-title">{SLOT_NAMES[slot]}</span>
         <button type="button" class="picker-close" aria-label="Close" tabIndex={-1} onClick={onClose}>×</button>
       </div>
@@ -201,28 +220,35 @@ export function ItemPicker({ slot, fighters, icons, current, onChoose, onClose, 
         autoComplete="off"
         onInput={(event) => setQuery(event.currentTarget.value)}
       />
-      <div class="picker-list" ref={list}>
+      <div class="picker-list" ref={list} onScroll={placeTip}>
         <button type="button" tabIndex={-1} data-at={0} class={`picker-item ${at === 0 ? 'here' : ''} ${current === undefined ? 'worn' : ''}`} onMouseEnter={() => setAt(0)} onClick={() => choose(0)}>
-          <span class="doll-slot wow-slot empty small" />
+          <span class="doll-slot wow-slot empty small">
+            <FileIcon icons={icons} fileId={EMPTY_ICONS[slot]} class="item-icon outline" />
+          </span>
           <span class="picker-name h-grey">Empty slot</span>
         </button>
-        {items.map((item, i) => (
-          <button
-            key={item.id}
-            type="button"
-            tabIndex={-1}
-            data-at={i + 1}
-            class={`picker-item ${at === i + 1 ? 'here' : ''} ${current === item.id ? 'worn' : ''}`}
-            onMouseEnter={() => setAt(i + 1)}
-            onClick={() => choose(i + 1)}
-          >
-            <span class={`doll-slot wow-slot small q-${qualityOf(item)}`}>
-              <ItemIcon icons={icons} fileId={item.iconFileId} />
-            </span>
-            <span class={`picker-name h-${qualityOf(item)}`}>{item.name}</span>
-            <span class="picker-kind">{kindOf(item, slot)}</span>
-          </button>
-        ))}
+        {items.map((item, i) => {
+          const wearable = canWear(item, wearer.classId);
+          return (
+            <button
+              key={item.id}
+              type="button"
+              tabIndex={-1}
+              data-at={i + 1}
+              class={`picker-item ${at === i + 1 ? 'here' : ''} ${current === item.id ? 'worn' : ''}`}
+              onMouseEnter={() => setAt(i + 1)}
+              onClick={() => choose(i + 1)}
+            >
+              <span class={`doll-slot wow-slot small q-${qualityOf(item)}`}>
+                <FileIcon icons={icons} fileId={item.iconFileId} />
+                {!wearable && <span class="unusable" />}
+              </span>
+              <span class={`picker-name h-${qualityOf(item)}`}>{item.name}</span>
+              <span class={`picker-kind ${wearable ? '' : 'h-red'}`}>{item.kind ?? heldAs(item, slot)}</span>
+              {item.level ? <span class="picker-level">{item.level}</span> : null}
+            </button>
+          );
+        })}
       </div>
       <p class="picker-count dim small">
         {failed
@@ -232,10 +258,15 @@ export function ItemPicker({ slot, fighters, icons, current, onChoose, onClose, 
             : found.total === 0
               ? 'Nothing by that name in this folder.'
               : more
-                ? `The first ${items.length} of ${found.total.toLocaleString()} · type to narrow`
+                ? `The first ${found.items.length} of ${found.total.toLocaleString()} · type to narrow`
                 : `${found.total.toLocaleString()} item${found.total === 1 ? '' : 's'}`}
         {' · ↑ ↓ Enter · Esc'}
       </p>
+      {shown && (
+        <div class="picker-tip" style={{ top: `${tipTop}px` }}>
+          <WowTooltip lines={itemLines(shown, slot, wearer.classId, wearer.classes)} />
+        </div>
+      )}
     </div>
   );
 }
