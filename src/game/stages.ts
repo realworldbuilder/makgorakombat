@@ -41,9 +41,10 @@ export const REACH = 260;
  * Dalaran, the Ring of Trials and the Gate of Icecrown. Their spots are in git history.
  *
  * After them, the legendary stages (26 Oct 2026): WoW's own answers to the stages every fighting
- * game has, the walled pit, the portal, the bridge over nothing, the final boss's roof. The Frozen
- * Throne is a raid's map, so only an install with Wrath's raids draws it; Netherstorm needs Outland.
- * Tried and left out: Thandol Span (broken in the middle on both worlds), the Gates of Ahn'Qiraj and
+ * game has, the walled pit and the final boss's roof. The Frozen Throne is a raid's map, so only an
+ * install with Wrath's raids draws it. Cut the same night for not reading well behind a fight
+ * (William): the threshold of the Dark Portal and the Nether Bridge in Netherstorm. Tried and
+ * left out: Thandol Span (broken in the middle on both worlds), the Gates of Ahn'Qiraj and
  * Karazhan (walls in front at fighting distance), Molten Core and Illidan's roof (no floor found at
  * the raid's coordinates), the outdoor Dark Portal in Hellfire (the stair leaves no flat ground).
  */
@@ -55,8 +56,6 @@ export const STAGES: Stage[] = [
   { slug: 'darnassus', name: 'The Gardens', where: 'Darnassus', map: 1, x: 9660, y: 2520, facing: 0, reach: REACH, why: 'Under the great tree, a canopy over the haze.' },
   { slug: 'thunder-bluff', name: 'Thunder Bluff', where: 'Mulgore', map: 1, x: -1300, y: 30, facing: 0, reach: REACH, why: 'The high rise: tents, totems and a drop on every side.' },
   { slug: 'the-maul', name: 'The Maul', where: 'Dire Maul', map: 1, x: -3750, y: 1090, facing: 90, reach: REACH, why: 'The ogres\' fighting pit outside Dire Maul, walled all round: Kalimdor\'s Gurubashi.' },
-  { slug: 'dark-portal', name: 'The Dark Portal', where: 'Blasted Lands', map: 0, x: -11840, y: -3200, facing: 90, reach: REACH, why: 'On the threshold, the portal\'s green fire at the fighters\' backs; on a classic world it has not opened yet.' },
-  { slug: 'nether-bridge', name: 'The Nether Bridge', where: 'Netherstorm', map: 530, x: 3370, y: 4300, facing: 90, reach: REACH, why: 'Girders and grating over the Twisting Nether, the broken pieces of Draenor drifting past.' },
   { slug: 'frozen-throne', name: 'The Frozen Throne', where: 'Icecrown Citadel', map: 631, x: 503, y: -2124, z: 841, facing: 270, reach: REACH, why: 'The top of the citadel, the ice stair up to the Lich King\'s throne behind: the last fight of Wrath.' },
 ];
 

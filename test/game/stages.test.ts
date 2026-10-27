@@ -89,7 +89,7 @@ describe('the stages two installs share', () => {
   it('never draws Outland or a raid for a guest who may not have it', () => {
     const shared = sharedStages(stagesFor(ALL_MAPS, 'retail'), 'wowf');
     const away = STAGES.filter((stage) => stage.map !== 0 && stage.map !== 1).map((stage) => stage.slug);
-    expect(away).toEqual(expect.arrayContaining(['nether-bridge', 'frozen-throne']));
+    expect(away).toContain('frozen-throne');
     for (let seed = 0; seed < 200; seed++) {
       const key = drawGround(shared, [], seed);
       expect(key.kind === 'stage' && away.includes(key.slug)).toBe(false);
