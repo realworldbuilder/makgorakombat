@@ -42,9 +42,6 @@ const ZONES: Record<string, Cue> = {
   'thunder-bluff': { key: 'thunder-bluff', groups: [[8180997, 8180999, 8181001], [53213, 53214, 53215]] },
   // The Maul has none of its own; Dire Maul's is Zone-EnchantedForest.
   'the-maul': { key: 'enchanted-forest', groups: [[8180792, 8180784, 8180790, 8180786, 8180788], [53457, 53453, 53456, 53454, 53455]] },
-  // The Dark Portal is the Blasted Lands': Zone-BarrenDry.
-  'dark-portal': { key: 'barren-dry', groups: [[8181055, 8181057, 8181051, 8181053, 8181059, 8181049], [53302, 53303, 53300, 53301, 53304, 53299]] },
-  'nether-bridge': { key: 'netherstorm', groups: [[53620, 53621, 53622, 53623, 53624, 53625, 53626, 53627, 53628, 53629]] },
   // The Frozen Throne's area has none, so it is the citadel's: Zone-IcecrownDungeon.
   'frozen-throne': { key: 'icecrown-citadel', groups: [[349988, 350067, 350027, 350034, 350040, 350051, 349991, 350005]] },
 };

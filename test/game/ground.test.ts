@@ -62,10 +62,9 @@ describe('the stages', () => {
     expect(retail).toContain('thunder-bluff');
     expect(retail).not.toContain('valley-of-heroes');
     // The legendary stages: the raid's map and Outland only where the install has them.
-    expect(stagesFor([0, 1, 530, 571, 631], 'retail').map((s) => s.slug)).toEqual(expect.arrayContaining(['the-maul', 'dark-portal', 'nether-bridge', 'frozen-throne']));
-    expect(classic).toEqual(expect.arrayContaining(['the-maul', 'dark-portal']));
+    expect(stagesFor([0, 1, 530, 571, 631], 'retail').map((s) => s.slug)).toEqual(expect.arrayContaining(['the-maul', 'frozen-throne']));
+    expect(classic).toContain('the-maul');
     expect(classic).not.toContain('frozen-throne');
-    expect(classic).not.toContain('nether-bridge');
     // A map the install lacks takes its stages with it.
     expect(stagesFor([1], 'retail').map((s) => s.slug)).not.toContain('gurubashi');
     // The obstructed and the cut ones stay out.
