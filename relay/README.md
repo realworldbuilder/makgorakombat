@@ -83,6 +83,39 @@ and tells each of them its code and whether they host. Nobody reads a code out.
   New York with the most matches started and `hours` those started by hour of the day there.
   `fights`, every record oldest first, comes with `night` and `day` only.
 
+## Voice on Discord
+
+- With a Discord bot in the game's server (below), the two players in a room can talk while they
+  fight. `GET /voice` answers `{"on":true|false}`: whether this relay has the bot. The game shows
+  its VOICE tab (top of the screen, right of the music tab, or V) only in an online match on a
+  relay that says `on`.
+- `POST /rooms/:code/voice?role=host|guest&id=<id>`, with the id the page joined the room with,
+  answers `{"url":"https://discord.gg/..."}`. The first ask has the bot make a voice channel,
+  `⚔ Chris vs Will` (the names the lobby matched, or `⚔ Room <code>` for a room made by code),
+  room for two, and an invite to it; every ask after answers the same invite. The other player
+  hears `{"t":"voice","url","by":"host"|"guest"}` on their socket (held for them if they are
+  away). Anyone else, a watcher or a wrong id, is 403; a relay without the bot 404; Discord
+  refusing 502.
+- The room deletes its channel when it closes (ten minutes after the last player left), and once
+  an hour (`17 * * * *`) the relay deletes any voice channel of its own, those named with `⚔ `
+  (and under `DISCORD_CATEGORY` if one is set), older than twelve hours.
+
+To switch it on, once:
+
+1. In the Discord Developer Portal (discord.com/developers/applications), **New Application**,
+   then **Bot** → **Reset Token** and copy the token. It needs no privileged intents.
+2. **OAuth2 → URL Generator**: scope `bot`, permissions **Manage Channels**, **Create Instant
+   Invite** and **View Channels**; open the URL it makes and add the bot to the game's server.
+3. In Discord, **User Settings → Advanced → Developer Mode** on; right-click the server's icon →
+   **Copy Server ID**. For the channels under a category of their own (say "MAK'GORA"), make one,
+   right-click it → **Copy Channel ID**, and give the bot Manage Channels on it.
+4. In the GitHub repository: the secret `DISCORD_TOKEN` (`gh secret set DISCORD_TOKEN`), the
+   variable `DISCORD_GUILD` (`gh variable set DISCORD_GUILD -b <server id>`), and if there is one
+   `DISCORD_CATEGORY`. Run **Relay** (`gh workflow run relay.yml`).
+
+By hand instead: `wrangler secret put DISCORD_TOKEN`, and
+`wrangler deploy --var DISCORD_GUILD:<id> [--var DISCORD_CATEGORY:<id>]`.
+
 ## The site's numbers
 
 - The welcome page and the game (`src/game/track.ts`) send `POST /site/hit` with a plain-text
@@ -178,13 +211,13 @@ pnpm exec wrangler login
 pnpm run deploy
 ```
 
-It needs no secrets, no storage of its own and no custom domain; wrangler prints the
+It needs no secrets (but the Discord bot's, for voice), no storage of its own and no custom domain; wrangler prints the
 `https://makgora-relay.<your-subdomain>.workers.dev` address to put in SETTINGS. Both players
 must use the same relay.
 
 ## Working on it
 
-- `pnpm test` runs the room's, the lobby's and the board's tests inside the Workers runtime (`@cloudflare/vitest-plugin`).
+- `pnpm test` runs the room's, the lobby's, the board's and voice's tests (Discord stood in for) inside the Workers runtime (`@cloudflare/vitest-plugin`).
 - `pnpm build` type-checks it.
 - `pnpm dev` serves it on `http://localhost:8787`.
 - `node scripts/probe.mjs [url] [rounds]` makes a room on a deployed relay, joins it twice and

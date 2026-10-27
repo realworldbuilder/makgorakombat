@@ -7,7 +7,12 @@ name: Relay
 #
 # It needs two repository secrets from the Cloudflare account that hosts it: CLOUDFLARE_API_TOKEN
 # (a token made from the "Edit Cloudflare Workers" template) and CLOUDFLARE_ACCOUNT_ID. Without
-# them it says so and deploys nothing. A deploy restarts the rooms: a fight on at that moment
+# them it says so and deploys nothing.
+#
+# Voice on Discord for each match (relay/src/voice.ts) is on once the repository has the bot's token
+# as the secret DISCORD_TOKEN and the server's id as the variable DISCORD_GUILD (and, if the channels
+# should go under a category, its id as DISCORD_CATEGORY); each deploy hands them to the Worker. A
+# deploy restarts the rooms: a fight on at that moment
 # drops, and both pages come back to the lobby.
 
 on:
@@ -31,6 +36,9 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       SITE_DOMAIN: ${{ vars.SITE_DOMAIN }}
       RELAY_URL: ${{ vars.RELAY_URL }}
+      DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
+      DISCORD_GUILD: ${{ vars.DISCORD_GUILD }}
+      DISCORD_CATEGORY: ${{ vars.DISCORD_CATEGORY }}
     steps:
       - name: Is Cloudflare set up?
         id: keys
@@ -70,7 +78,17 @@ jobs:
           # The game's own domain, if it has one, may use the relay as well as the github.io page.
           origins=""
           if [ -n "$SITE_DOMAIN" ]; then origins="https://$SITE_DOMAIN,https://www.$SITE_DOMAIN"; fi
-          pnpm exec wrangler deploy ${origins:+--var "ORIGINS:$origins"} | tee deploy.log
+          # Voice on Discord: the server and its category as plain variables, given on every deploy as ORIGINS is.
+          vars=()
+          if [ -n "$origins" ]; then vars+=(--var "ORIGINS:$origins"); fi
+          if [ -n "$DISCORD_GUILD" ]; then vars+=(--var "DISCORD_GUILD:$DISCORD_GUILD"); fi
+          if [ -n "$DISCORD_CATEGORY" ]; then vars+=(--var "DISCORD_CATEGORY:$DISCORD_CATEGORY"); fi
+          pnpm exec wrangler deploy "${vars[@]}" | tee deploy.log
+          # The bot's token is a secret on the Worker, which stays from one deploy to the next; it is put again in case it changed.
+          if [ -n "$DISCORD_TOKEN" ]; then
+            printf '%s' "$DISCORD_TOKEN" | pnpm exec wrangler secret put DISCORD_TOKEN
+            if [ -z "$DISCORD_GUILD" ]; then echo "::notice::DISCORD_TOKEN is set but the variable DISCORD_GUILD is not, so voice is off."; fi
+          fi
           url=$(grep -oE 'https://[a-z0-9.-]+\.workers\.dev' deploy.log | head -1 || true)
           echo "Relay deployed: ${url:-see the log}" >> "$GITHUB_STEP_SUMMARY"
           if [ -n "$url" ] && [ "$url" != "${RELAY_URL%/}" ]; then

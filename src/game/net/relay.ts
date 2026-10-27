@@ -74,10 +74,25 @@ export async function createRoom(base = relayUrl()): Promise<string> {
   return code;
 }
 
+/** Whether each relay asked has voice on Discord, asked once a visit. */
+const voiceAsked = new Map<string, Promise<boolean>>();
+
+/** Whether the relay has a Discord bot to make each match a voice channel (relay/src/voice.ts); false for one that cannot say. */
+export function voiceOffered(base = relayUrl()): Promise<boolean> {
+  let asked = voiceAsked.get(base);
+  if (!asked) {
+    asked = fetch(`${base}/voice`)
+      .then(async (response) => response.ok && ((await response.json()) as { on?: unknown }).on === true)
+      .catch(() => false);
+    voiceAsked.set(base, asked);
+  }
+  return asked;
+}
+
 type Listener = (message: Message) => void;
 
 /** Messages a screen opened late still wants: the last of each of these kinds is kept and handed to a new listener. */
-const STICKY = new Set<Message['t']>(['meet', 'roster', 'stage', 'hello']);
+const STICKY = new Set<Message['t']>(['meet', 'roster', 'stage', 'hello', 'voice']);
 
 /** How the wire stands, for a screen that shows it. */
 export interface Wire {
@@ -162,7 +177,23 @@ export class Link {
     else if (!this.closed && this.queued.length < QUEUE_MAX) this.queued.push(text);
   }
 
-  /** Every message from now on, and the last meet, roster, stage and hello already here. */
+  /**
+   * The match's voice channel on Discord, as the invite to it: the room has the relay's bot make it
+   * on the first ask, and tells the other player. Only this seat may ask, by the id it joined with.
+   */
+  async voice(): Promise<string> {
+    const url = this.url.replace(/^ws/, 'http').replace(/\/ws\?/, '/voice?');
+    let response: Response;
+    try {
+      response = await fetch(url, { method: 'POST' });
+    } catch {
+      throw new Error('The relay could not be reached.');
+    }
+    if (!response.ok) throw new Error(response.status === 502 ? 'Discord would not open the channel; try again.' : await response.text());
+    return ((await response.json()) as { url: string }).url;
+  }
+
+  /** Every message from now on, and the last meet, roster, stage, hello and voice already here. */
   listen(listener: Listener): () => void {
     this.listeners.add(listener);
     for (const message of this.sticky.values()) listener(message);
