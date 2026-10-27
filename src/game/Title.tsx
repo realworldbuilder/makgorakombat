@@ -124,6 +124,12 @@ export function Title({ phase, dragging, onPick, onChoose, onCreate, onOnline, o
   // TOP TEN in full, from the board on the title, or B.
   const [board, setBoard] = useState(false);
   const picker = useRef<HTMLInputElement>(null);
+  // The word before Chrome's own "Upload N files?" box, the first time the folder is picked.
+  const [note, setNote] = useState(false);
+  const choose = () => {
+    if (noteSeen()) picker.current?.click();
+    else setNote(true);
+  };
   const opening = phase.kind === 'opening';
   // The folder is on its way: the panel gives way to the opening, and the wish to create stands.
   useEffect(() => {
@@ -137,9 +143,9 @@ export function Title({ phase, dragging, onPick, onChoose, onCreate, onOnline, o
     // A folder with several games takes the digits for its WHICH WORLD? slots instead.
     if (opening || phase.kind === 'choose') return;
     const onKey = (event: KeyboardEvent) => {
-      if (guide || settings || board || event.metaKey || event.ctrlKey || event.altKey) return;
+      if (guide || settings || board || note || event.metaKey || event.ctrlKey || event.altKey) return;
       switch (event.code) {
-        case 'Digit1': case 'Numpad1': if (open) open.onEnter(); else picker.current?.click(); break;
+        case 'Digit1': case 'Numpad1': if (open) open.onEnter(); else choose(); break;
         case 'Enter': case 'NumpadEnter': if (open) open.onEnter(); else return; break;
         case 'Digit2': case 'Numpad2': setGuide('play'); break;
         case 'Digit3': case 'Numpad3': setGuide('create'); break;
@@ -153,7 +159,7 @@ export function Title({ phase, dragging, onPick, onChoose, onCreate, onOnline, o
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [opening, phase.kind, guide, settings, board, open]);
+  }, [opening, phase.kind, guide, settings, board, note, open]);
 
   // A folder with several games: 1, 2... pick one, Enter the one played last.
   useEffect(() => {
@@ -212,22 +218,13 @@ export function Title({ phase, dragging, onPick, onChoose, onCreate, onOnline, o
                 label: 'ENTER THE RING',
                 icon: GLYPHS.folder,
                 lit: true,
+                onClick: choose,
                 tip: [
                   { left: 'Enter the Ring', kind: 'name', hue: 'legendary' },
                   { left: 'Unique' },
                   { left: 'Use: Choose your World of Warcraft folder. The fighters, their gear, the arenas and the sounds are read from it here in the browser.', hue: 'green' },
                   { left: '"Your game files never leave your computer."', hue: 'gold' },
                 ],
-                input: (
-                  <input
-                    ref={picker}
-                    type="file"
-                    // @ts-expect-error webkitdirectory is not in the DOM typings
-                    webkitdirectory
-                    hidden
-                    onChange={(event) => onPick(event.currentTarget)}
-                  />
-                ),
               },
               {
                 key: '2',
@@ -304,6 +301,16 @@ export function Title({ phase, dragging, onPick, onChoose, onCreate, onOnline, o
               Mac. Your game files are read here in the browser and never leave your computer.
             </p>
           )}
+          {!open && (
+            <input
+              ref={picker}
+              type="file"
+              // @ts-expect-error webkitdirectory is not in the DOM typings
+              webkitdirectory
+              hidden
+              onChange={(event) => onPick(event.currentTarget)}
+            />
+          )}
           {phase.kind === 'error' && <p class="bad">{phase.message}</p>}
           {!chromium && <p class="bad">Made for Chrome. Other browsers may not read the folder.</p>}
         </>
@@ -312,9 +319,82 @@ export function Title({ phase, dragging, onPick, onChoose, onCreate, onOnline, o
         A fan game. World of Warcraft is Blizzard Entertainment's; the fighters are drawn from your own copy of it with the{' '}
         <a href="https://realworldbuilder.github.io/mogshot/">Mogshot</a> engine.
       </p>
-      {guide && <Guide page={guide} onPage={setGuide} onClose={() => setGuide(undefined)} onFolder={open ? open.onEnter : () => picker.current?.click()} opened={open !== undefined} />}
+      {guide && !note && <Guide page={guide} onPage={setGuide} onClose={() => setGuide(undefined)} onFolder={open ? open.onEnter : choose} opened={open !== undefined} />}
+      {note && (
+        <FolderNote
+          onChoose={() => {
+            setNote(false);
+            markNoteSeen();
+            picker.current?.click();
+          }}
+          onClose={() => setNote(false)}
+        />
+      )}
       {settings && <Settings onClose={() => setSettings(false)} />}
       {board && <BoardPanel onClose={() => setBoard(false)} />}
+    </div>
+  );
+}
+
+const NOTE_KEY = 'mk.folderNote';
+
+function noteSeen(): boolean {
+  try {
+    return localStorage.getItem(NOTE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function markNoteSeen(): void {
+  try {
+    localStorage.setItem(NOTE_KEY, '1');
+  } catch {
+    // A private window keeps nothing; the word comes again next visit.
+  }
+}
+
+/**
+ * Before the folder picker opens the first time: Chrome then asks "Upload 3,000 files to this
+ * site?" in its own words, which no page can change, and which sounds like the files are being
+ * sent somewhere. They are not; this says so, and that dropping the folder asks nothing at all.
+ * 1 or Enter opens the picker (a key press counts as the click the browser wants), Esc closes.
+ */
+function FolderNote({ onChoose, onClose }: { onChoose: () => void; onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.code === 'Escape') onClose();
+      else if (['Digit1', 'Numpad1', 'Enter', 'NumpadEnter'].includes(event.code)) onChoose();
+      else return;
+      event.stopPropagation();
+      event.preventDefault();
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [onChoose, onClose]);
+  return (
+    <div class="guide-backdrop" onClick={onClose}>
+      <div class="guide folder-note" onClick={(event) => event.stopPropagation()}>
+        <nav class="tabs">
+          <button class="here" type="button">BEFORE YOU CHOOSE</button>
+          <button class="close" onClick={onClose} aria-label="Close" type="button">✕</button>
+        </nav>
+        <div class="body create-first">
+          <p class="big">Chrome will ask: “Upload 3,000 files to this site?”</p>
+          <p>
+            <b>Click Upload. Nothing is uploaded.</b> That is how Chrome words it for any folder you pick on any website, and no
+            website can change it. The game only reads your files, right here in this tab: nothing is sent anywhere, nothing is
+            copied, and there is no upload to wait for.
+          </p>
+          <p class="dim">
+            Rather not see the question? Close this and drag your World of Warcraft folder onto the page instead. Chrome asks
+            nothing then.
+          </p>
+          <button type="button" class="button" onClick={onChoose}>
+            CHOOSE THE FOLDER · 1
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
