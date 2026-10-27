@@ -16,5 +16,5 @@
     "noEmit": true,
     "paths": { "@mogshot/*": ["./vendor/mogshot/src/*"] }
   },
-  "include": ["src", "test", "welcome", "stats", "*.ts"]
+  "include": ["src", "test", "welcome", "stats", "guides", "*.ts"]
 }

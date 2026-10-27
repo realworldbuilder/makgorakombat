@@ -1,0 +1,584 @@
+/*
+ * The class guides: a carousel of 4:5 slides, as a social post is, which swipe on a phone and step
+ * with the arrows on a computer. Every slide is drawn on a 1080 x 1350 canvas and scaled to the
+ * screen with container units (--u is one canvas pixel), so the page and the exported images are
+ * the same picture. The welcome page's palette and Geist, with the game's own LifeCraft for titles.
+ */
+
+@font-face {
+  font-family: 'LifeCraft';
+  src: url('/fonts/LifeCraft.woff2') format('woff2'), url('/fonts/LifeCraft.ttf') format('truetype');
+  font-display: swap;
+}
+
+:root {
+  --bg: #131209;
+  --card: #1f1f1f;
+  --line: #313131;
+  --text: #ffffff;
+  --muted: #a8a49a;
+  --blood: #c8121c;
+  --rage: #c41f3b;
+  --gold: #ffd100;
+  --ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --font: 'Geist', ui-sans-serif, system-ui, sans-serif;
+  --mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --title: 'LifeCraft', 'Geist', serif;
+  /* A slide is as wide as the screen allows, and no taller than it. */
+  --slide: min(100vw - 32px, (100svh - 160px) * 0.8, 640px);
+  color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100svh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  overflow-x: hidden;
+}
+
+img {
+  display: block;
+  max-width: 100%;
+}
+
+/* ---- the page round the slides --------------------------------------------------------- */
+
+.bar {
+  width: var(--slide);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0 8px;
+}
+
+.bar .home img {
+  width: 72px;
+  height: auto;
+}
+
+.bar .where {
+  flex: 1;
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.bar .where b {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.bar .play {
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: var(--blood);
+  color: var(--text);
+  font-weight: 600;
+  font-size: 14px;
+  text-decoration: none;
+  transition: background 0.2s var(--ease);
+}
+
+.bar .play:hover {
+  background: #de1f2a;
+}
+
+.carousel {
+  width: var(--slide);
+}
+
+.track {
+  display: flex;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scroll-behavior: smooth;
+  scrollbar-width: none;
+  border-radius: 12px;
+  outline: none;
+}
+
+.track::-webkit-scrollbar {
+  display: none;
+}
+
+.track:focus-visible {
+  box-shadow: 0 0 0 2px var(--gold);
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+}
+
+.controls button {
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--text);
+  font-size: 18px;
+  cursor: pointer;
+  transition: opacity 0.2s var(--ease);
+}
+
+.controls button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.dots {
+  display: flex;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dots button {
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--line);
+  font-size: 0;
+}
+
+.dots button[aria-current='true'] {
+  width: 24px;
+  background: var(--gold);
+}
+
+.foot {
+  width: var(--slide);
+  padding: 8px 0 24px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.foot p {
+  margin: 0;
+}
+
+/* ---- a slide: 1080 x 1350 canvas units ------------------------------------------------- */
+
+.slide {
+  flex: 0 0 100%;
+  aspect-ratio: 4 / 5;
+  scroll-snap-align: start;
+  container-type: inline-size;
+}
+
+.canvas {
+  --u: calc(100cqw / 1080);
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: radial-gradient(120% 60% at 50% 100%, #2a0d0c 0%, transparent 70%), var(--bg);
+  font-size: calc(34 * var(--u));
+  line-height: 1.35;
+}
+
+.lc {
+  font-family: var(--title);
+  font-weight: normal;
+  letter-spacing: 0.01em;
+  color: var(--gold);
+  text-shadow: 0 calc(4 * var(--u)) 0 #000, 0 0 calc(24 * var(--u)) rgb(0 0 0 / 60%);
+}
+
+.canvas h2 {
+  margin: 0 0 calc(28 * var(--u));
+  font-size: calc(84 * var(--u));
+  line-height: 1;
+  text-wrap: balance;
+}
+
+.canvas p {
+  margin: 0;
+  text-wrap: pretty;
+}
+
+.kicker {
+  display: flex;
+  align-items: center;
+  gap: calc(14 * var(--u));
+  margin-bottom: calc(20 * var(--u)) !important;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: calc(26 * var(--u));
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+kbd {
+  display: inline-grid;
+  place-items: center;
+  min-width: calc(64 * var(--u));
+  height: calc(64 * var(--u));
+  padding: 0 calc(14 * var(--u));
+  border: calc(2 * var(--u)) solid #5a5345;
+  border-bottom-width: calc(6 * var(--u));
+  border-radius: calc(12 * var(--u));
+  background: linear-gradient(#2c2a24, #1a1914);
+  color: var(--gold);
+  font-family: var(--mono);
+  font-size: calc(32 * var(--u));
+  font-weight: 600;
+  line-height: 1;
+}
+
+.kicker kbd {
+  min-width: calc(52 * var(--u));
+  height: calc(52 * var(--u));
+  font-size: calc(26 * var(--u));
+}
+
+/* A screenshot across the top, fading into the text beneath. */
+.shot {
+  position: relative;
+  height: calc(640 * var(--u));
+  flex: none;
+}
+
+.shot img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.shot::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 0;
+  height: calc(160 * var(--u));
+  background: linear-gradient(transparent, var(--bg));
+}
+
+.text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: calc(8 * var(--u)) calc(72 * var(--u)) calc(64 * var(--u));
+}
+
+.body {
+  font-size: calc(38 * var(--u));
+  line-height: 1.35;
+}
+
+.rage {
+  color: #ff4a5e;
+}
+
+.note {
+  margin-top: auto !important;
+  color: var(--muted);
+  font-size: calc(28 * var(--u));
+}
+
+.tip {
+  margin-top: auto !important;
+  padding: calc(22 * var(--u)) calc(28 * var(--u));
+  border-left: calc(6 * var(--u)) solid var(--gold);
+  background: rgb(255 209 0 / 7%);
+  font-size: calc(30 * var(--u));
+}
+
+.tip b {
+  color: var(--gold);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(14 * var(--u));
+  margin: calc(32 * var(--u)) 0 calc(32 * var(--u));
+  padding: 0;
+  list-style: none;
+}
+
+.chips li {
+  padding: calc(10 * var(--u)) calc(22 * var(--u));
+  border: calc(2 * var(--u)) solid var(--line);
+  border-radius: 999px;
+  font-family: var(--mono);
+  font-size: calc(26 * var(--u));
+  font-weight: 600;
+}
+
+.chips li.rage {
+  border-color: var(--rage);
+}
+
+/* The kit: keys and what they do. */
+.keys {
+  display: grid;
+  gap: calc(18 * var(--u));
+  margin: 0 0 calc(28 * var(--u));
+  padding: 0;
+  list-style: none;
+}
+
+.keys li {
+  display: flex;
+  align-items: center;
+  gap: calc(26 * var(--u));
+}
+
+.keys b {
+  color: var(--gold);
+  font-weight: 600;
+}
+
+/* Rage: four gains in a grid. */
+.gains {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: calc(16 * var(--u));
+  margin-bottom: calc(28 * var(--u));
+}
+
+.gains div {
+  display: flex;
+  flex-direction: column;
+  padding: calc(20 * var(--u)) calc(24 * var(--u));
+  border-radius: calc(14 * var(--u));
+  background: var(--card);
+}
+
+.gains b {
+  color: #ff4a5e;
+  font-family: var(--mono);
+  font-size: calc(64 * var(--u));
+  line-height: 1.1;
+}
+
+.gains span {
+  color: var(--muted);
+  font-size: calc(26 * var(--u));
+}
+
+/* The loop: each step with the rage left after it. */
+.loop .text {
+  padding-top: calc(96 * var(--u));
+}
+
+.loop h2 {
+  font-size: calc(96 * var(--u));
+  margin-bottom: calc(56 * var(--u));
+}
+
+.steps {
+  display: grid;
+  gap: calc(22 * var(--u));
+  margin: 0 0 calc(40 * var(--u));
+  padding: 0;
+  list-style: none;
+}
+
+.steps li {
+  display: grid;
+  grid-template-columns: auto 1fr calc(300 * var(--u)) calc(90 * var(--u));
+  align-items: center;
+  gap: calc(24 * var(--u));
+  padding: calc(16 * var(--u)) calc(22 * var(--u));
+  border-radius: calc(14 * var(--u));
+  background: var(--card);
+}
+
+.steps li.last {
+  outline: calc(3 * var(--u)) solid var(--gold);
+}
+
+.steps i {
+  height: calc(22 * var(--u));
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--rage) calc(var(--r) * 1%), #2b2b2b calc(var(--r) * 1%));
+}
+
+.steps b {
+  color: #ff4a5e;
+  font-family: var(--mono);
+  font-size: calc(34 * var(--u));
+  text-align: right;
+}
+
+/* The finish: the fatality's keys. */
+.combo {
+  display: flex;
+  align-items: center;
+  gap: calc(16 * var(--u));
+  margin: calc(36 * var(--u)) 0;
+}
+
+.combo kbd {
+  min-width: calc(96 * var(--u));
+  height: calc(96 * var(--u));
+  font-size: calc(48 * var(--u));
+}
+
+.combo kbd.ms {
+  border-color: var(--rage);
+}
+
+.combo .lc {
+  margin-left: calc(20 * var(--u));
+  color: #ff3b3b;
+  font-size: calc(60 * var(--u));
+}
+
+/* Full-bleed slides: the cover and the last. */
+.bleed {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.shade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(rgb(19 18 9 / 70%) 0%, transparent 30%, transparent 45%, rgb(19 18 9 / 92%) 78%, var(--bg) 100%);
+}
+
+.cover .kicker,
+.cover .cover-title,
+.cover .swipe,
+.end .end-title,
+.end .cta {
+  position: relative;
+}
+
+.cover .kicker {
+  padding: calc(64 * var(--u)) calc(72 * var(--u)) 0;
+  color: var(--text);
+}
+
+.cover-title {
+  margin-top: auto;
+  padding: 0 calc(72 * var(--u));
+}
+
+.cover .how {
+  font-family: var(--title);
+  font-size: calc(72 * var(--u));
+  color: var(--text);
+  text-shadow: 0 calc(4 * var(--u)) 0 #000;
+}
+
+.cover h1 {
+  margin: calc(-8 * var(--u)) 0 calc(16 * var(--u));
+  font-size: calc(230 * var(--u));
+  line-height: 0.95;
+}
+
+.cover .lede {
+  font-size: calc(44 * var(--u));
+  font-weight: 600;
+}
+
+.cover .swipe {
+  padding: calc(40 * var(--u)) calc(72 * var(--u)) calc(64 * var(--u));
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: calc(26 * var(--u));
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.end-title {
+  padding: calc(72 * var(--u)) calc(72 * var(--u)) 0;
+}
+
+.end-title .kicker {
+  color: #ff3b3b;
+}
+
+.dishonor {
+  font-size: calc(160 * var(--u));
+  line-height: 1;
+  color: #ff2a2a;
+}
+
+.cta {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(14 * var(--u));
+  padding: 0 calc(72 * var(--u)) calc(72 * var(--u));
+  text-align: center;
+}
+
+.cta img {
+  width: calc(420 * var(--u));
+  height: auto;
+  margin-bottom: calc(8 * var(--u));
+}
+
+.cta p {
+  font-size: calc(34 * var(--u));
+}
+
+.cta .url {
+  color: var(--gold);
+  font-family: var(--mono);
+  font-size: calc(30 * var(--u));
+  font-weight: 600;
+}
+
+/* ---- ?export: every slide at 1080 x 1350, one under the other, for the images -------------- */
+
+body.export {
+  display: block;
+}
+
+body.export .bar,
+body.export .controls,
+body.export .foot {
+  display: none;
+}
+
+body.export .carousel {
+  width: 1080px;
+}
+
+body.export .track {
+  flex-direction: column;
+  overflow: visible;
+  border-radius: 0;
+}
+
+body.export .slide {
+  flex: none;
+  width: 1080px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .track {
+    scroll-behavior: auto;
+  }
+}
