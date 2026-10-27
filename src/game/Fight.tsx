@@ -5,6 +5,7 @@ import { type MoveTable, resolveMoves } from '../engine/moves';
 import { type FighterView, fighterView } from '../engine/view';
 import { CAMERA, TICK_MS } from '../engine/stage';
 import { Arena } from './arena';
+import { fadeFor } from './blend';
 import type { BuiltFighter } from './fighters';
 import { type FighterFx, poseFx } from './fx';
 import { drawHud } from './hud';
@@ -191,7 +192,7 @@ export function Fight({ fighters, stage, p2, onBack }: FightProps) {
       const camera = { ...CAMERA, zoom: CAMERA.zoom / push, panX: CAMERA.panX + shake.x, panY: CAMERA.panY + shake.y - (push - 1) * PUSH_SINK };
       ring.frame(current.fighters.map((fighter) => fighter.x));
       ring.draw(
-        current.fighters.map((fighter, i) => ({ ...poseOf(current, i as 0 | 1), x: fighter.x, z: fighter.z, facing: fighter.facing })),
+        current.fighters.map((fighter, i) => ({ ...poseOf(current, i as 0 | 1), x: fighter.x, z: fighter.z, facing: fighter.facing, fade: fadeFor(fighter.state) })),
         camera,
         (at) => poseFx(current, fxs, at).flat(),
       );
