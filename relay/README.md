@@ -159,13 +159,17 @@ By hand instead: `wrangler secret put DISCORD_TOKEN`, and
   a room made by code the `me` each page gives. It is not passed on.
 - Every other message goes to the other player unchanged.
 - `GET /rooms/:code/ws?role=watch` comes in to watch, up to 50 at once (the 51st is 409). A
-  watcher sends nothing: whatever it says is dropped. It is sent `{"t":"seats","host","guest"}`
+  watcher says nothing to the players (only chat, below, to the other watchers). It is sent `{"t":"seats","host","guest"}`
   on arriving and whenever a player comes or goes; the host's `hello` and `rematch` and either
   player's `back` as they were sent; and every frame of the fight from either player with one
   byte in front, 0 for the host's and 1 for the guest's. The players stop sending an input once
   the other has it, so the room keeps the current game's inputs, and a watcher who comes in
   mid-fight is sent the hello, the last rematch and those inputs (as frames, 255 at most each)
-  before anything live. The players hear nothing of the watchers. A seat kept for a player who
+  before anything live. The players hear nothing of the watchers.
+- A watcher may chat: `?name=` on its socket is the name its lines go under (one the lobby would
+  take, else `Watcher`), and `{"t":"chat","text"}` is sent to every watcher of the room as
+  `{"t":"chat","name","text","at"}`, never to the players. One line a watcher every 1.5 seconds,
+  140 characters at most; a watcher coming in is sent the last 20 lines of the last five minutes. A seat kept for a player who
   dropped still reads as in under `seats`; the watchers go on getting the other's frames, and the
   returning page's when it is back.
 

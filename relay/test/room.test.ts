@@ -1,5 +1,6 @@
 import { env, runDurableObjectAlarm, runInDurableObject, SELF } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
+import { CHAT_GAP_MS, CHAT_MAX } from '../src/chat';
 import { ALPHABET, isCode } from '../src/code';
 import { allowedOrigin, type Room } from '../src/index';
 import { WATCH_CAP } from '../src/record';
@@ -427,6 +428,59 @@ describe('watching', () => {
     await next.until(1);
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(next.got.length).toBe(1);
+  });
+
+  it('passes a watcher\'s chat to every watcher under its name, and none of it to the players', async () => {
+    const { code } = await makeRoom();
+    const host = await connect(code, 'host');
+    const guest = await connect(code, 'guest');
+    await host.until(1);
+    await guest.until(1);
+    const watch = async (name?: string) => {
+      const response = await SELF.fetch(`https://relay.test/rooms/${code}/ws?role=watch${name ? `&name=${encodeURIComponent(name)}` : ''}`, { headers: { Upgrade: 'websocket' } });
+      expect(response.status).toBe(101);
+      const client = new Client(response.webSocket!);
+      await client.until(1);
+      return client;
+    };
+    const chris = await watch('Chris');
+    const anon = await watch('<b>');
+    chris.ws.send(JSON.stringify({ t: 'chat', text: '  what a\nblock  ' }));
+    const line = await anon.next<{ name: string; text: string; at: number }>('chat');
+    expect(line).toMatchObject({ t: 'chat', name: 'Chris', text: 'what a block' });
+    // The one who said it hears it back too, the way the others do.
+    expect(await chris.next('chat')).toMatchObject({ text: 'what a block' });
+    // A name the lobby would not take goes under Watcher; a long line is cut.
+    anon.ws.send(JSON.stringify({ t: 'chat', text: 'x'.repeat(500) }));
+    const long = await chris.next<{ name: string; text: string }>('chat', line.k + 1);
+    expect(long.name).toBe('Watcher');
+    expect(long.text.length).toBe(CHAT_MAX);
+    // Too soon after its last line, a watcher's next is dropped; nothing but chat is taken at all.
+    chris.ws.send(JSON.stringify({ t: 'chat', text: 'again' }));
+    chris.ws.send(JSON.stringify({ t: 'chat', text: '   ' }));
+    // A newcomer is sent the lines said so far after the seats.
+    const late = await watch('Late');
+    await late.until(3);
+    expect(late.kinds()).toEqual(['seats', 'chat', 'chat']);
+    expect(late.json(1)).toMatchObject({ name: 'Chris', text: 'what a block' });
+    // The players were sent nothing of any of it.
+    host.ws.send(JSON.stringify({ t: 'stage', stage: { kind: 'none' } }));
+    await guest.until(2);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(guest.kinds()).toEqual(['peer', 'stage']);
+    expect(host.kinds()).toEqual(['peer']);
+    expect(chris.kinds().filter((k) => k === 'chat').length).toBe(2);
+  });
+
+  it('takes a watcher\'s next line once its gap has passed', async () => {
+    const { code } = await makeRoom();
+    const watcher = await connect(code, 'watch');
+    await watcher.until(1);
+    watcher.ws.send(JSON.stringify({ t: 'chat', text: 'one' }));
+    await watcher.next('chat');
+    await new Promise((resolve) => setTimeout(resolve, CHAT_GAP_MS + 50));
+    watcher.ws.send(JSON.stringify({ t: 'chat', text: 'two' }));
+    expect(await watcher.next<{ text: string }>('chat', 2)).toMatchObject({ text: 'two' });
   });
 
   it('tells watchers who comes and goes, and the players nothing of the watchers', async () => {
