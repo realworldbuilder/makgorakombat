@@ -22,6 +22,7 @@ import { loadSaved, type SavedChampion, storeSaved } from './saved';
 import { type OnlinePick, Select, type Source } from './Select';
 import { championOf, decode, encode, type Hello, localize, mismatch, resultOf, sameStage, type StageKey, stageKeyOf } from './net/handshake';
 import { Lobby, type LobbyFight, saveName, savedName } from './net/lobby';
+import { delayFor } from './net/lockstep';
 import type { Link } from './net/relay';
 import { VERSION } from './net/version';
 import { Challenge, enterRoom, Matching, Online, type Session, useLobby } from './Online';
@@ -500,6 +501,8 @@ export function Game() {
     game: 1,
     stage,
     ...(drawn ? { drawn } : {}),
+    // As long as the wire between the two pages needs, measured by their echoes while they chose.
+    delay: delayFor(online?.link.echoes ?? []),
     fighters: pick.specs,
     tables: [tableOf(fighters[0]), tableOf(fighters[1])],
   });

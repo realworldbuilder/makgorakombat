@@ -20,6 +20,10 @@ const STORAGE = 'makgora.relay';
  * tells the room this page is still there: it takes a seat silent for six seconds for dropped.
  */
 const PING_MS = 2000;
+/** An echo to the other page this often while both are in the room, for the delay the host sets (lockstep.ts delayFor). */
+const ECHO_MS = 1000;
+/** Round trips to the other page kept: the last half minute's. */
+const KEEP_ECHOES = 30;
 /** A ping unanswered this long means the socket is dead though it never closed (Wi-Fi pulled): it is dropped and made again. */
 const DEAD_MS = 4000;
 /** How long the room keeps a dropped player's seat (RECONNECT_MS in relay/src/index.ts), and so how long the link tries to get back to it. */
@@ -122,6 +126,9 @@ export class Link {
   closed = false;
   /** Milliseconds to the room and back, from the last ping; the way to the other player is about twice the half of it. */
   rtt: number | undefined;
+  /** Round trips to the other page and back through the room, in ms, newest last: what the host's delay is set from. */
+  readonly echoes: number[] = [];
+  private echoedAt = -Infinity;
   private ws: WebSocket;
   private readonly listeners = new Set<Listener>();
   private readonly bytes = new Set<(data: Uint8Array) => void>();
@@ -268,6 +275,7 @@ export class Link {
       }
       const message = decode(data);
       if (!message) return;
+      if (message.t === 'echo') return this.echoed(message);
       if (message.t === 'peer') this.heard(message);
       if (STICKY.has(message.t)) this.sticky.set(message.t, message);
       for (const listener of [...this.listeners]) listener(message);
@@ -304,6 +312,23 @@ export class Link {
       return;
     }
     if (performance.now() - this.pingedAt >= PING_MS) this.ping();
+    if (this.peer && this.awayAt === undefined && performance.now() - this.echoedAt >= ECHO_MS) {
+      this.echoedAt = performance.now();
+      // Straight to the socket, never queued: an echo held through a drop would time the drop.
+      if (this.ws.readyState === WebSocket.OPEN) this.ws.send(encode({ t: 'echo', at: this.echoedAt }));
+    }
+  }
+
+  /** The other page's echo goes straight back; ours, come back, is a round trip. */
+  private echoed(message: Extract<Message, { t: 'echo' }>): void {
+    if (!message.back) {
+      if (this.ws.readyState === WebSocket.OPEN) this.ws.send(encode({ t: 'echo', at: message.at, back: true }));
+      return;
+    }
+    const rtt = performance.now() - message.at;
+    if (!(rtt >= 0 && rtt < 10_000)) return;
+    this.echoes.push(Math.round(rtt));
+    if (this.echoes.length > KEEP_ECHOES) this.echoes.shift();
   }
 
   private ping(): void {

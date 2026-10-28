@@ -1,21 +1,34 @@
 import { type Inputs, type Match, tick } from '../../engine/engine';
 
 /*
- * The fight over the wire: two-player lockstep with a fixed input delay. Both machines run the
+ * The fight over the wire: two-player lockstep with an input delay. Both machines run the
  * same deterministic engine from the same tables and seed, so only the inputs need to cross.
- * What a player presses on tick N is played on tick N + INPUT_DELAY, on both machines alike:
- * the delay gives each side's inputs that long to reach the other, and the local player waits
- * as long as the remote one so both see the same timing. A tick runs only when both inputs for
- * it are here; until then the fight holds still rather than guess. Every 60 ticks each side
- * hashes its match and sends the hash along; if the two ever differ the fight stops, since
- * every tick after would be wrong.
+ * What a player presses on tick N is played on tick N + delay, on both machines alike: the
+ * delay gives each side's inputs that long to reach the other, and the local player waits as
+ * long as the remote one so both see the same timing. The host sets the delay for each match
+ * from how long the wire between the two pages takes (delayFor), so two players far apart get
+ * a longer one rather than a fight that stops every few ticks. A tick runs only when both
+ * inputs for it are here; until then the fight holds still rather than guess. Each frame also
+ * says which tick its sender is on, so the side that has run ahead can ease off (paceFor)
+ * before it runs into a wait. Every 60 ticks each side hashes its match and sends the hash
+ * along; if the two ever differ the fight stops, since every tick after would be wrong.
  *
  * Nothing here touches a browser: give it a Channel (a WebSocket through the relay, or a pair
  * of queues in a test) and call `step` from the frame loop.
  */
 
-/** Ticks between pressing a key and the engine playing it: 66.7 ms at 60 Hz. */
+/** Ticks between pressing a key and the engine playing it when the hello names none: 66.7 ms at 60 Hz. */
 export const INPUT_DELAY = 4;
+/** The shortest and the longest delay the host chooses: 50 ms, and 200 ms for players an ocean apart. */
+export const MIN_DELAY = 3;
+export const MAX_DELAY = 12;
+/** The delay with nothing measured yet: a little over the old fixed one, for a wire of unknown length. */
+export const UNMEASURED_DELAY = 6;
+/** A tick, in milliseconds. */
+const TICK = 1000 / 60;
+/** The pace eases by this share for each tick one side is ahead of the other beyond the first, and by no more than MAX_EASE. */
+const EASE_PER_TICK = 0.02;
+const MAX_EASE = 0.1;
 /** Ticks between hashes of the match state. */
 export const HASH_EVERY = 60;
 /** How long the fight may hold before the HUD says WAITING FOR OPPONENT. */
@@ -65,6 +78,31 @@ export function unpackInputs(bits: number): Inputs {
   };
 }
 
+/**
+ * The delay for a match, from round trips between the two pages in milliseconds (the screens'
+ * echoes through the room). A press must reach the other side within the delay or the fight
+ * holds for it, so the delay covers the slow end of the trips, not their middle: the one-way
+ * time of the trip slower than nine in ten, and a tick more for the two pages' frames not
+ * landing together.
+ */
+export function delayFor(rtts: readonly number[]): number {
+  if (rtts.length < 3) return UNMEASURED_DELAY;
+  const sorted = [...rtts].sort((a, b) => a - b);
+  // Nine in ten of the trips are this quick or quicker; the one slowest in ten is a blip, not the wire.
+  const slow = sorted[Math.ceil(sorted.length * 0.9) - 1]!;
+  return Math.min(MAX_DELAY, Math.max(MIN_DELAY, Math.ceil(slow / 2 / TICK) + 1));
+}
+
+/**
+ * How fast this side's clock should run, from how many ticks it is ahead of the other (`ahead`,
+ * from Lockstep.ahead). Ahead by more than a tick, it eases off a little, so the two clocks meet
+ * again without the one in front running into a stall; level or behind, it runs at full speed.
+ */
+export function paceFor(ahead: number): number {
+  if (ahead <= 1) return 1;
+  return Math.max(1 - MAX_EASE, 1 - (ahead - 1) * EASE_PER_TICK);
+}
+
 /** One frame on the wire: which game, what the sender has of ours, a run of its inputs, and its latest hash. */
 export interface Frame {
   /** The match number, so a rematch never takes the last match's stragglers. */
@@ -75,11 +113,21 @@ export interface Frame {
   first: number;
   inputs: number[];
   hash: { tick: number; value: number } | undefined;
+  /**
+   * The sender's clock: the tick it runs next, and how many ticks it was ahead of the last frame it
+   * had from us when that came (that frame's `next` against its own). After the hash, where the
+   * relay's reading of frames (relay/src/record.ts) stops, so a relay from before it reads the
+   * frame as ever; absent from frames the relay replays to a watcher.
+   */
+  clock?: { next: number; lead: number };
 }
+
+const CLOCK_TAG = 0x50;
 
 export function encodeFrame(frame: Frame): Uint8Array<ArrayBuffer> {
   const n = frame.inputs.length;
-  const bytes = new Uint8Array(11 + n + 1 + (frame.hash ? 6 : 0));
+  const end = 12 + n + (frame.hash ? 6 : 0);
+  const bytes = new Uint8Array(end + (frame.clock ? 6 : 0));
   const view = new DataView(bytes.buffer);
   bytes[0] = FRAME_TAG;
   bytes[1] = frame.game & 0xff;
@@ -92,6 +140,11 @@ export function encodeFrame(frame: Frame): Uint8Array<ArrayBuffer> {
     view.setUint32(12 + n, frame.hash.tick);
     view.setUint16(16 + n, frame.hash.value);
   }
+  if (frame.clock) {
+    bytes[end] = CLOCK_TAG;
+    view.setUint32(end + 1, frame.clock.next);
+    view.setInt8(end + 5, Math.max(-128, Math.min(127, Math.round(frame.clock.lead))));
+  }
   return bytes;
 }
 
@@ -103,13 +156,16 @@ export function decodeFrame(bytes: Uint8Array): Frame | undefined {
   if (bytes.length < 12 + n) return undefined;
   const hashed = bytes[11 + n] === 1;
   if (hashed && bytes.length < 18 + n) return undefined;
-  return {
+  const frame: Frame = {
     game: bytes[1]!,
     ack: view.getInt32(2),
     first: view.getUint32(6),
     inputs: Array.from(bytes.subarray(11, 11 + n)),
     hash: hashed ? { tick: view.getUint32(12 + n), value: view.getUint16(16 + n) } : undefined,
   };
+  const end = 12 + n + (hashed ? 6 : 0);
+  if (bytes.length >= end + 6 && bytes[end] === CLOCK_TAG) frame.clock = { next: view.getUint32(end + 1), lead: view.getInt8(end + 5) };
+  return frame;
 }
 
 /** FNV-1a over a string, folded to 16 bits, carrying the previous hash in. */
@@ -158,6 +214,12 @@ export class Lockstep {
   private readonly theirHashes = new Map<number, number>();
   private lastHash: { tick: number; value: number } | undefined;
   private waitingSince: number | undefined;
+  /** The other side's clock as its newest frame gave it, and how far ahead of it this side was when that frame came. */
+  private theirClock: { next: number; lead: number } | undefined;
+  private lead = 0;
+  /** Calls to `step` that found the other's input missing: frames the fight stood still, and the time it stood. */
+  held = 0;
+  heldMs = 0;
   private desync: LockstepStatus['desync'];
   private closed = false;
   private readonly now: () => number;
@@ -203,8 +265,10 @@ export class Lockstep {
     const mine = this.mine.get(t);
     if (theirs === undefined || mine === undefined) {
       this.waitingSince ??= this.now();
+      this.held++;
       return false;
     }
+    if (this.waitingSince !== undefined) this.heldMs += this.now() - this.waitingSince;
     this.waitingSince = undefined;
     const inputs: [Inputs, Inputs] = this.local === 0 ? [unpackInputs(mine), unpackInputs(theirs)] : [unpackInputs(theirs), unpackInputs(mine)];
     tick(match, inputs);
@@ -213,6 +277,16 @@ export class Lockstep {
     this.next++;
     if (this.next % HASH_EVERY === 0) this.check(t, match);
     return true;
+  }
+
+  /**
+   * Ticks this side is ahead of the other, the wire's own length taken out: each side sees the
+   * other behind by the time a frame takes to cross, so half the difference of the two leads is
+   * how far apart the clocks really are. Zero until the other has said.
+   */
+  ahead(): number {
+    if (!this.theirClock) return 0;
+    return (this.lead - this.theirClock.lead) / 2;
   }
 
   /** The match as it was hashed after tick `t`, while it is still kept; for reading a desync. */
@@ -239,12 +313,17 @@ export class Lockstep {
     const last = Math.min(this.mineTop, first + MAX_PER_FRAME - 1);
     const inputs: number[] = [];
     for (let t = first; t <= last; t++) inputs.push(this.mine.get(t) ?? 0);
-    this.channel.send(encodeFrame({ game: this.game, ack: this.theirsTop, first, inputs, hash: this.lastHash }));
+    this.channel.send(encodeFrame({ game: this.game, ack: this.theirsTop, first, inputs, hash: this.lastHash, clock: { next: this.next, lead: this.lead } }));
   }
 
   private receive(bytes: Uint8Array): void {
     const frame = decodeFrame(bytes);
     if (!frame || frame.game !== this.game) return;
+    // The newest clock only: a frame overtaken on the wire says nothing new.
+    if (frame.clock && (!this.theirClock || frame.clock.next >= this.theirClock.next)) {
+      this.theirClock = frame.clock;
+      this.lead = this.next - frame.clock.next;
+    }
     // Duplicates and frames out of order are fine: each input is taken once, by its tick.
     frame.inputs.forEach((bits, k) => {
       const t = frame.first + k;
