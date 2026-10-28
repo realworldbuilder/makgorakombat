@@ -691,7 +691,8 @@ export function Select({ edition, art, others, onEdition, races, classes, record
         right: (
           <>
             {classIcon && <img class="class" src={classIcon} alt="" />}
-            {kitSpec(classId, player.built?.result.wielding ?? 'oneHand').className === 'CHAMPION' ? 'Champion' : (classEntry?.name ?? '')}
+            {/* Booby Bay's are warriors with bare hands, not the kit's nameless champion. */}
+            {!bay && kitSpec(classId, player.built?.result.wielding ?? 'oneHand').className === 'CHAMPION' ? 'Champion' : (classEntry?.name ?? '')}
           </>
         ),
       });
@@ -788,7 +789,7 @@ export function Select({ edition, art, others, onEdition, races, classes, record
           <div
             class="tiles legends"
             // Legends only: two rows, widening as the champions made here join them, then a third.
-            style={legendsOnly ? { gridTemplateColumns: `repeat(${bay ? legendRow.length : Math.min(7, Math.max(4, Math.ceil(legendRow.length / 2)))}, minmax(0, 1fr))` } : undefined}
+            style={legendsOnly ? { gridTemplateColumns: `repeat(${bay ? Math.min(5, legendRow.length) : Math.min(7, Math.max(4, Math.ceil(legendRow.length / 2)))}, minmax(0, 1fr))` } : undefined}
           >
             {legendRow.map((tile, i) => tileView(tile, 'legends', i))}
           </div>
