@@ -26,6 +26,8 @@ export interface FighterSpec {
   gear: [Slot, number][];
   /** A legend: its creature display on the sender's install. */
   npc?: number;
+  /** Booby Bay's champion: the chest made bigger. */
+  bay?: boolean;
 }
 
 /** The ground: a stage by its slug, a loading screen by its id, or none. */
@@ -129,6 +131,7 @@ export function specOf(champion: Champion): FighterSpec {
     gear: champion.gear.map(([slot, id]) => [slot, id]),
   };
   if (champion.npc !== undefined) spec.npc = champion.npc;
+  if (champion.bay) spec.bay = true;
   return spec;
 }
 
@@ -144,6 +147,7 @@ export function championOf(spec: FighterSpec): Champion {
     gear: spec.gear.map(([slot, id]) => [slot, id]),
   };
   if (spec.npc !== undefined) champion.npc = spec.npc;
+  if (spec.bay === true) champion.bay = true;
   return champion;
 }
 

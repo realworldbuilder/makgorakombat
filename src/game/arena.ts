@@ -4,6 +4,7 @@ import type { PosableRig } from '@mogshot/model/posable';
 import { type Camera, CharacterRenderer, type Shadow } from '@mogshot/render/renderer';
 import { mergedPose, mergeScenes } from '../engine/merge';
 import { HALF, STAGE_BOX, worldMatrix } from '../engine/stage';
+import type { Bounce } from './bay';
 import { CrossFade, FADE, posedFrom } from './blend';
 import type { BuiltFighter } from './fighters';
 import { type AnchorAt, type FxPose, type FxSlot, HIDDEN, type Point } from './fx';
@@ -74,6 +75,8 @@ export class Arena {
   private lastPlacements: Placement[] = [];
   private restPoses: ReturnType<PosableRig['pose']>[] = [];
   private fades: CrossFade[] = [];
+  /** Booby Bay's springs, one set per fighter drawn here (bay.ts). */
+  private bounces: (Bounce | undefined)[] = [];
   private ground: Ground = {};
   private floor: FloorProfile | undefined;
   private backdropSize = '';
@@ -86,6 +89,7 @@ export class Arena {
   /** The fighters, and after them the spell models that may be drawn about them (fx.ts), as one scene. */
   setFighters(fighters: BuiltFighter[], effects: readonly FxSlot[] = []): void {
     this.fighters = fighters;
+    this.bounces = fighters.map((fighter) => fighter.bounce?.());
     this.effects = effects;
     this.restPoses = [];
     this.fades = fighters.map(() => new CrossFade());
@@ -174,7 +178,13 @@ export class Arena {
       const place = placements[i]!;
       const pose = fighter.rig.pose(place.sequence, place.time);
       const body = fighter.result.rig.body;
-      const bones = pose[0] && this.fades[i]?.bones(body, place.sequence, place.time, pose[0].bones, now, place.fade ?? FADE.move);
+      let bones = pose[0] && this.fades[i]?.bones(body, place.sequence, place.time, pose[0].bones, now, place.fade ?? FADE.move);
+      // Booby Bay's springs move the breasts on a copy, so the cross-fade keeps the pose as the animation has it.
+      const bounce = this.bounces[i];
+      if (bounce && pose[0]) {
+        bones = (bones ?? pose[0].bones).slice();
+        bounce.apply(bones, now, place);
+      }
       return bones ? posedFrom(fighter.result.rig, bones) : pose;
     });
     const worlds = placements.map((place) => worldMatrix(place.x, place.z + this.floorAt(place.x), place.facing));
@@ -212,6 +222,7 @@ export class Arena {
   dispose(): void {
     this.merged = undefined;
     this.fighters = [];
+    this.bounces = [];
     this.effects = [];
     this.bodyBones = [];
     this.restPoses = [];

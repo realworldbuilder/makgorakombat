@@ -59,6 +59,8 @@ export interface LobbyState {
   queued: boolean;
   /** When this page went into the queue (its own clock), for the count-up. */
   queuedAt?: number;
+  /** Waiting in Booby Bay, the queue's secret corner (bay.ts), where only those who found it are paired. */
+  bay?: boolean;
   /** How many are online, waiting and fighting. */
   counts: Counts;
   /** The fights on now that the lobby made, to watch. */
@@ -76,9 +78,9 @@ export type LobbyMessage =
   | { t: 'challenging'; to: { id: string; name: string }; ttl: number }
   | { t: 'declined'; by: string; reason: string }
   | { t: 'withdrawn'; from: string; reason: string }
-  | { t: 'queued'; since?: number }
+  | { t: 'queued'; since?: number; bay?: boolean }
   | { t: 'unqueued'; reason?: string }
-  | { t: 'fight'; code: string; role: Role; with: { id: string; name: string } }
+  | { t: 'fight'; code: string; role: Role; with: { id: string; name: string }; bay?: boolean }
   | { t: 'error'; message: string };
 
 /** A match the lobby made: the room, this page's part in it, and the other player. */
@@ -88,6 +90,8 @@ export interface Match {
   with: { id: string; name: string };
   /** The queue made it, not a challenge: a stranger, whom the page shows before the roster. */
   queued: boolean;
+  /** Booby Bay made it: both play its two champions. */
+  bay?: boolean;
 }
 
 /** A display name as the lobby takes it: letters, digits and single spaces, 2 to 16; undefined when it is not one. */
@@ -224,16 +228,18 @@ export function fold(state: LobbyState, message: LobbyMessage, now: number): Lob
     }
     case 'queued':
       // Already waiting (asked twice): the count-up goes on from where it was.
-      return { ...state, queued: true, queuedAt: state.queued ? state.queuedAt : now, outgoing: undefined, notice: undefined };
+      // Into the bay or out of it is a new wait, counted from nothing.
+      return { ...state, queued: true, queuedAt: state.queued && !!state.bay === !!message.bay ? state.queuedAt : now, bay: message.bay === true, outgoing: undefined, notice: undefined };
     case 'unqueued':
       return {
         ...state,
         queued: false,
         queuedAt: undefined,
+        bay: undefined,
         notice: message.reason === 'idle' ? 'Ten minutes and nobody came; you are out of the queue. Q to wait again.' : state.notice,
       };
     case 'fight':
-      return { ...state, incoming: undefined, outgoing: undefined, queued: false, queuedAt: undefined, notice: undefined };
+      return { ...state, incoming: undefined, outgoing: undefined, queued: false, queuedAt: undefined, bay: undefined, notice: undefined };
     case 'error':
       return { ...state, notice: message.message };
   }
@@ -250,6 +256,8 @@ export class Lobby {
   private busy = false;
   /** This page wants to be in the queue: a socket opened free asks for it as it opens (requeue=1), after a match or a dropped wire. */
   private wantQueue = false;
+  /** The queue this page wants is Booby Bay's: kept through a match, so NEXT OPPONENT goes back into the bay. */
+  private wantBay = false;
   private retry = 0;
   private retryTimer: ReturnType<typeof setTimeout> | undefined;
   private pingTimer: ReturnType<typeof setInterval> | undefined;
@@ -328,15 +336,18 @@ export class Lobby {
     this.set({ ...this.state, incoming: undefined });
   }
 
-  quick(on: boolean): void {
+  /** Into the queue or out of it; `bay` into Booby Bay's corner of it (a page already waiting moves there). */
+  quick(on: boolean, bay = false): void {
     this.wantQueue = on;
-    this.send({ t: on ? 'quick' : 'unquick' });
+    this.wantBay = on && bay;
+    this.send(on ? (bay ? { t: 'quick', bay: true } : { t: 'quick' }) : { t: 'unquick' });
   }
 
   /** Out of the queue and no wish to be put back in it, connected or not: the panel shut. */
   leaveQueue(): void {
     const asked = this.state.queued || this.wantQueue;
     this.wantQueue = false;
+    this.wantBay = false;
     if (asked && this.ws?.readyState === WebSocket.OPEN) this.send({ t: 'unquick' });
   }
 
@@ -346,7 +357,7 @@ export class Lobby {
    */
   queueAgain(): void {
     this.wantQueue = true;
-    if (this.ws?.readyState === WebSocket.OPEN && !this.busy) this.send({ t: 'quick' });
+    if (this.ws?.readyState === WebSocket.OPEN && !this.busy) this.send(this.wantBay ? { t: 'quick', bay: true } : { t: 'quick' });
   }
 
   /** Forgets the last notice once it has been read. */
@@ -366,7 +377,7 @@ export class Lobby {
     this.retryTimer = undefined;
     this.replaced = false;
     const busy = this.mode === 'busy';
-    const query = `name=${encodeURIComponent(this.name)}&id=${encodeURIComponent(this.id)}${busy ? '&busy=1' : this.wantQueue ? '&busy=0&requeue=1' : ''}`;
+    const query = `name=${encodeURIComponent(this.name)}&id=${encodeURIComponent(this.id)}${busy ? '&busy=1' : this.wantQueue ? `&busy=0&requeue=1${this.wantBay ? '&bay=1' : ''}` : ''}`;
     let ws: WebSocket;
     try {
       ws = new WebSocket(`${this.base.replace(/^http/, 'ws')}/lobby/ws?${query}`);
@@ -400,13 +411,22 @@ export class Lobby {
       // Matched the moment it came back with requeue=1, the page never heard it was queued: it was, all the same.
       const wasQueued = this.state.queued || this.wantQueue;
       this.set(fold(this.state, message, performance.now()));
-      if (message.t === 'queued') this.wantQueue = true;
-      else if (message.t === 'unqueued' || message.t === 'challenging' || message.t === 'fight') this.wantQueue = false;
+      if (message.t === 'queued') {
+        this.wantQueue = true;
+        this.wantBay = message.bay === true;
+      } else if (message.t === 'unqueued' || message.t === 'challenging') {
+        this.wantQueue = false;
+        this.wantBay = false;
+      } else if (message.t === 'fight') {
+        this.wantQueue = false;
+        // A challenge is never the bay's: only a match the bay made keeps the page there for the next one.
+        this.wantBay = message.bay === true;
+      }
       // A refusal (asking for the queue while still in a match) leaves the wish unmet, not pending.
       else if (message.t === 'error' && !this.state.queued) this.wantQueue = false;
       if (message.t === 'fight') {
         this.busy = true;
-        for (const listener of [...this.matches]) listener({ code: message.code, role: message.role, with: message.with, queued: wasQueued });
+        for (const listener of [...this.matches]) listener({ code: message.code, role: message.role, with: message.with, queued: wasQueued, bay: message.bay === true });
       }
     });
     const lost = (event?: CloseEvent) => {
