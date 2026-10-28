@@ -4,7 +4,7 @@ import { posableRig, type PosableRig } from '@mogshot/model/posable';
 import type { FighterResult, FightSoundSet, ItemSearchResult } from '@mogshot/worker/api';
 import type { DataClient } from '@mogshot/worker/client';
 import { ALL_MOVE_NAMES, type MoveTable, resolveMoves } from '../engine/moves';
-import { BAY_CLASS, BAY_SEX, Bounce, type BounceRig, enlarge } from './bay';
+import { BAY_CLASS, BAY_SEX, Bounce, type BounceRig, enlarge, withAdded } from './bay';
 import { type FighterFx, loadFighterFx } from './fx';
 import type { Tile, WeaponKit } from './roster';
 import { savedChampion } from './saved';
@@ -214,7 +214,24 @@ export class Fighters {
           result.scene.meshes[0] = { ...body, vertices: shaped.vertices };
           bounce = shaped.bounce;
         }
-        const rig = posableRig(result.rig);
+        // The bones Booby Bay added for the bottom go on the end of every body pose, from the scene's first on:
+        // the renderer keeps a mesh's bones the length they first were.
+        const added = bounce?.added;
+        const followsBody = (i: number) => result.rig.meshes[i]?.follows === 'body';
+        if (added) result.scene.meshes = result.scene.meshes.map((mesh, i) => (followsBody(i) ? { ...mesh, bones: withAdded(mesh.bones, added) } : mesh));
+        const posable = posableRig(result.rig);
+        const rig: PosableRig = added
+          ? {
+              ...posable,
+              pose(sequence, timeMs) {
+                const posed = posable.pose(sequence, timeMs);
+                const at = posed.findIndex((_, i) => followsBody(i));
+                if (at < 0) return posed;
+                const longer = withAdded(posed[at]!.bones, added);
+                return posed.map((mesh, i) => (followsBody(i) ? { ...mesh, bones: longer } : mesh));
+              },
+            }
+          : posable;
         if (rig.meshCount !== result.scene.meshes.length) throw new Error(`The fighter's rig has ${rig.meshCount} meshes for ${result.scene.meshes.length} in the scene`);
         if (result.scene.problems.length > 0) console.warn(`${champion.name}: ${result.scene.problems.join('; ')}`);
         // The weapon's own swing and impact come from the main hand; the voice from the race and sex built.

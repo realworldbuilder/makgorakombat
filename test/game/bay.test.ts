@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { SceneMesh } from '@mogshot/character/scene';
 import type { M2Bone } from '@mogshot/formats/m2';
-import { Bounce, enlarge, findChest, findHips } from '../../src/game/bay';
+import { Bounce, enlarge, findChest, findHips, withAdded } from '../../src/game/bay';
 import { BAY_CODE, typedToward } from '../../src/game/Online';
 
 /** A bone with a role, a parent and a pivot; the tracks are not read. */
@@ -71,7 +71,7 @@ describe('Booby Bay', () => {
     // Two breast bones off the chest, in front, one each side.
     const bones = [...BONES, bone(-1, 2, [0.09, 0.08, 1.45]), bone(-1, 2, [0.09, -0.08, 1.45])];
     const shaped = enlarge(meshOf(POINTS), bones);
-    expect(shaped.bounce).toMatchObject({ chest: 2, breasts: [7, 8] });
+    expect(shaped.bounce!.parts[0]).toMatchObject({ anchor: 2, bones: [7, 8] });
     const view = new DataView(shaped.vertices.buffer);
     for (let i = 0; i < POINTS.length; i++) {
       const weights = [0, 1, 2, 3].map((k) => view.getUint8(i * 48 + 12 + k));
@@ -84,7 +84,7 @@ describe('Booby Bay', () => {
   });
 
   it('bounces: lags a chest that jumps, swings past, and settles', () => {
-    const springs = new Bounce({ chest: 0, pivot: [0, 0, 1.4], breasts: [1, 2], radius: 0.1 });
+    const springs = new Bounce({ parts: [{ anchor: 0, pivot: [0, 0, 1.4], bones: [1, 2], radius: 0.1, hz: [3.1, 3.4], gain: 1.8 }] });
     const pose = () => {
       const bones = new Float32Array(48);
       for (const b of [0, 1, 2]) for (const k of [0, 5, 10, 15]) bones[b * 16 + k] = 1;
@@ -126,6 +126,44 @@ describe('Booby Bay', () => {
     expect(at(out, 9)).toEqual(at(mesh.vertices, 9));
     // Without a bottom to make bigger, it is left as it was.
     expect(at(enlarge(mesh, bones, undefined, 0).vertices, 7)).toEqual(at(mesh.vertices, 7));
+  });
+
+  it('gives the bottom two bones of its own, which follow the hips and swing on their own springs', () => {
+    const bones = [...BONES, bone(-1, 0, [0, 0, 1.0]), bone(55, 7, [0, -0.09, 0.95]), bone(56, 7, [0, 0.09, 0.95])];
+    const points: [number, number, number, number][] = [...POINTS, [-0.13, 0.07, 0.9, 7], [-0.13, -0.07, 0.9, 7]];
+    const shaped = enlarge(meshOf(points), bones);
+    const cheeks = shaped.bounce!.parts.find((part) => part.added)!;
+    expect(cheeks).toMatchObject({ anchor: 7, bones: [10, 11] });
+    expect(shaped.bounce!.added).toEqual({ from: 7, count: 2 });
+    const view = new DataView(shaped.vertices.buffer);
+    const owners = (i: number) => [0, 1, 2, 3].filter((k) => view.getUint8(i * 48 + 12 + k) > 0).map((k) => view.getUint8(i * 48 + 16 + k));
+    expect(owners(7)).toContain(10);
+    expect(owners(8)).toContain(11);
+
+    // A pose of the ten bones, the pelvis moved: the added two are its copies.
+    const pose = new Float32Array(10 * 16);
+    for (let b = 0; b < 10; b++) for (const k of [0, 5, 10, 15]) pose[b * 16 + k] = 1;
+    pose[7 * 16 + 14] = 0.3;
+    const longer = withAdded(pose, shaped.bounce!.added);
+    expect(longer.length).toBe(12 * 16);
+    expect(longer[10 * 16 + 14]).toBeCloseTo(0.3, 5);
+    expect(withAdded(pose, undefined)).toBe(pose);
+
+    // The hips drop: the cheeks lag above them, then settle on them.
+    const springs = new Bounce(shaped.bounce!);
+    springs.apply(longer.slice(), 0);
+    const dropped = longer.slice();
+    dropped[7 * 16 + 14] = 0.1;
+    dropped[10 * 16 + 14] = 0;
+    springs.apply(dropped, 16);
+    expect(dropped[10 * 16 + 14]).toBeGreaterThan(0.1);
+    let last = dropped;
+    for (let t = 32; t < 3000; t += 16) {
+      last = longer.slice();
+      last[7 * 16 + 14] = 0.1;
+      springs.apply(last, t);
+    }
+    expect(last[10 * 16 + 14]).toBeCloseTo(0.1, 2);
   });
 
   it('leaves a model it cannot read alone', () => {
