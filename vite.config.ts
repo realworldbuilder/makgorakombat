@@ -56,8 +56,9 @@ export default defineConfig({
   base: process.env.VITE_BASE || '/makgorakombat/',
   plugins: [preact()],
   worker: { format: 'es' },
-  // Three pages: the game, the welcome page in front of it at /welcome/, and the site's numbers at /stats/.
-  build: { rollupOptions: { input: { main: 'index.html', welcome: 'welcome/index.html', stats: 'stats/index.html' } } },
+  // The pages: the game, the welcome page in front of it at /welcome/, the site's numbers at /stats/,
+  // and the class guides at /guides/<class>/.
+  build: { rollupOptions: { input: { main: 'index.html', welcome: 'welcome/index.html', stats: 'stats/index.html', warrior: 'guides/warrior/index.html', hunter: 'guides/hunter/index.html' } } },
   // Only the game's own page is scanned: the submodule's pages pull in things the game does not use.
   optimizeDeps: { entries: ['index.html'] },
   resolve: { alias: { '@mogshot': mogshot } },
