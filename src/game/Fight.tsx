@@ -4,7 +4,8 @@ import { InputReader, type InputSource } from '../engine/input';
 import { type MoveTable, resolveMoves, variationOf } from '../engine/moves';
 import { type FighterView, fighterView } from '../engine/view';
 import { bodyRadius, CAMERA, HUMAN_HEAD, TICK_MS } from '../engine/stage';
-import { Arena } from './arena';
+import { Arena, type Placement } from './arena';
+import { fadeFor } from './blend';
 import type { BuiltFighter } from './fighters';
 import { ATTACH, type FighterFx, poseFx } from './fx';
 import { drawHud, LETTERBOX } from './hud';
@@ -16,6 +17,8 @@ import { isMuted, Mixer, toggleMute } from './sound';
 import type { Source } from './Select';
 import { chosenRules } from './Settings';
 import { isRulesName, type RulesName } from '../engine/rules';
+import { between, easeFor } from './smooth';
+import { measureTable } from './strike';
 import type { Ground } from './stages';
 import type { Hello } from './net/handshake';
 import { Lockstep, WAIT_SHOWN_MS } from './net/lockstep';
@@ -24,7 +27,8 @@ import type { Spectator } from './net/watch';
 
 /*
  * The fight. The engine steps sixty times a second whatever the screen does; each frame the
- * fighters are posed from the engine's state and the HUD is drawn over them.
+ * fighters are posed from the engine's state, drawn between its last two steps (smooth.ts) so a
+ * faster screen shows smooth motion, and the HUD is drawn over them.
  */
 
 interface FightProps {
@@ -65,8 +69,10 @@ const MAX_STEPS = 4;
 /** How hard the camera shakes for each kind of landed blow, in pan units (a fraction of half the view's height). */
 const SHAKE: Record<Spark['kind'], number> = { hit: 0.025, crit: 0.06, spell: 0.03, block: 0.012, parry: 0.015, dot: 0 };
 const SHAKE_DECAY = 0.82;
-/** How fast the camera pushes in on a fatality and comes back, per frame. */
+/** How fast the camera pushes in on a fatality and comes back, per engine step. */
 const PUSH_EASE = 0.07;
+/** How fast the camera follows the fighters, per engine step. */
+const FRAME_EASE = 0.12;
 /** The view sinks a little as it pushes in, so the feet stay in frame; in pan units per unit of push. */
 const PUSH_SINK = 0.16;
 /** In a fatality the camera keeps this much air between a head or a foot and its letterbox bar, as a fraction of the height. */
@@ -140,7 +146,8 @@ class Shaker {
 const SHIELD_CLASSES = new Set([1, 2, 7]);
 
 /**
- * The fighter's moves and class kit, from its animations, its weapon and its class. A legend
+ * The fighter's moves and class kit, from its animations, its weapon and its class, with its
+ * blows measured off its own model so they land when and where the weapon does. A legend
  * without a class gets a warrior's kit, or a hunter's behind a bow.
  */
 export function tableOf(fighter: BuiltFighter): MoveTable {
@@ -148,7 +155,8 @@ export function tableOf(fighter: BuiltFighter): MoveTable {
   const shield = result.wielding === 'oneHand' && champion.classId !== undefined && SHIELD_CLASSES.has(champion.classId) && champion.gear.some(([slot]) => slot === 'offHand');
   // The body's size and lean set how close it stands and how far it reaches: Cairne stands off further than a gnome.
   const body = bodyRadius(headHeight(fighter) / HUMAN_HEAD, result.scene.head?.[0] ?? 0);
-  return resolveMoves(result.scene.animations, result.wielding, champion.classId, shield, body);
+  const table = resolveMoves(result.scene.animations, result.wielding, champion.classId, shield, body);
+  return measureTable(table, fighter.rig, result.rig, result.scene, headHeight(fighter));
 }
 
 /**
@@ -265,6 +273,11 @@ export function Fight({ fighters, stage, p2, onBack, net, watch }: FightProps) {
     const fitter = new Fitter();
     let push = 1;
     let hitsSeen = 0;
+    const placementsOf = (m: Match): Placement[] =>
+      m.fighters.map((fighter, i) => ({ ...poseIn(m, i as 0 | 1, drawn[i]!), x: fighter.x, z: fighter.z, facing: fighter.facing, fade: fadeFor(fighter.state) }));
+    const snapshotOf = (m: Match) => ({ match: m, fighters: placementsOf(m) });
+    // Where the fighters were before the last step, to draw from toward where they are.
+    let before: ReturnType<typeof snapshotOf> | undefined;
     const loop = (now: number) => {
       // The fight left: its canvases are gone a frame before this effect's cleanup cancels the loop.
       if (!canvas.current || !overlay.current) return;
@@ -272,18 +285,24 @@ export function Fight({ fighters, stage, p2, onBack, net, watch }: FightProps) {
       // Watching, a rematch is a new match the spectator made.
       if (watch?.spectator.match) match.current = watch.spectator.match;
       const current = match.current!;
+      const elapsed = Math.min(now - last, 250);
       // Held by a script, or standing still while a report is written; never online, where holding here would stall the other player.
-      owed = (held || isReporting()) && !net ? 0 : owed + Math.min(now - last, 250);
+      const frozen = (held || isReporting()) && !net;
+      owed = frozen ? 0 : owed + elapsed;
       last = now;
       let steps = 0;
       const t0 = performance.now();
       if (watch) {
         // The ticks the clock owes, or more to catch up; a fight held for the players' inputs runs up no debt.
         const due = Math.floor(owed / TICK_MS);
+        const snapshot = snapshotOf(current);
         steps = watch.spectator.play(due);
         owed = steps < due ? Math.min(owed, TICK_MS) : owed - due * TICK_MS;
+        // Caught up by more than a step, there is nothing to draw between: the frame is where it got to.
+        if (steps > 0) before = steps === 1 ? snapshot : undefined;
       }
       while (!watch && owed >= TICK_MS && steps < MAX_STEPS) {
+        const snapshot = snapshotOf(current);
         if (lockstep) {
           // A tick runs once both players' inputs for it are here; until then the fight holds, with no debt run up.
           if (!lockstep.step(current, () => input.read(current)[0])) {
@@ -295,6 +314,7 @@ export function Fight({ fighters, stage, p2, onBack, net, watch }: FightProps) {
           const inputs: [Inputs, Inputs] = input.read(current);
           tick(current, inputs);
         }
+        before = snapshot;
         owed -= TICK_MS;
         steps++;
       }
@@ -325,14 +345,14 @@ export function Fight({ fighters, stage, p2, onBack, net, watch }: FightProps) {
       // The camera pushes in on the pair for the fatality and eases back out with the round's end.
       const cinematic = current.fatality !== undefined && (current.phase === 'fatality' || current.phase === 'ko');
       const wantPush = cinematic ? current.tables[current.roundWinner ?? 0].fatality.spec.push : 1;
-      push += (wantPush - push) * PUSH_EASE;
+      push += (wantPush - push) * easeFor(PUSH_EASE, elapsed, TICK_MS);
       const camera = { ...CAMERA, zoom: (CAMERA.zoom / push) * fitter.give, panX: CAMERA.panX + shake.x, panY: CAMERA.panY + shake.y - (push - 1) * PUSH_SINK - fitter.lift };
-      ring.frame(current.fighters.map((fighter) => fighter.x));
-      ring.draw(
-        current.fighters.map((fighter, i) => ({ ...poseIn(current, i as 0 | 1, drawn[i]!), x: fighter.x, z: fighter.z, facing: fighter.facing })),
-        camera,
-        (at) => poseFx(current, fxs, at).flat(),
-      );
+      // How far on from the last step this frame is; held, the frame is the step itself.
+      const alpha = frozen ? 1 : Math.min(1, owed / TICK_MS);
+      const prior = before?.match === current ? before.fighters : undefined;
+      const placements = placementsOf(current).map((place, i) => (prior ? between(prior[i]!, place, alpha) : place));
+      ring.frame(placements.map((place) => place.x), easeFor(FRAME_EASE, elapsed, TICK_MS));
+      ring.draw(placements, camera, (at) => poseFx(current, fxs, at, prior ? 1 - alpha : 0).flat());
       // Where the pair reaches in that picture, the top of the higher head and the lower feet, for the next frame's fit.
       let span: [number, number] | undefined;
       if (cinematic) {

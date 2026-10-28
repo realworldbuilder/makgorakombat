@@ -4,6 +4,7 @@ import type { PosableRig } from '@mogshot/model/posable';
 import { type Camera, CharacterRenderer, type Shadow } from '@mogshot/render/renderer';
 import { mergedPose, mergeScenes } from '../engine/merge';
 import { HALF, STAGE_BOX, worldMatrix } from '../engine/stage';
+import { CrossFade, FADE, posedFrom } from './blend';
 import type { BuiltFighter } from './fighters';
 import { type AnchorAt, type FxPose, type FxSlot, HIDDEN, type Point } from './fx';
 import { floorAt, type FloorProfile, floorProfile } from './ground';
@@ -23,6 +24,8 @@ export interface Placement {
   x: number;
   z: number;
   facing: 1 | -1;
+  /** Milliseconds to cross-fade into this pose when the clip changes or starts over (blend.ts); FADE.move when not given, 0 to snap. */
+  fade?: number;
 }
 
 /** Half the narrowest view, in yards: two fighters toe to toe fill about half the screen's height. */
@@ -70,6 +73,7 @@ export class Arena {
   private bodyBones: (Float32Array | undefined)[] = [];
   private lastPlacements: Placement[] = [];
   private restPoses: ReturnType<PosableRig['pose']>[] = [];
+  private fades: CrossFade[] = [];
   private ground: Ground = {};
   private floor: FloorProfile | undefined;
   private backdropSize = '';
@@ -84,6 +88,7 @@ export class Arena {
     this.fighters = fighters;
     this.effects = effects;
     this.restPoses = [];
+    this.fades = fighters.map(() => new CrossFade());
     const merged = mergeScenes([...fighters.map((f) => f.result.scene), ...effects.map((e) => e.scene)]);
     this.merged = merged.scene;
     this.parts = merged.parts;
@@ -164,9 +169,13 @@ export class Arena {
       const spec = screen && image ? ({ kind: 'screen', fileId: 0, blur: 0.15, vignette: 0.45 } as const) : ({ kind: 'colour', colour: '#0b0708', vignette: 0.6 } as const);
       this.renderer.setBackdrop(composeBackdrop(spec, this.canvas.width, this.canvas.height, image, screen && !screen.wide ? CLASSIC_SCREEN_ASPECT : undefined));
     }
+    const now = performance.now();
     const poses = this.fighters.map((fighter, i) => {
       const place = placements[i]!;
-      return fighter.rig.pose(place.sequence, place.time);
+      const pose = fighter.rig.pose(place.sequence, place.time);
+      const body = fighter.result.rig.body;
+      const bones = pose[0] && this.fades[i]?.bones(body, place.sequence, place.time, pose[0].bones, now, place.fade ?? FADE.move);
+      return bones ? posedFrom(fighter.result.rig, bones) : pose;
     });
     const worlds = placements.map((place) => worldMatrix(place.x, place.z + this.floorAt(place.x), place.facing));
     this.bodyBones = poses.map((pose) => pose[0]?.bones);

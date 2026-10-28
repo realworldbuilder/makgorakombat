@@ -224,9 +224,10 @@ export function flightAt(match: Match, shot: Projectile, at: AnchorAt, back = 0)
  * models while the cast bar fills, a release where the caster stands, an impact on the target, a
  * shield's aura for as long as it holds. A slot not in use is HIDDEN. Each slot shows one
  * instance at a time: a second projectile of the same spell in flight flies without a model,
- * and the newest release or impact is the one shown.
+ * and the newest release or impact is the one shown. `back` is how far behind the engine's last
+ * step the frame is drawn, in steps (smooth.ts), so a shot flies with the fighters.
  */
-export function poseFx(match: Match, fxs: readonly (FighterFx | undefined)[], at: AnchorAt): FxPose[][] {
+export function poseFx(match: Match, fxs: readonly (FighterFx | undefined)[], at: AnchorAt, back = 0): FxPose[][] {
   return fxs.map((fx, s) => {
     const side = s as 0 | 1;
     const f = match.fighters[side];
@@ -243,7 +244,7 @@ export function poseFx(match: Match, fxs: readonly (FighterFx | undefined)[], at
           // Every missile model of the spell (an arrow and its glow) rides the first of its projectiles.
           const shot = shots.find((p) => (p.ability < 0 ? 'shot' : idOf(p.ability)) === slot.spell);
           if (!shot) return { world: HIDDEN, time: 0 };
-          return { world: place(flightAt(match, shot, at), Math.sign(shot.vx) || 1, slot.scale * MISSILE_SCALE), time: loop(shot.t * TICK_MS) };
+          return { world: place(flightAt(match, shot, at, back), Math.sign(shot.vx) || 1, slot.scale * MISSILE_SCALE), time: loop(Math.max(0, shot.t - back) * TICK_MS) };
         }
         case 'precast': {
           if (castingId !== slot.spell || !f.cast) return { world: HIDDEN, time: 0 };

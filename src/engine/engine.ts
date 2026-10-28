@@ -1,7 +1,7 @@
 import { ABILITY_MELEE_RANGE, ABILITY_SLOTS, DOT_TICK_FRAMES, EXECUTE_BELOW, MAX_RESOURCE, RESOURCE_NAMES, type ResolvedAbility, type SlotIndex } from './abilities';
 import { BRAND } from './brand';
 import { type Beat, directionOf, impactFrame, PENALTY_FRAMES, type SequenceToken, STEP_FRAMES } from './fatalities';
-import { MELEE_RANGE, type Move, type MoveRef, type MoveTable, variationOf } from './moves';
+import { MELEE_RANGE, type Move, type MoveRef, type MoveTable, type Strike, variationOf } from './moves';
 import { type Rules, RULES, type RulesName } from './rules';
 import {
   BODY, FINISH_FRAMES, GRAVITY, HALF, HP, INTRO_FRAMES, JUMP_V, KO_SLOWMO, ROUND_END_FRAMES, ROUND_FRAMES,
@@ -560,6 +560,47 @@ function durationOf(match: Match, i: 0 | 1): number {
   return variationOf(moveOf(match, i, f.move), f.variation).duration;
 }
 
+/** The strike measured for the variation being played, if any. */
+function strikeOf(match: Match, i: 0 | 1): Strike | undefined {
+  const f = match.fighters[i];
+  return variationOf(moveOf(match, i, f.move), f.variation).strike;
+}
+
+/**
+ * When the current swing connects, how far it reaches (a range as inReach takes it) and when the
+ * fighter may act again: around the blow as the model plays it when measured, the rules' fixed
+ * window and the weapon's range otherwise. A measured reach is from the attacker's feet, so it
+ * hits a body whose front it gets to: inReach adds both bodies less a human's, and this takes off
+ * the attacker's.
+ */
+function swingOf(match: Match, i: 0 | 1): { from: number; to: number; recover: number; reach: number } {
+  const rules = rulesOf(match);
+  const s = strikeOf(match, i);
+  const table = match.tables[i];
+  if (!s) return { ...rules.swingHit, reach: (match.fighters[i].close ? MELEE_RANGE : table.weapon.range) + REACH_SLACK };
+  const { lead, follow, recover } = rules.strike;
+  return { from: Math.max(0, s.contact - lead), to: Math.min(1, s.contact + follow), recover: Math.min(1, s.contact + recover), reach: s.reach + BODY - table.body };
+}
+
+/** The same for an ability's strike; its reach stays the kit's. */
+function abilityWindow(match: Match, i: 0 | 1): { from: number; to: number; recover: number } {
+  const s = strikeOf(match, i);
+  if (!s) return { ...ABILITY_HIT, recover: ABILITY_RECOVER };
+  const { lead, follow, recover } = rulesOf(match).strike;
+  return { from: Math.max(0, s.contact - lead), to: Math.min(1, s.contact + follow), recover: Math.max(ABILITY_RECOVER, Math.min(1, s.contact + recover)) };
+}
+
+/** Where a blow from `ai` shows on `ti`: on the front of their body at the height the weapon came in, or chest height when unmeasured. */
+function impactAt(match: Match, ai: 0 | 1, ti: 0 | 1, dir: number): [number, number] {
+  const f = match.fighters[ai];
+  const target = match.fighters[ti];
+  const s = strikeOf(match, ai);
+  if (!s) return [target.x - dir * 0.3, 1.3 + target.z];
+  const top = match.tables[ti].stature;
+  const z = Math.min(Math.max(f.z + s.height - target.z, top * 0.3), top * 0.85);
+  return [target.x - dir * match.tables[ti].body * 0.8, target.z + z];
+}
+
 /** Can this fighter start a new action this tick? */
 export function actionable(match: Match, i: 0 | 1): boolean {
   const f = match.fighters[i];
@@ -574,12 +615,12 @@ export function actionable(match: Match, i: 0 | 1): boolean {
     case 'attack':
       // A jumping attack holds the fighter until they land.
       if (f.airAttack) return false;
-      return f.t >= rulesOf(match).swingHit.recover * durationOf(match, i);
+      return f.t >= swingOf(match, i).recover * durationOf(match, i);
     case 'ability': {
       // A buff or a blink does not hold the fighter; a strike does, until it is half played.
       const kind = abilityOf(match, i, f.ability).kind;
       if (kind === 'self' || kind === 'blink') return true;
-      return f.t >= ABILITY_RECOVER * durationOf(match, i);
+      return f.t >= abilityWindow(match, i).recover * durationOf(match, i);
     }
     case 'dodge':
     case 'parry':
@@ -886,7 +927,7 @@ function cancels(match: Match, i: 0 | 1): boolean {
   const f = match.fighters[i];
   const rules = rulesOf(match);
   if (f.state !== 'attack' || f.airAttack || match.phase !== 'fight' || actionable(match, i)) return false;
-  if (rules.cancel && f.buffered >= 0 && f.t >= rules.swingHit.from * durationOf(match, i)) {
+  if (rules.cancel && f.buffered >= 0 && f.t >= swingOf(match, i).from * durationOf(match, i)) {
     const n = f.buffered;
     if (!(abilityOf(match, i, n).gcd && f.gcd > 0)) {
       f.buffered = -1;
@@ -1007,7 +1048,10 @@ function advanceMove(match: Match, i: 0 | 1): void {
   const duration = variationOf(move, f.variation).duration;
   // Swings and strikes play faster than the model's clip, so a blow reads as a blow.
   const rules = rulesOf(match);
-  const rate = f.state === 'attack' ? rules.swingRate : f.state === 'ability' ? rules.abilityRate : 1;
+  let rate = f.state === 'attack' ? rules.swingRate : f.state === 'ability' ? rules.abilityRate : 1;
+  // Under KOMBAT a measured swing's wind-up is played fast enough to land in `startup` frames, whatever the clip.
+  const s = f.state === 'attack' ? variationOf(move, f.variation).strike : undefined;
+  if (s && rules.strike.startup > 0 && f.t < s.contact * duration) rate = Math.max(rate, (s.contact * duration) / (rules.strike.startup * TICK_MS));
   f.t += TICK_MS * match.slowmo * rate;
   if (f.t < duration) return;
   // The dead stay down, whatever animation stands in for their death.
@@ -1654,14 +1698,13 @@ function attacks(match: Match, i: 0 | 1): void {
   const at = f.t / durationOf(match, i);
 
   if (f.state === 'attack') {
-    const hit = rulesOf(match).swingHit;
+    const hit = swingOf(match, i);
     if (at < hit.from) return;
     if (table.weapon.ranged && !f.close) {
       f.hitDone = true;
       launch(match, i, -1, table.weapon.damage);
       return;
     }
-    const range = f.close ? MELEE_RANGE : table.weapon.range;
     if (at > hit.to) {
       f.hitDone = true;
       return;
@@ -1669,8 +1712,8 @@ function attacks(match: Match, i: 0 | 1): void {
     // A jumping attack reaches down: a target ahead, or just under, no higher than the attacker.
     if (f.airAttack) {
       const ahead = f.facing * (target.x - f.x);
-      if (ahead < -AIR_UNDER || ahead > range + REACH_SLACK || target.z > f.z + 0.5) return;
-    } else if (!inReach(match, f, target, range + REACH_SLACK, false)) {
+      if (ahead < -AIR_UNDER || ahead > hit.reach + contactOf(match) - BODY || target.z > f.z + 0.5) return;
+    } else if (!inReach(match, f, target, hit.reach, false)) {
       return;
     }
     f.hitDone = true;
@@ -1690,7 +1733,8 @@ function attacks(match: Match, i: 0 | 1): void {
       heavy: last,
       knockdown: last && rules.chainEnd.knockdown,
     };
-    f.connected = strike(match, i, ti, blow, f.facing, target.x - f.facing * 0.3, 1.3 + target.z) > 0;
+    const [sx, sz] = impactAt(match, i, ti, f.facing);
+    f.connected = strike(match, i, ti, blow, f.facing, sx, sz) > 0;
     return;
   }
 
@@ -1705,15 +1749,17 @@ function attacks(match: Match, i: 0 | 1): void {
     f.hitDone = true;
     return;
   }
-  if (at < ABILITY_HIT.from) return;
-  if (at > ABILITY_HIT.to) {
+  const window = abilityWindow(match, i);
+  if (at < window.from) return;
+  if (at > window.to) {
     f.hitDone = true;
     return;
   }
   if (!inReach(match, f, target, a.range + REACH_SLACK, a.both)) return;
   f.hitDone = true;
   const dir = target.x >= f.x ? 1 : -1;
-  strike(match, i, ti, { damage: a.damage, roll: 'melee', ability: a, pushback: PUSHBACK.ability, hitstop: 12, from: sideOf(target, f.x), contact: true, heavy: true }, dir, target.x - dir * 0.3, 1.3 + target.z);
+  const [sx, sz] = impactAt(match, i, ti, dir);
+  strike(match, i, ti, { damage: a.damage, roll: 'melee', ability: a, pushback: PUSHBACK.ability, hitstop: 12, from: sideOf(target, f.x), contact: true, heavy: true }, dir, sx, sz);
 }
 
 function projectiles(match: Match): void {

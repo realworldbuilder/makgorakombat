@@ -5,7 +5,7 @@ import { finderOf, type HitWindow, type Move, moveFrom, type Variation } from '.
 import { FATALITY_ANIMATIONS, resolveFatality, type ResolvedFatality } from './fatalities';
 import { BODY } from './stage';
 
-export type { Finder, HitWindow, Move, Variation } from './anim';
+export type { Finder, HitWindow, Move, Strike, Variation } from './anim';
 
 /*
  * What a fighter can play: the core moves every fighter has (stances, steps, the auto-attack
@@ -71,6 +71,8 @@ export interface MoveTable {
   fatality: ResolvedFatality;
   /** False when the model has neither JumpStart nor Jump; the jump still happens, in the idle animation. */
   hasJump: boolean;
+  /** How tall the fighter stands, in yards: where a blow on them can land. */
+  stature: number;
   /** The room the body takes in front of its feet, in yards (`bodyRadius`): how close it stands and how far its arms reach. */
   body: number;
 }
@@ -117,6 +119,8 @@ const RANGED: ReadonlySet<Wielding> = new Set(['bow', 'rifle', 'crossbow', 'thro
 
 /** A swing reaches this far: two bodies and a little; fighters that look to be touching can hit. */
 export const MELEE_RANGE = 2.6;
+/** A fighter's height until the model says otherwise. */
+const STATURE = 2;
 export const SHOT_RANGE = 8.0;
 
 const ALL_READY = ['Ready1H', 'Ready2H', 'ReadyUnarmed', 'Ready2HL', 'ReadyBow', 'ReadyRifle', 'ReadyCrossbow', 'ReadyThrown'];
@@ -210,7 +214,7 @@ export function resolveMoves(animations: readonly AnimationInfo[], wielding: Wie
     shield,
     close: ranged ? { damage: DAMAGE.unarmed * kit.swing * kit.power, spread: SPREAD.unarmed } : undefined,
   };
-  return { moves, kit, weapon, fatality: resolveFatality(classId, wielding, find, idle), hasJump, body };
+  return { moves, kit, weapon, fatality: resolveFatality(classId, wielding, find, idle), hasJump, body, stature: STATURE };
 }
 
 /** The variation a fighter plays: `variation` cycles through the move's list. */

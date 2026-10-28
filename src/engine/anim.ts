@@ -18,6 +18,21 @@ export interface Variation {
   sequence: number;
   /** Milliseconds. */
   duration: number;
+  /** Where the blow of a strike is, measured from the model (game/strike.ts); without it the rules' fixed window stands in. */
+  strike?: Strike;
+}
+
+/**
+ * A strike as the model plays it: when the weapon (or the fist) is furthest out in front, how far
+ * that is from the fighter's feet, and how high. Plain numbers, so the engine stays free of models.
+ */
+export interface Strike {
+  /** Fraction of the clip. */
+  contact: number;
+  /** Yards ahead of the fighter's origin, at their own size. */
+  reach: number;
+  /** Yards above the ground. */
+  height: number;
 }
 
 export interface Move {
