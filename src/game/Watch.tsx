@@ -1,3 +1,4 @@
+import type { ComponentChildren } from 'preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { Image } from '@mogshot/formats/blp';
 import type { LoadingScreen } from '@mogshot/worker/api';
@@ -6,6 +7,7 @@ import { Fight, type WatchFight } from './Fight';
 import type { BuiltFighter, Fighters } from './fighters';
 import { messageOf } from './folder';
 import type { Tile } from './roster';
+import type { WatchRoster } from './Select';
 import { chosenRules } from './Settings';
 import { facingRadians, type Ground, type Stage, STAGES, thumbnailUrl } from './stages';
 import { championOf, type FighterSpec, type Hello, localize, plainSpec, type StageKey } from './net/handshake';
@@ -20,8 +22,9 @@ import { WatchChat } from './WatchChat';
  * WATCH: somebody else's fight on this screen, as a third seat in their room. The champions are
  * built from the host's hello with this install's own files, as the guest builds them, and the
  * ground found in this install's own list; the fight screen then draws the match the spectator
- * plays (net/watch.ts), with no keys of its own. Between fights, while the two pick their
- * champions, it says so and waits for the next hello. Escape goes back to the lobby whenever.
+ * plays (net/watch.ts), with no keys of its own. Between fights the two players' pick is on
+ * CHOOSE YOUR CHAMPION as they see it, both cursors moving as they move theirs (Select's watch),
+ * until the next hello's fight is ready. Escape goes back to the lobby whenever.
  *
  * A stage this install cannot raise (one its folder lacks, or one that would not rise) is never
  * black behind a watched fight: the stage's own picture stands in, and a note says why. The
@@ -36,6 +39,8 @@ interface WatchProps {
   stages: Stage[];
   screens: LoadingScreen[];
   assets: UiAssets;
+  /** CHOOSE YOUR CHAMPION as the watcher sees the two pick, from the game's own (Game.tsx); `bay` when they pick in Booby Bay. */
+  select: (roster: WatchRoster, bay: boolean) => ComponentChildren;
   onBack: () => void;
 }
 
@@ -47,7 +52,7 @@ interface Ready {
   notes: string[];
 }
 
-export function Watch({ fight, client, fighters, legends, stages, screens, assets, onBack }: WatchProps) {
+export function Watch({ fight, client, fighters, legends, stages, screens, assets, select, onBack }: WatchProps) {
   const spectator = useMemo(() => new Spectator({ rules: chosenRules }), [fight.code]);
   const [, redraw] = useState(0);
   const [arrived, setArrived] = useState(false);
@@ -126,20 +131,22 @@ export function Watch({ fight, client, fighters, legends, stages, screens, asset
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
   }, [fighting, chatting, gone, onBack]);
-  const chat = watching && <WatchChat watching={watching} open={chatting} onOpen={setChatting} field={chatField} />;
+  const chat = (onPick = false) => watching && <WatchChat watching={watching} open={chatting} onOpen={setChatting} field={chatField} onPick={onPick} />;
 
   if (fighting) {
     return (
       <>
         <Fight fighters={ready.fighters} stage={ready.ground} p2="keyboard" onBack={onBack} watch={watch} />
         <FightUi fighters={ready.fighters} p2="keyboard" assets={assets} />
-        {chat}
+        {chat()}
         {gone && <div class="lobby-toast">The players have left the room. Esc goes back to the lobby.</div>}
       </>
     );
   }
 
   const [a, b] = fight.names;
+  const { picks } = spectator;
+  const picked = picks[0]?.locked && picks[1]?.locked;
   const why = problem
     ? problem
     : gone
@@ -149,8 +156,20 @@ export function Watch({ fight, client, fighters, legends, stages, screens, asset
         : hello
           ? 'Building their champions and raising the ground…'
           : host && guest
-            ? 'They are picking their champions. The fight shows here when it starts.'
+            ? picked
+              ? 'Both have chosen; the stage is next, and the fight shows here when it starts.'
+              : 'They are picking their champions. The fight shows here when it starts.'
             : 'Waiting for both of them to be in the room.';
+  const roster: WatchRoster = { picks, names: fight.names, status: why };
+  // The pick as they see it, while there is one to see; the card says the rest.
+  if (!problem && !gone && (picks[0] || picks[1])) {
+    return (
+      <>
+        {select(roster, picks.some((pick) => pick?.champion?.bay === true))}
+        {chat(true)}
+      </>
+    );
+  }
   return (
     <div class="screen watch-wait">
       <div class="guide-backdrop">
@@ -165,7 +184,7 @@ export function Watch({ fight, client, fighters, legends, stages, screens, asset
           </div>
         </div>
       </div>
-      {chat}
+      {chat()}
     </div>
   );
 }

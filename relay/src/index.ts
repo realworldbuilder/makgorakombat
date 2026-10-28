@@ -4,6 +4,7 @@ import { CHAT_GAP_MS, type ChatLine, ChatLog, chatOf } from './chat';
 import { isCode, newCode } from './code';
 import type { Ending, Fight, ReportSpan } from './fights';
 import { cleanName, isPlayerId, LOBBY, type Lobby } from './lobby';
+import { Picks } from './picks';
 import { GameRecord, kindOf, WATCH_CAP } from './record';
 import { HELD_MAX, RECONNECT_MS, SILENT_MS } from './seats';
 import { readHit, SITE, type Site, type SiteSpan } from './site';
@@ -35,8 +36,8 @@ export { Site } from './site';
  * Anyone may also come in to watch (role=watch), up to WATCH_CAP at once. A watcher is a third
  * seat that is sent everything that makes the fight and says nothing to the players: all it may
  * send is a line of chat (chat.ts, ?name= for the name it goes under), which only the watchers get.
- * It hears which players are in ({t:'seats'}), the host's hello and rematch and either's back as
- * they were sent, and every frame of either player with one byte in front saying whose it was (0
+ * It hears which players are in ({t:'seats'}), each player's cursor while they pick their champions
+ * (picks.ts), the host's hello and rematch and either's back as they were sent, and every frame of either player with one byte in front saying whose it was (0
  * the host, 1 the guest). The players hand each other an input only until it is acknowledged, so
  * the room keeps the current game's inputs (record.ts) and a watcher who comes in late is sent the
  * hello and those first, and can catch up. The players' own traffic is as it was. A player's
@@ -205,6 +206,8 @@ export class Room extends DurableObject<Env> {
   private readonly record = new GameRecord();
   /** The watchers' last lines (chat.ts). */
   private readonly chat = new ChatLog();
+  /** Each player's last cursor on the roster, for watchers who come in while they pick (picks.ts). */
+  private readonly picks = new Picks();
   /** The seats kept for players who dropped, as stored; read once on waking. */
   private away: Partial<Record<Role, Away>> = {};
   /** What came for an away player, in order, to hand them when they are back. Kept in memory only: the fight's frames are sent again anyway. */
@@ -319,8 +322,8 @@ export class Room extends DurableObject<Env> {
   }
 
   /**
-   * A watcher comes in, under the name it gives for the chat: told who is playing, then the game so
-   * far and the last lines said, and from then on everything as it comes.
+   * A watcher comes in, under the name it gives for the chat: told who is playing, where their
+   * cursors are if they are picking, then the game so far and the last lines said, and from then on everything as it comes.
    */
   private watch(name: string | null): Response {
     if (this.live('watch').length >= WATCH_CAP) return new Response('The room has as many watching as it takes.', { status: 409 });
@@ -329,6 +332,7 @@ export class Room extends DurableObject<Env> {
     this.ctx.acceptWebSocket(server, ['watch']);
     server.serializeAttachment({ name: cleanName(name) ?? 'Watcher', said: 0 } satisfies Watcher);
     server.send(this.seats());
+    for (const pick of this.picks.replay()) server.send(pick);
     for (const message of this.record.replay()) server.send(message);
     for (const line of this.chat.recent()) server.send(JSON.stringify(line));
     return new Response(null, { status: 101, webSocket: client });
@@ -364,6 +368,12 @@ export class Room extends DurableObject<Env> {
     const watchers = this.live('watch');
     if (typeof message === 'string') {
       const kind = kindOf(message);
+      if (kind === 'roster') {
+        const pick = this.picks.take(role, message);
+        if (pick !== undefined) for (const to of watchers) to.send(pick);
+        return;
+      }
+      if ((kind === 'hello' && role === 'host') || kind === 'back') this.picks.clear();
       if (kind === 'hello' && role === 'host') this.record.start(message);
       else if (kind === 'rematch' && role === 'host') this.record.rematch(message);
       else if (kind === 'back') this.record.clear();
@@ -421,6 +431,7 @@ export class Room extends DurableObject<Env> {
       await this.ctx.storage.deleteAll();
       this.away = {};
       this.record.clear();
+      this.picks.clear();
       // Anyone still watching an empty room is let go with it.
       for (const ws of this.live('watch')) {
         try {
@@ -452,6 +463,7 @@ export class Room extends DurableObject<Env> {
     const id = this.idOf(ws);
     const gone = leaving || id === undefined;
     if (gone) {
+      this.picks.clear(role);
       this.tell(other(role), peer(false), ws);
     } else if (!this.away[role]) {
       await this.keep(role, { id, until: Date.now() + RECONNECT_MS });

@@ -2679,6 +2679,18 @@ code {
   font-size: 0.85rem;
 }
 
+/* On CHOOSE YOUR CHAMPION the corner is player 1's plate: the chat sits under the grid instead, above the footer. */
+.watch-chat.on-pick {
+  left: 50%;
+  bottom: 58px;
+  transform: translateX(-50%);
+  justify-items: center;
+}
+
+.watch-chat.on-pick li {
+  justify-self: center;
+}
+
 .watch-chat ul {
   display: grid;
   gap: 3px;

@@ -29,9 +29,11 @@ interface WatchChatProps {
   onOpen: (open: boolean) => void;
   /** The field, for the screen around it to focus. */
   field: RefObject<HTMLInputElement | null>;
+  /** Over CHOOSE YOUR CHAMPION, where the corner is player 1's: under the grid instead. */
+  onPick?: boolean;
 }
 
-export function WatchChat({ watching, open, onOpen, field }: WatchChatProps) {
+export function WatchChat({ watching, open, onOpen, field, onPick = false }: WatchChatProps) {
   const [lines, setLines] = useState<Shown[]>([]);
   const [typed, setTyped] = useState('');
   const [hush, setHush] = useState(false);
@@ -78,7 +80,7 @@ export function WatchChat({ watching, open, onOpen, field }: WatchChatProps) {
   };
 
   return (
-    <div class={`watch-chat ${open ? 'open' : ''}`}>
+    <div class={`watch-chat ${open ? 'open' : ''} ${onPick ? 'on-pick' : ''}`}>
       <ul aria-live="polite" aria-label="Watchers' chat">
         {lines.map((line) => (
           <li key={line.key}>

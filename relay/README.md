@@ -160,8 +160,9 @@ By hand instead: `wrangler secret put DISCORD_TOKEN`, and
 - Every other message goes to the other player unchanged.
 - `GET /rooms/:code/ws?role=watch` comes in to watch, up to 50 at once (the 51st is 409). A
   watcher says nothing to the players (only chat, below, to the other watchers). It is sent `{"t":"seats","host","guest"}`
-  on arriving and whenever a player comes or goes; the host's `hello` and `rematch` and either
-  player's `back` as they were sent; and every frame of the fight from either player with one
+  on arriving and whenever a player comes or goes; each player's `roster` while they pick, as
+  `{"t":"pick","by":"host"|"guest","roster"}` (and the last of each on arriving, until the hello);
+  the host's `hello` and `rematch` and either player's `back` as they were sent; and every frame of the fight from either player with one
   byte in front, 0 for the host's and 1 for the guest's. The players stop sending an input once
   the other has it, so the room keeps the current game's inputs, and a watcher who comes in
   mid-fight is sent the hello, the last rematch and those inputs (as frames, 255 at most each)

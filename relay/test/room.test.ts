@@ -405,6 +405,43 @@ describe('watching', () => {
     expect(between.got.length).toBe(1);
   });
 
+  it('shows the watchers both players\' cursors while they pick, and a watcher who comes in the last of each, until the hello', async () => {
+    const { code } = await makeRoom();
+    const host = await connect(code, 'host');
+    const guest = await connect(code, 'guest');
+    await host.until(1);
+    await guest.until(1);
+    const watcher = await connect(code, 'watch');
+    await watcher.until(1);
+    const roster = (tile: string, locked = false) => JSON.stringify({ t: 'roster', tile, sex: 0, locked });
+    host.ws.send(roster('legend:thrall'));
+    guest.ws.send(roster('legend:jaina'));
+    host.ws.send(roster('legend:tyrande', true));
+    await watcher.until(4);
+    expect(watcher.json(1)).toEqual({ t: 'pick', by: 'host', roster: { t: 'roster', tile: 'legend:thrall', sex: 0, locked: false } });
+    expect(watcher.json(2)).toMatchObject({ by: 'guest', roster: { tile: 'legend:jaina' } });
+    // The players still have each other's as they were sent.
+    await guest.until(3);
+    expect(guest.got[2]).toBe(roster('legend:tyrande', true));
+    // A roster that would name itself another's is still the sender's.
+    guest.ws.send('{"t":"roster","tile":"legend:arthas"},"by":"host"');
+    host.ws.send(roster('legend:tyrande', true));
+    await watcher.until(5);
+    expect(watcher.json(4)).toMatchObject({ by: 'host' });
+    const late = await connect(code, 'watch');
+    await late.until(3);
+    expect(late.kinds()).toEqual(['seats', 'pick', 'pick']);
+    expect(late.json(1)).toMatchObject({ by: 'host', roster: { tile: 'legend:tyrande', locked: true } });
+    expect(late.json(2)).toMatchObject({ by: 'guest', roster: { tile: 'legend:jaina' } });
+    // Once the fight begins, one who comes in has the hello and no cursors.
+    host.ws.send(JSON.stringify({ t: 'hello', version: 'test', seed: 1, game: 1 }));
+    await late.until(4);
+    const after = await connect(code, 'watch');
+    await after.until(2);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(after.kinds()).toEqual(['seats', 'hello']);
+  });
+
   it('drops whatever a watcher sends', async () => {
     const { code } = await makeRoom();
     const host = await connect(code, 'host');
