@@ -29,6 +29,18 @@ export const CATCH_UP = 90;
 const MOST_PER_FRAME = 600;
 /** A ping this often keeps the socket to the room open. */
 const PING_MS = 5000;
+/** One line of chat a watcher every this long, as the relay takes them (relay/src/chat.ts). */
+export const CHAT_GAP_MS = 1500;
+/** The most characters in a line of chat. */
+export const CHAT_MAX = 140;
+
+/** A line of the watchers' chat, as the room sends it. */
+export interface ChatLine {
+  name: string;
+  text: string;
+  /** When it was said, by the relay's clock. */
+  at: number;
+}
 
 /** The room's word on which players are in. */
 export interface Seats {
@@ -203,21 +215,30 @@ export class Spectator {
   }
 }
 
-/** The socket to a room as a watcher, feeding a Spectator; it sends nothing but the keep-alive. */
+/**
+ * The socket to a room as a watcher, feeding a Spectator. Besides the keep-alive it sends only the
+ * watchers' chat, under `name`, which the room passes to the other watchers and never to the players.
+ */
 export class Watching {
   closed = false;
   private readonly ws: WebSocket;
   private readonly timer: ReturnType<typeof setInterval>;
   private readonly closers = new Set<() => void>();
+  private readonly chatters = new Set<(line: ChatLine) => void>();
 
-  constructor(readonly code: string, readonly spectator: Spectator, base = relayUrl()) {
-    this.ws = new WebSocket(`${base.replace(/^http/, 'ws')}/rooms/${code}/ws?role=watch`);
+  constructor(readonly code: string, readonly spectator: Spectator, base = relayUrl(), name?: string) {
+    this.ws = new WebSocket(`${base.replace(/^http/, 'ws')}/rooms/${code}/ws?role=watch${name ? `&name=${encodeURIComponent(name)}` : ''}`);
     this.ws.binaryType = 'arraybuffer';
     this.ws.addEventListener('message', (event) => {
       const data = event.data as string | ArrayBuffer;
       if (typeof data !== 'string') return spectator.frame(new Uint8Array(data));
       if (data === 'pong') return;
       if (data.startsWith('{"t":"seats"')) return spectator.take(JSON.parse(data) as Seats);
+      if (data.startsWith('{"t":"chat"')) {
+        const { name: who, text, at } = JSON.parse(data) as ChatLine;
+        for (const listener of [...this.chatters]) listener({ name: who, text, at });
+        return;
+      }
       const message = decode(data);
       if (message) spectator.take(message);
     });
@@ -231,6 +252,18 @@ export class Watching {
   onClose(listener: () => void): () => void {
     this.closers.add(listener);
     return () => this.closers.delete(listener);
+  }
+
+  /** Every line of chat from now on, the room's last few first as it sends them on arrival. */
+  onChat(listener: (line: ChatLine) => void): () => void {
+    this.chatters.add(listener);
+    return () => this.chatters.delete(listener);
+  }
+
+  /** A line of chat to the other watchers; it comes back like theirs once the room has taken it. */
+  say(text: string): void {
+    const line = text.trim().slice(0, CHAT_MAX);
+    if (line !== '' && this.ws.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ t: 'chat', text: line }));
   }
 
   close(): void {

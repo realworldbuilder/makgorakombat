@@ -2667,6 +2667,88 @@ code {
   letter-spacing: 0;
 }
 
+/* The watchers' chat: bottom left, clear of the action bars, each line fading after a while; all up while a line is typed. */
+.watch-chat {
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  z-index: 40;
+  width: min(26rem, 34vw);
+  display: grid;
+  gap: 6px;
+  font-size: 0.85rem;
+}
+
+.watch-chat ul {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.watch-chat li {
+  justify-self: start;
+  max-width: 100%;
+  padding: 3px 9px;
+  background: rgba(10, 6, 7, 0.62);
+  border-radius: 5px;
+  color: var(--text);
+  overflow-wrap: anywhere;
+  text-shadow: 0 1px 2px #000;
+  animation: chat-line 20s linear forwards;
+}
+
+.watch-chat li b {
+  color: var(--gold);
+  font-weight: 700;
+}
+
+.watch-chat.open li {
+  animation: none;
+}
+
+.watch-chat input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px 10px;
+  background: rgba(10, 6, 7, 0.9);
+  border: 1px solid var(--gold-dark);
+  border-radius: 5px;
+  color: var(--text);
+  font: inherit;
+  outline: none;
+}
+
+/* Shut, the field is still there to be focused at once by Enter, only out of sight. */
+.watch-chat input.shut {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.watch-chat .hint {
+  margin: 0;
+  color: var(--dim);
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  opacity: 0.6;
+}
+
+@keyframes chat-line {
+  0%,
+  85% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
 /* Over the fight: the wait for the other player's inputs, a desync, and the notes on how this install draws the fight. */
 .fight .net-banner {
   position: absolute;

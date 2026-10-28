@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import type { Image } from '@mogshot/formats/blp';
 import type { LoadingScreen } from '@mogshot/worker/api';
 import type { DataClient } from '@mogshot/worker/client';
 import { Fight, type WatchFight } from './Fight';
@@ -6,14 +7,14 @@ import type { BuiltFighter, Fighters } from './fighters';
 import { messageOf } from './folder';
 import type { Tile } from './roster';
 import { chosenRules } from './Settings';
-import { facingRadians, type Ground, type Stage } from './stages';
+import { facingRadians, type Ground, type Stage, STAGES, thumbnailUrl } from './stages';
 import { championOf, type FighterSpec, type Hello, localize, plainSpec, type StageKey } from './net/handshake';
-import type { LobbyFight } from './net/lobby';
+import { type LobbyFight, savedName } from './net/lobby';
 import { VERSION } from './net/version';
 import { Spectator, Watching } from './net/watch';
 import type { UiAssets } from './ui/icons';
 import { FightUi } from './ui/FightUi';
-import { useModalKeys } from './ui/modal';
+import { WatchChat } from './WatchChat';
 
 /*
  * WATCH: somebody else's fight on this screen, as a third seat in their room. The champions are
@@ -21,6 +22,10 @@ import { useModalKeys } from './ui/modal';
  * ground found in this install's own list; the fight screen then draws the match the spectator
  * plays (net/watch.ts), with no keys of its own. Between fights, while the two pick their
  * champions, it says so and waits for the next hello. Escape goes back to the lobby whenever.
+ *
+ * A stage this install cannot raise (one its folder lacks, or one that would not rise) is never
+ * black behind a watched fight: the stage's own picture stands in, and a note says why. The
+ * watchers chat in the bottom corner (WatchChat), over their own sockets, never the players'.
  */
 
 interface WatchProps {
@@ -34,11 +39,12 @@ interface WatchProps {
   onBack: () => void;
 }
 
-/** The champions and the ground of a hello, built here. */
+/** The champions and the ground of a hello, built here, and what this install draws otherwise than the players. */
 interface Ready {
   hello: Hello;
   fighters: [BuiltFighter, BuiltFighter];
   ground: Ground;
+  notes: string[];
 }
 
 export function Watch({ fight, client, fighters, legends, stages, screens, assets, onBack }: WatchProps) {
@@ -48,9 +54,13 @@ export function Watch({ fight, client, fighters, legends, stages, screens, asset
   const [closed, setClosed] = useState(false);
   const [ready, setReady] = useState<Ready>();
   const [problem, setProblem] = useState<string>();
+  const [watching, setWatching] = useState<Watching>();
+  const [chatting, setChatting] = useState(false);
+  const chatField = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const watching = new Watching(fight.code, spectator);
+    const watching = new Watching(fight.code, spectator, undefined, savedName());
+    setWatching(watching);
     const offChange = spectator.onChange(() => {
       setArrived(true);
       redraw((n) => n + 1);
@@ -82,8 +92,12 @@ export function Watch({ fight, client, fighters, legends, stages, screens, asset
         if (spec.npc === undefined) throw cause;
         return fighters.get(championOf(plainSpec(spec)));
       });
-    void Promise.all([build(hello.fighters[0]), build(hello.fighters[1]), groundOf(hello.stage, client, stages, screens)]).then(
-      ([a, b, ground]) => !stale && setReady({ hello, fighters: [a, b], ground }),
+    // The champions first and then the ground, one after the other, as the players' own pages read them.
+    void Promise.all([build(hello.fighters[0]), build(hello.fighters[1])]).then(
+      async ([a, b]) => {
+        const { ground, note } = await groundOf(hello.stage, client, stages, screens);
+        if (!stale) setReady({ hello, fighters: [a, b], ground, notes: note ? [note] : [] });
+      },
       (cause: unknown) => !stale && setProblem(`The players' champions could not be built here: ${messageOf(cause)}`),
     );
     return () => {
@@ -91,21 +105,35 @@ export function Watch({ fight, client, fighters, legends, stages, screens, asset
     };
   }, [hello]);
 
-  const watch = useMemo<WatchFight>(() => ({ spectator, players: fight.names }), [spectator, fight]);
+  const notes = ready?.notes;
+  const watch = useMemo<WatchFight>(() => ({ spectator, players: fight.names, notes }), [spectator, fight, notes]);
   const { host, guest } = spectator.seats;
   const gone = closed || (arrived && !host && !guest);
   const fighting = ready !== undefined && ready.hello === hello && !problem;
 
-  // The waiting screens' keys; the fight screen has its own Escape.
-  useModalKeys(!fighting, (event) => {
-    if (event.code === 'Escape' || (gone && (event.code === 'Enter' || event.code === 'NumpadEnter'))) onBack();
-  });
+  // The waiting screens' keys, but for the chat's (whose own Enter opens it); the fight screen has its own Escape.
+  // Nothing is under a watched fight to take keys first: the lobby's panel is shut and no other screen is up.
+  useEffect(() => {
+    if (fighting || chatting) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.target instanceof HTMLInputElement) return;
+      if (event.code === 'Escape' || (gone && (event.code === 'Enter' || event.code === 'NumpadEnter'))) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        onBack();
+      }
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [fighting, chatting, gone, onBack]);
+  const chat = watching && <WatchChat watching={watching} open={chatting} onOpen={setChatting} field={chatField} />;
 
   if (fighting) {
     return (
       <>
         <Fight fighters={ready.fighters} stage={ready.ground} p2="keyboard" onBack={onBack} watch={watch} />
         <FightUi fighters={ready.fighters} p2="keyboard" assets={assets} />
+        {chat}
         {gone && <div class="lobby-toast">The players have left the room. Esc goes back to the lobby.</div>}
       </>
     );
@@ -137,26 +165,56 @@ export function Watch({ fight, client, fighters, legends, stages, screens, asset
           </div>
         </div>
       </div>
+      {chat}
     </div>
   );
 }
 
-/** The ground a hello names, from this install's own stages and loading screens; none when it has not got it. */
-async function groundOf(key: StageKey, client: DataClient, stages: Stage[], screens: LoadingScreen[]): Promise<Ground> {
+/**
+ * The ground a hello names, from this install's own stages and loading screens. A stage it cannot
+ * raise, because its folder lacks the map or the place would not rise (asked twice), has the
+ * stage's own picture behind the fight instead, with a note saying which and why.
+ */
+async function groundOf(key: StageKey, client: DataClient, stages: Stage[], screens: LoadingScreen[]): Promise<{ ground: Ground; note?: string }> {
   if (key.kind === 'stage') {
     const stage = stages.find((s) => s.slug === key.slug);
-    if (!stage) return {};
-    try {
-      return { stage, place: await client.place(stage.map, stage.x, stage.y, facingRadians(stage), stage.reach, stage.z) };
-    } catch (cause) {
-      console.warn(`${stage.name} could not be raised:`, cause);
-      return {};
+    const named = stage ?? STAGES.find((s) => s.slug === key.slug);
+    let why = 'this folder does not have it';
+    if (stage) {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          return { ground: { stage, place: await client.place(stage.map, stage.x, stage.y, facingRadians(stage), stage.reach, stage.z) } };
+        } catch (cause) {
+          console.warn(`${stage.name} could not be raised for watching:`, cause);
+          why = `it would not rise here: ${messageOf(cause)}`;
+        }
+      }
     }
+    if (!named) return { ground: {}, note: 'The players fight on a stage this page does not know; reload it for the latest.' };
+    const picture = await pictureOf(thumbnailUrl(named));
+    return { ground: { stage: named, picture }, note: `The players fight in ${named.name}; ${why}, so its picture stands behind them.` };
   }
   if (key.kind === 'screen') {
     const screen = screens.find((s) => s.id === key.id);
-    if (!screen) return {};
-    return { screen, image: await client.icon(screen.fileId).catch(() => undefined) };
+    if (!screen) return { ground: {}, note: 'The players fight before a loading screen this folder does not have.' };
+    return { ground: { screen, image: await client.icon(screen.fileId).catch(() => undefined) } };
   }
-  return {};
+  return { ground: {} };
+}
+
+/** A picture the site serves, as the backdrop takes one; undefined when it cannot be had. */
+async function pictureOf(url: string): Promise<Image | undefined> {
+  try {
+    const bitmap = await createImageBitmap(await (await fetch(url)).blob());
+    const canvas = document.createElement('canvas');
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const context = canvas.getContext('2d')!;
+    context.drawImage(bitmap, 0, 0);
+    bitmap.close();
+    const { data } = context.getImageData(0, 0, canvas.width, canvas.height);
+    return { width: canvas.width, height: canvas.height, pixels: new Uint8Array(data.buffer) };
+  } catch {
+    return undefined;
+  }
 }

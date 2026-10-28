@@ -46,6 +46,8 @@ interface FightProps {
 export interface WatchFight {
   spectator: Spectator;
   players: [string, string];
+  /** Said once at the start, as an online fight's notes are: ground this install draws otherwise than the players. */
+  notes?: string[];
 }
 
 /** An online fight: the wire, which fighter this machine plays, and what the host's hello fixed. */
@@ -194,7 +196,7 @@ export function Fight({ fighters, stage, p2, onBack, net, watch }: FightProps) {
   const mutedRef = useRef(muted);
   mutedRef.current = muted;
   const [netState, setNetState] = useState<NetState>();
-  const [notes, setNotes] = useState<string[]>(net?.notes ?? []);
+  const [notes, setNotes] = useState<string[]>(net?.notes ?? watch?.notes ?? []);
   // A socket dropped, ours or theirs: the fight holds by itself, and the banner counts down the room's keeping of the seat.
   const [wire, setWire] = useState<Wire>();
   const [clock, setClock] = useState(0);
