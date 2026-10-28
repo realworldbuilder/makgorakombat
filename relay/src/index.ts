@@ -1,7 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import type { Fighter, Span } from './board';
 import { isCode, newCode } from './code';
-import type { Ending, Fight, ReportSpan } from './fights';
+import type { Ending, Fight, NetStats, ReportSpan } from './fights';
 import { cleanName, isPlayerId, LOBBY, type Lobby } from './lobby';
 import { GameRecord, kindOf, WATCH_CAP } from './record';
 import { HELD_MAX, RECONNECT_MS, SILENT_MS } from './seats';
@@ -119,6 +119,8 @@ interface Open {
   start: number;
   stage?: string;
   reconnects: number;
+  delay?: number;
+  net?: Partial<Record<Role, NetStats>>;
 }
 
 /** The ground a hello names, as the night's report gives it. */
@@ -131,12 +133,13 @@ function stageOf(stage: unknown): string | undefined {
 }
 
 /** The match number and the ground in a hello or a rematch. */
-function startOf(text: string): { game: number; stage?: string } {
+function startOf(text: string): { game: number; stage?: string; delay?: number } {
   try {
-    const value = JSON.parse(text) as { game?: unknown; stage?: unknown };
+    const value = JSON.parse(text) as { game?: unknown; stage?: unknown; delay?: unknown };
     const game = typeof value.game === 'number' && Number.isInteger(value.game) && value.game >= 0 ? value.game : 0;
     const stage = stageOf(value.stage);
-    return stage === undefined ? { game } : { game, stage };
+    const delay = typeof value.delay === 'number' && Number.isInteger(value.delay) && value.delay > 0 && value.delay < 256 ? value.delay : undefined;
+    return { game, ...(stage !== undefined ? { stage } : {}), ...(delay !== undefined ? { delay } : {}) };
   } catch {
     return { game: 0 };
   }
@@ -186,6 +189,34 @@ export function readReport(text: string): Report | undefined {
   const name = cleanName(typeof value.me?.name === 'string' ? value.me.name : null);
   if (name && isPlayerId(typeof value.me?.id === 'string' ? value.me.id : null)) report.me = { id: value.me!.id, name };
   return report;
+}
+
+const NET_WORD = '{"t":"net"';
+
+/**
+ * A page's word on how the wire and its screen are holding up in a match, {t:'net'}: the match
+ * number and the numbers fights.ts NetStats keeps; undefined for text that is not one. Kept with
+ * the match's record and passed to nobody.
+ */
+export function readNet(text: string): { game: number; stats: NetStats } | undefined {
+  if (!text.startsWith(NET_WORD)) return undefined;
+  let value: Record<string, unknown>;
+  try {
+    value = JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    return undefined;
+  }
+  const number = (key: string): number | undefined => {
+    const n = value[key];
+    return typeof n === 'number' && Number.isFinite(n) && n >= 0 && n < 1e9 ? Math.round(n * 10) / 10 : undefined;
+  };
+  const game = number('game');
+  if (game === undefined || !Number.isInteger(game)) return undefined;
+  const keys = ['fps', 'fpsSlow', 'ticks', 'held', 'heldMs', 'eased', 'wall'] as const;
+  const got = keys.map(number);
+  if (got.some((n) => n === undefined)) return undefined;
+  const [fps, fpsSlow, ticks, held, heldMs, eased, wall] = got as number[];
+  return { game, stats: { rtt: number('rtt') ?? null, rttSlow: number('rttSlow') ?? null, fps: fps!, fpsSlow: fpsSlow!, ticks: ticks!, held: held!, heldMs: heldMs!, eased: eased!, wall: wall! } };
 }
 
 const same = (a: Report, b: Report) => a.game === b.game && a.winner === b.winner && a.rounds === b.rounds && a.ticks === b.ticks;
@@ -258,6 +289,12 @@ export class Room extends DurableObject<Env> {
     }
     const others = this.live(other(role));
     await this.ctx.storage.put('joined', true);
+    // The Cloudflare edge the player came in by (an airport code, nothing finer), for the night's log: where the two were against where the room is.
+    const colo = (request as Request & { cf?: { colo?: unknown } }).cf?.colo;
+    if (typeof colo === 'string' && /^[A-Z]{3}$/.test(colo)) {
+      const colos = (await this.ctx.storage.get<Partial<Record<Role, string>>>('colos')) ?? {};
+      if (colos[role] !== colo) await this.ctx.storage.put('colos', { ...colos, [role]: colo });
+    }
     if (kept || again) {
       // Back in the seat: both hear it, and the returning page gets what came for it meanwhile, in order.
       if (kept) await this.keep(role, undefined);
@@ -333,6 +370,12 @@ export class Room extends DurableObject<Env> {
     }
     const report = typeof message === 'string' ? readReport(message) : undefined;
     if (report) return this.reported(role, report);
+    // A page's word on the wire is the room's alone, kept if it reads and dropped if not.
+    if (typeof message === 'string' && message.startsWith(NET_WORD)) {
+      const net = readNet(message);
+      if (net) await this.noted(role, net.game, net.stats);
+      return;
+    }
     this.tell(other(role), message);
     const watchers = this.live('watch');
     if (typeof message === 'string') {
@@ -541,13 +584,22 @@ export class Room extends DurableObject<Env> {
    * without anybody saying how, and is logged as left; a rematch is fought on the last hello's ground.
    */
   private async begin(text: string, rematch: boolean): Promise<void> {
-    const { game, stage: named } = startOf(text);
+    const { game, stage: named, delay: given } = startOf(text);
     const stage = rematch ? await this.ctx.storage.get<string>('stage') : named;
+    // A rematch that names no delay keeps the last match's.
+    const delay = given ?? (rematch ? await this.ctx.storage.get<number>('delay') : undefined);
     const old = await this.close('left');
-    const open: Open = { game, start: Date.now(), reconnects: 0, ...(stage !== undefined ? { stage } : {}) };
-    await this.ctx.storage.put({ match: open, played: true, ...(!rematch && stage !== undefined ? { stage } : {}) });
+    const open: Open = { game, start: Date.now(), reconnects: 0, ...(stage !== undefined ? { stage } : {}), ...(delay !== undefined ? { delay } : {}) };
+    await this.ctx.storage.put({ match: open, played: true, ...(!rematch && stage !== undefined ? { stage } : {}), ...(delay !== undefined ? { delay } : {}) });
     if (!rematch && stage === undefined) await this.ctx.storage.delete('stage');
     if (old) await this.logged(old);
+  }
+
+  /** A page's numbers on the match on now, kept for its record; a word on another match is late and dropped. */
+  private async noted(role: Role, game: number, stats: NetStats): Promise<void> {
+    const open = await this.ctx.storage.get<Open>('match');
+    if (!open || open.game !== game) return;
+    await this.ctx.storage.put('match', { ...open, net: { ...open.net, [role]: stats } });
   }
 
   /** The match on now is over, `how`; with `game`, only if it is that match. Its record goes to the lobby. */
@@ -561,7 +613,16 @@ export class Room extends DurableObject<Env> {
     const open = await this.ctx.storage.get<Open>('match');
     if (!open || (game !== undefined && open.game !== game)) return undefined;
     await this.ctx.storage.delete('match');
-    const fight = await this.fight({ ...extra, game: open.game, start: open.start, ended: how, reconnects: open.reconnects, ...(open.stage !== undefined ? { stage: open.stage } : {}) });
+    const fight = await this.fight({
+      ...extra,
+      game: open.game,
+      start: open.start,
+      ended: how,
+      reconnects: open.reconnects,
+      ...(open.stage !== undefined ? { stage: open.stage } : {}),
+      ...(open.delay !== undefined ? { delay: open.delay } : {}),
+      ...(open.net !== undefined ? { net: open.net } : {}),
+    });
     return fight;
   }
 
@@ -580,11 +641,12 @@ export class Room extends DurableObject<Env> {
 
   /** A record with the room's own parts: its code, the players, and on its first record only, how long they queued. */
   private async fight(parts: Omit<Fight, 'code' | 'lobby' | 'end'> & { end?: number }): Promise<Fight> {
-    const [code, players, mes, waits] = await Promise.all([
+    const [code, players, mes, waits, colos] = await Promise.all([
       this.ctx.storage.get<string>('code'),
       this.ctx.storage.get<Pair>('players'),
       this.ctx.storage.get<Partial<Pair>>('mes'),
       this.ctx.storage.get<Waits>('waits'),
+      this.ctx.storage.get<Partial<Record<Role, string>>>('colos'),
     ]);
     if (waits) await this.ctx.storage.delete('waits');
     const host = players?.host ?? mes?.host;
@@ -597,6 +659,7 @@ export class Room extends DurableObject<Env> {
       ...(host ? { host: { id: host.id, name: host.name } } : {}),
       ...(guest ? { guest: { id: guest.id, name: guest.name } } : {}),
       ...(waits ? { waits } : {}),
+      ...(colos && (colos.host || colos.guest) ? { colos } : {}),
     };
   }
 
