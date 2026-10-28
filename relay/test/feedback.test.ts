@@ -2,7 +2,7 @@ import { env, runInDurableObject, SELF } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 import { asText, authorized, FEEDBACK_PER_DAY, FEEDBACK_PER_IP, FEEDBACK_WINDOW_MS, type Feedback, type FeedbackStore, type Incoming, KEEP_FEEDBACK, KEEP_MS, MAX_BODY, MAX_FEEDBACK, readFeedback } from '../src/feedback';
 
-const GAME = 'https://makgora.clawdioslave.com';
+const GAME = 'https://realworldbuilder.github.io';
 const TOKEN = 'test-feedback-token';
 
 let stores = 0;
