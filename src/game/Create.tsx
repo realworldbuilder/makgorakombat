@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { ClassEntry, Race } from '@mogshot/character/appearance';
 import type { ItemSetInfo, ItemSummary, Slot } from '@mogshot/character/equipment';
+import { capturedAgo, type ImportedRecord } from '@mogshot/import/record';
 import { BRAND } from '../engine/brand';
 import { keyLayout, MENU_KEYS, ROSTER_KEYS } from '../engine/input';
 import type { BuiltFighter, Champion, Fighters } from './fighters';
 import { headshotOf } from './headshot';
+import { ADDON_URL, AS_WORN, importedFrom, importReport, readCode } from './importing';
 import { usePadMode } from './pads';
 import { averageLevel, CLASS_COLOURS, DOLL_SLOTS, equip, type ItemInfo, SLOT_NAMES } from './slots';
 import { ItemPicker, PaperDoll } from './PaperDoll';
@@ -24,7 +26,9 @@ import { type Line, type Quality, WowTooltip } from './ui/WowTooltip';
  * what goes there from every item the folder has for it. Each change rebuilds the champion
  * after a moment; the builds go through the fighter cache under a key of the look, so the tile
  * on the roster afterwards is the same build. Opened on a champion built into the game, it shows
- * that champion and says so, with nothing to change and only CANCEL to press.
+ * that champion and says so, with nothing to change and only CANCEL to press. A character of the
+ * player's own comes in exactly as they are in the game (importing.ts): picked from those the
+ * folder's Mogshot file lists, or from the code `/mogshot` shows, pasted into the Code row.
  */
 
 interface CreateProps {
@@ -35,6 +39,8 @@ interface CreateProps {
   fighters: Fighters;
   /** The champions made before, for the list at the top. */
   saved: SavedChampion[];
+  /** The player's characters the Mogshot addon wrote into the folder, to bring in as they are. */
+  records: ImportedRecord[];
   /** The one opened on, when it is an edit. */
   editing: SavedChampion | undefined;
   onSave: (champion: SavedChampion) => void;
@@ -76,6 +82,7 @@ type Row =
   | { kind: 'wait'; key: string; label: string }
   | { kind: 'gear'; key: 'gear' }
   | { kind: 'name'; key: 'name' }
+  | { kind: 'code'; key: 'code' }
   | { kind: 'actions'; key: 'actions' };
 
 type Button = 'save' | 'cancel' | 'delete';
@@ -127,7 +134,7 @@ function savedDraft(saved: SavedChampion): Draft {
 /** The armour a class change leaves: a set follows the class (its best set); a random outfit, none, or pieces chosen by hand stay. */
 const armourFor = (armour: Armour): Armour => (armour.kind === 'random' || armour.kind === 'none' || armour.kind === 'own' ? armour : { kind: 'set' });
 
-export function Create({ races, classes, portraits, fighters, saved, editing, onSave, onDelete, onCancel }: CreateProps) {
+export function Create({ races, classes, portraits, fighters, saved, records, editing, onSave, onDelete, onCancel }: CreateProps) {
   usePadMode('roster');
   const order = useMemo(() => rosterTiles(races).flatMap((tile) => (tile.kind === 'race' ? [tile.race] : [])), [races]);
   const [draft, setDraft] = useState<Draft>(() => (editing ? savedDraft(editing) : freshDraft(order[0]!, classes)));
@@ -141,6 +148,12 @@ export function Create({ races, classes, portraits, fighters, saved, editing, on
   const [button, setButton] = useState<Button>(builtin ? 'cancel' : 'save');
   const [deleting, setDeleting] = useState(false);
   const nameInput = useRef<HTMLInputElement>(null);
+  const codeInput = useRef<HTMLInputElement>(null);
+  // A character brought in from the game: which of the folder's, the pasted code, and how it went.
+  const [fromGame, setFromGame] = useState('');
+  const [code, setCode] = useState('');
+  const [report, setReport] = useState<{ line: string; warnings: string[] }>();
+  const [importing, setImporting] = useState(false);
   const request = useRef(0);
   // The slot whose picker is open, and the slot the Gear row's arrows are on.
   const [picking, setPicking] = useState<Slot>();
@@ -299,6 +312,30 @@ export function Create({ races, classes, portraits, fighters, saved, editing, on
     sound(item ? putDownFile((item as ItemInfo).soundGroup) : pickUpFile(off?.soundGroup));
     setDraft((d) => ({ ...d, armour: { kind: 'own' }, ...equip(d.gear, d.worn, slot, item) }));
   };
+  /** The character as they are in the game: everything the creator has, filled from the record the worker resolves against this folder. */
+  const bringIn = (record: ImportedRecord) => {
+    setImporting(true);
+    setPicking(undefined);
+    fighters.client
+      .resolveImport(record)
+      .then((result) => {
+        const got = importedFrom(record, result);
+        setDraft((d) => ({ ...d, ...got, name: got.name || d.name, named: true, armour: { kind: 'kept', label: AS_WORN } }));
+        setReport(importReport(record, result));
+      })
+      .catch((cause: unknown) => setReport({ line: '', warnings: [cause instanceof Error ? cause.message : String(cause)] }))
+      .finally(() => setImporting(false));
+  };
+  const chooseFromGame = (value: string) => {
+    setFromGame(value);
+    const record = records[Number(value)];
+    if (value !== '' && record) bringIn(record);
+  };
+  const readPasted = (text: string, saying: boolean) => {
+    const record = readCode(text);
+    if (record) bringIn(record);
+    else if (saying) setReport({ line: '', warnings: [text.trim() ? 'That is not a code from /mogshot: it starts MOG2;' : 'Paste the code /mogshot shows in the game.'] });
+  };
   const open = (value: string) => {
     const entry = saved.find((s) => s.id === value);
     setDraft(entry ? savedDraft(entry) : freshDraft(order[0]!, classes));
@@ -359,6 +396,17 @@ export function Create({ races, classes, portraits, fighters, saved, editing, on
       change: open,
     });
   }
+  if (records.length > 0) {
+    rows.push({
+      kind: 'select',
+      key: 'import',
+      label: 'Import',
+      value: fromGame,
+      choices: [{ value: '', label: 'Your characters…' }, ...records.map((r, i) => ({ value: String(i), label: `${r.name} · ${capturedAgo(r.captured)}` }))],
+      change: chooseFromGame,
+    });
+  }
+  rows.push({ kind: 'code', key: 'code' });
   rows.push({
     kind: 'select',
     key: 'race',
@@ -437,7 +485,8 @@ export function Create({ races, classes, portraits, fighters, saved, editing, on
   // The name row takes the keyboard while the cursor is on it.
   useEffect(() => {
     if (here.kind === 'name') nameInput.current?.focus();
-    else if (document.activeElement === nameInput.current) nameInput.current?.blur();
+    else if (here.kind === 'code') codeInput.current?.focus();
+    else if (document.activeElement === nameInput.current || document.activeElement === codeInput.current) (document.activeElement as HTMLElement).blur();
   }, [here.kind]);
 
   const step = (target: Row, by: 1 | -1) => {
@@ -452,7 +501,8 @@ export function Create({ races, classes, portraits, fighters, saved, editing, on
     }
     if (target.kind !== 'select') return;
     // A saved champion's own armour, pieces chosen by hand and the set still being read are shown, but stepped past.
-    const list = target.choices.filter((choice) => choice.value === target.value || (choice.value !== 'kept' && choice.value !== 'own' && choice.value !== 'set:'));
+    // So is the Import row's prompt.
+    const list = target.choices.filter((choice) => choice.value === target.value || (choice.value !== 'kept' && choice.value !== 'own' && choice.value !== 'set:' && !(target.key === 'import' && choice.value === '')));
     if (list.length < 2) return;
     const i = list.findIndex((choice) => choice.value === target.value);
     // Stepping onto the random entry rolls an outfit.
@@ -460,8 +510,9 @@ export function Create({ races, classes, portraits, fighters, saved, editing, on
   };
 
   const pickHere = () => setPicking(DOLL_SLOTS[dollAt]);
-  const stateRef = useRef({ rows, at, button, step, press, save, roll, onCancel, chooseSex, draft, pickHere });
-  stateRef.current = { rows, at, button, step, press, save, roll, onCancel, chooseSex, draft, pickHere };
+  const pasteHere = () => readPasted(codeInput.current?.value ?? '', true);
+  const stateRef = useRef({ rows, at, button, step, press, save, roll, onCancel, chooseSex, draft, pickHere, pasteHere });
+  stateRef.current = { rows, at, button, step, press, save, roll, onCancel, chooseSex, draft, pickHere, pasteHere };
 
   // Keys, before the roster's: up and down choose a row, left and right change it, Enter saves, Esc cancels.
   useEffect(() => {
@@ -489,6 +540,7 @@ export function Create({ races, classes, portraits, fighters, saved, editing, on
         const current = s.rows[s.at];
         if (current?.kind === 'actions') s.press(s.button);
         else if (current?.kind === 'gear') s.pickHere();
+        else if (current?.kind === 'code') s.pasteHere();
         else s.save();
         return;
       }
@@ -556,6 +608,28 @@ export function Create({ races, classes, portraits, fighters, saved, editing, on
               const name = cleanName(event.currentTarget.value);
               event.currentTarget.value = name;
               setDraft((d) => ({ ...d, name, named: true }));
+            }}
+          />
+        </label>
+      );
+    }
+    if (r.kind === 'code') {
+      return (
+        <label class={`${cls} code`} key={r.key} onMouseDown={focus}>
+          <span class="label">Code</span>
+          <input
+            ref={codeInput}
+            type="text"
+            value={code}
+            placeholder="Paste the code /mogshot shows"
+            spellcheck={false}
+            autoComplete="off"
+            onFocus={focus}
+            onInput={(event) => {
+              setCode(event.currentTarget.value);
+              // A code pasted or dropped in comes in at once; one typed by hand waits for Enter, since half a code already reads as one.
+              const how = (event as unknown as InputEvent).inputType;
+              if (how === 'insertFromPaste' || how === 'insertFromDrop') readPasted(event.currentTarget.value, true);
             }}
           />
         </label>
@@ -685,6 +759,19 @@ export function Create({ races, classes, portraits, fighters, saved, editing, on
             </p>
           )}
           <div class="rows">{rows.map(rowView)}</div>
+          {(importing || report || here.kind === 'code' || here.key === 'import') && !builtin && (
+            <div class="import-note">
+              {importing && <p class="dim">Bringing your character in…</p>}
+              {!importing && report?.line && <p class="ok">{report.line}</p>}
+              {!importing && report?.warnings.map((warning) => <p class="bad" key={warning}>{warning}</p>)}
+              {!report && !importing && (
+                <p class="dim">
+                  Your character exactly as they are in the game: with the <a href={ADDON_URL} target="_blank" rel="noreferrer">Mogshot addon</a>, sit in a
+                  barber's chair once, then type <code>/mogshot</code> and paste the code it shows here.
+                </p>
+              )}
+            </div>
+          )}
           {here.key === 'armour' && !picking && <WowTooltip class="armour-tip" lines={armourTip()} />}
           {picking && (
             <ItemPicker
@@ -701,7 +788,7 @@ export function Create({ races, classes, portraits, fighters, saved, editing, on
               onClose={closePicker}
             />
           )}
-          <p class="dim small hint">{builtin ? 'Enter or Esc back to the roster' : '↑ ↓ or W S a row · ← → or A D change it · J on Gear picks an item · Enter save · Esc cancel'}</p>
+          <p class="dim small hint">{builtin ? 'Enter or Esc back to the roster' : '↑ ↓ or W S a row · ← → or A D change it · J on Gear picks an item · Enter save (on Code, brings it in) · Esc cancel'}</p>
         </div>
       </div>
     </div>

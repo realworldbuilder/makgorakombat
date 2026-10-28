@@ -3162,3 +3162,33 @@ code {
   transform: translate(50%, 150px);
   font-size: 1.2rem;
 }
+
+/* Bringing a character in from the game: how it went, and where a code comes from. */
+.creator .import-note {
+  margin: 6px 4px 0;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.creator .import-note p {
+  margin: 2px 0;
+}
+
+.creator .import-note .ok {
+  color: #1eff00;
+}
+
+.creator .import-note .bad {
+  color: #ff6b6b;
+}
+
+.creator .import-note a {
+  color: var(--gold);
+}
+
+.creator .row.code input {
+  font-family: ui-monospace, Menlo, monospace;
+  font-weight: 400;
+  letter-spacing: 0;
+  font-size: 0.8rem;
+}

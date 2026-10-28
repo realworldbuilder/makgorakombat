@@ -875,6 +875,7 @@ export function Select({ edition, art, others, onEdition, races, classes, record
           portraits={portraits}
           fighters={fighters}
           saved={saved}
+          records={records}
           editing={making.editing}
           onSave={keep}
           onDelete={discard}
