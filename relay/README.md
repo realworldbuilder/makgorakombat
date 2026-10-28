@@ -133,6 +133,42 @@ By hand instead: `wrangler secret put DISCORD_TOKEN`, and
   referrers, countries, browsers, systems, devices, pages, editions, fight modes, champions and
   errors. `week` is the default. The game's `/stats/` page, linked from the welcome page, shows it.
 
+## Feedback
+
+What players say at the end of a fight. The match-end screen offers SEND FEEDBACK (F, or a click):
+a few lines, a rating out of five if they like, SEND or CANCEL. It is never offered mid-fight, and
+while the box is open it has the keyboard, so typing moves no fighter and starts no rematch; Escape
+closes it. Online each player sends their own, and the lockstep and the other's rematch go on as if
+the box were not there.
+
+- The game (`src/game/feedback.ts`) sends `POST /feedback` once, a plain-text body
+  `{"text","rating"?,"mode","fighters","stage"?,"winner"?,"me"?,"game"?,"build"?,"name"?}`: at most
+  1000 characters of text, `mode` cpu, local or online, the two champions, the ground, the side
+  that won and the side the sender played (0 or 1), the game and the build, and the name the player
+  gave the lobby if they gave one. Nothing else about the player. The relay answers 204, or 400,
+  413 (too long, or a request past 4 KB) or 429, and the game says THANKS or that it could not send.
+- One Durable Object, `FeedbackStore` (`src/feedback.ts`), keeps it in SQLite for a year, 10,000
+  messages at most. An address may send 5 in ten minutes, counted in memory and never written down;
+  everyone together 500 a day.
+- Reading it back takes a token, kept as the Worker secret `FEEDBACK_TOKEN`. Once, on the account
+  the relay runs on:
+
+  ```
+  cd relay
+  openssl rand -hex 24              # a token; keep it somewhere safe
+  pnpm exec wrangler secret put FEEDBACK_TOKEN
+  ```
+
+  Then, newest first, as text or as JSON:
+
+  ```
+  curl -s -H "Authorization: Bearer $FEEDBACK_TOKEN" "https://makgora-relay.clawdgross.workers.dev/feedback?format=text"
+  curl -s -H "Authorization: Bearer $FEEDBACK_TOKEN" "https://makgora-relay.clawdgross.workers.dev/feedback?limit=500" | jq
+  ```
+
+  `limit` is 1 to 1000 (100 by default); `before=<id>` gives the page older than that message.
+  Without the secret set, `GET /feedback` answers 404 and nobody can read it; players can still send.
+
 ## The room
 
 - `POST /rooms` makes a room and answers `{"code":"HXBXDC"}`.

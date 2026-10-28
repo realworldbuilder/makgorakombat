@@ -740,6 +740,11 @@ export function Game() {
               assets={{ client: client.current!, races: loaded.races, portraits: loaded.portraits }}
               me={screen.net?.me}
               next={screen.net !== undefined && lobby !== undefined}
+              feedback={{
+                mode: screen.net ? 'online' : p2 === 'cpu' ? 'cpu' : 'local',
+                stage: screen.stage.stage?.name ?? (screen.stage.screen ? 'a loading screen' : undefined),
+                game: `${loaded.edition.game} ${loaded.edition.version}`,
+              }}
             />
           </>
         );
