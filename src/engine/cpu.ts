@@ -11,7 +11,7 @@ const FUMBLE = 0.35;
 /** How often the CPU makes up its mind, in frames; it holds its inputs in between. */
 export const CPU_DECIDE_FRAMES = 8;
 
-/** KOMBAT: the share of the opponent's swings in reach the CPU blocks, and how long it holds the guard for one. */
+/** Where holding back blocks: the share of the opponent's swings in reach the CPU blocks, and how long it holds the guard for one. */
 export const BLOCK_CHANCE = 0.4;
 const GUARD_FRAMES = 24;
 /** KOMBAT: farther than this the CPU may run in with a double tap, this often a decision. */
@@ -27,6 +27,12 @@ const SWING_CHANCE = 0.5;
 export function cpuInputs(match: Match, me: 0 | 1): Inputs {
   if (!rulesOf(match).swingTimer) return kombatInputs(match, me);
   const memory = match.cpu[me];
+  if (guarding(match, me)) {
+    // The guard lets go of the attack key; the next decision picks it up again.
+    memory.held = noInputs();
+    memory.next = match.frame;
+    return backAway(match, me);
+  }
   if (match.frame < memory.next) {
     // Presses are edge-triggered: only the decision tick carries them. The attack key stays held.
     return { ...memory.held, jump: false, abilities: [false, false, false] };
@@ -35,6 +41,31 @@ export function cpuInputs(match: Match, me: 0 | 1): Inputs {
   memory.held = decision;
   memory.next = match.frame + CPU_DECIDE_FRAMES;
   return { ...decision, abilities: [...decision.abilities] };
+}
+
+/**
+ * Is the CPU holding its guard this tick? Every swing the opponent starts in reach is weighed once
+ * and blocked BLOCK_CHANCE of the time, where the rules have a guard; never in the air.
+ */
+function guarding(match: Match, me: 0 | 1): boolean {
+  if (!rulesOf(match).block || match.phase !== 'fight') return false;
+  const memory = match.cpu[me];
+  const f = match.fighters[me];
+  const opp = match.fighters[me === 0 ? 1 : 0];
+  if (opp.swings !== memory.seen) {
+    memory.seen = opp.swings;
+    const reach = match.tables[me === 0 ? 1 : 0].weapon.range + 0.6;
+    if (opp.state === 'attack' && Math.abs(opp.x - f.x) <= reach && nextRandom(match) < BLOCK_CHANCE) memory.guardUntil = Math.max(memory.guardUntil, match.frame + GUARD_FRAMES);
+  }
+  return match.frame < memory.guardUntil && !f.airborne;
+}
+
+/** Only the direction away from the opponent held. */
+function backAway(match: Match, me: 0 | 1): Inputs {
+  const out = noInputs();
+  if (match.fighters[me === 0 ? 1 : 0].x >= match.fighters[me].x) out.left = true;
+  else out.right = true;
+  return out;
 }
 
 /**
@@ -68,12 +99,7 @@ function kombatInputs(match: Match, me: 0 | 1): Inputs {
   }
   if (fighting) {
     // The opponent swings: weigh it once, and hold back through it when it is to be blocked.
-    if (opp.swings !== memory.seen) {
-      memory.seen = opp.swings;
-      const reach = match.tables[me === 0 ? 1 : 0].weapon.range + 0.6;
-      if (opp.state === 'attack' && dist <= reach && nextRandom(match) < BLOCK_CHANCE) memory.guardUntil = Math.max(memory.guardUntil, match.frame + GUARD_FRAMES);
-    }
-    if (match.frame < memory.guardUntil && !f.airborne) return only(toward > 0 ? 'left' : 'right');
+    if (guarding(match, me)) return give(backAway(match, me));
     // A blow of mine connected: the string's next press, letting go of the key first if it is down.
     if (f.state === 'attack' && f.connected && !f.airAttack && f.chain + 1 < rulesOf(match).chain.length && memory.chained !== f.swings) {
       if (memory.pressed) return give(noInputs());

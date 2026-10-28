@@ -5,7 +5,8 @@ import { BACK, WALK } from './stage';
 
 /*
  * The two ways a fight can be fought. WARCRAFT is the game's: the auto-attack on the weapon's
- * swing timer, every blow rolled on the hit table, abilities on a global cooldown. KOMBAT is a
+ * swing timer, every blow rolled on the hit table, abilities on a global cooldown, with KOMBAT's
+ * guard and double tap so there is something to do while it all cools down. KOMBAT is a
  * fighting game's: a swing goes the moment the key is pressed, three presses in rhythm are a
  * string, a blow that lands holds the victim in hitstun so the next one combos, holding back
  * blocks, a double tap dashes, and nothing is left to the dice. Every number that differs
@@ -99,7 +100,8 @@ export const RULES: Record<RulesName, Rules> = {
     chainGrace: 0,
     chainEnd: { pushback: 1, knockdown: false },
     hitstun: { light: 0, heavy: 0 },
-    block: undefined,
+    // KOMBAT's guard and dash: the pace is the game's, the waiting is spent blocking and spacing.
+    block: { chip: 0.2, stun: 8 },
     hitsDown: true,
     // Parry only from the front, block only with a shield, none of them against a helpless target.
     hitTable: { miss: 0.05, dodge: 0.06, evasion: 0.5, parry: 0.06, block: 0.1, crit: 0.15, spellMiss: 0.03 },
@@ -109,7 +111,7 @@ export const RULES: Record<RulesName, Rules> = {
     cast: 1,
     manaRegen: 1,
     cancel: false,
-    dash: undefined,
+    dash: { window: 10, tap: 12, speed: 0.28, frames: 10, cancel: 4, backSpeed: 0.22, backFrames: 10, invulnerable: 6 },
     airAttack: undefined,
   },
   kombat: {
