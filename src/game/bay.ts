@@ -4,7 +4,7 @@ import type { M2Bone } from '@mogshot/formats/m2';
 /*
  * BOOBY BAY: a secret corner of the queue (typed 80085 while waiting for a fight, Online.tsx)
  * where the lobby pairs only those who found it. There the roster is a woman warrior of each race,
- * with no armour and no weapons (hand to hand) and with her chest and bottom made bigger; they fight on their own beach (stages.ts BAY_STAGE) under the
+ * with no armour and no weapons (hand to hand) and with her chest made bigger; they fight on their own beach (stages.ts BAY_STAGE) under the
  * bay's own dress (BayDress.tsx).
  *
  * The models have no bone for the breasts, so the body's own vertices are moved, once, as the
@@ -14,10 +14,8 @@ import type { M2Bone } from '@mogshot/formats/m2';
  * the breasts' points; each breast is then a ball behind its point, and everything inside a wider
  * ball about it is pushed out from its centre, most at the middle and nothing at the edge, so the
  * surface swells without a seam. Their normals turn the same way, so the light follows the shape.
- * The bottom the same way facing back: the hips are the bone both thighs hang from, and its cheeks
- * each side's rearmost vertex about the height of the thighs' tops.
  *
- * And the breasts bounce. The models carry a bone for each breast, a child of the chest that the game
+ * And they bounce. The models carry a bone for each breast, a child of the chest that the game
  * never moves on its own; the swollen vertices are handed to it, as far as they swelled. Each frame
  * a spring per breast (Bounce) is pulled along by where the chest went, walking, jumping, struck,
  * and lags behind it, overshoots and settles; the breast's bone is moved by how far the spring is
@@ -33,9 +31,8 @@ export const BAY_RACES = [1, 4, 3, 7, 11, 2, 8, 5, 6, 10] as const;
 export const BAY_CLASS = 1;
 export const BAY_SEX = 1;
 
-/** How far the surface is pushed at the breast's point, as a share of the breast's radius; and the bottom's, of its own. */
+/** How far the surface is pushed at the breast's point, as a share of the breast's radius. */
 export const BAY_SWELL = 2.1;
-export const BAY_BUTT = 1.6;
 
 const STRIDE = 48;
 const SHOULDER_L = 2;
@@ -43,9 +40,6 @@ const SHOULDER_R = 3;
 const HEAD = 6;
 /** The breast's radius at most, as a share of the chest's height off the ground (human and night elf come to about 0.043); each cheek's, of the thighs' tops. */
 const CHEST_MOST = 0.045;
-const HIPS_SIZE = 0.068;
-const THIGH_R = 55;
-const THIGH_L = 56;
 
 /** The model's axes: +x forward, +y the model's left, +z up. */
 interface Found {
@@ -251,59 +245,12 @@ function swellPart(view: DataView, hold: Set<number>, part: Part, swell: number,
   }
 }
 
-/** The hips: the bone the two thighs hang from, it and its own children (not the legs below the thighs), and the bones above it. */
-function hipBones(bones: readonly M2Bone[]): { pelvis: number; thighs: [number, number]; set: Set<number> } | undefined {
-  const left = bones.findIndex((bone) => bone.keyBoneId === THIGH_L);
-  const right = bones.findIndex((bone) => bone.keyBoneId === THIGH_R);
-  if (left < 0 || right < 0) return undefined;
-  const above = new Set<number>();
-  for (let up = bones[left]!.parent; up >= 0; up = bones[up]!.parent) above.add(up);
-  let pelvis = bones[right]!.parent;
-  while (pelvis >= 0 && !above.has(pelvis)) pelvis = bones[pelvis]!.parent;
-  if (pelvis < 0) return undefined;
-  const set = new Set<number>([pelvis, left, right]);
-  bones.forEach((bone, i) => {
-    if (bone.parent === pelvis) set.add(i);
-  });
-  for (let up = bones[pelvis]!.parent; up >= 0; up = bones[up]!.parent) set.add(up);
-  return { pelvis, thighs: [left, right], set };
-}
-
 /**
- * Where the cheeks of the bottom are. The rearmost vertex the pelvis and thighs themselves carry
- * (a tail has bones of its own), about the height of the thighs' tops, says how far back and how
- * high; each cheek sits out over its thigh, and is as big as the hips are high.
+ * The body mesh with its chest made bigger: a new vertex buffer, the old one left alone, and the
+ * swollen breasts handed to their own bones to bounce. `swell` is how far the surface moves at the
+ * breast's point, in breast radii. A mesh this cannot read comes back as it was.
  */
-export function findHips(mesh: SceneMesh, bones: readonly M2Bone[]): Part | undefined {
-  const hips = hipBones(bones);
-  if (!hips) return undefined;
-  const view = new DataView(mesh.vertices.buffer, mesh.vertices.byteOffset, mesh.vertices.byteLength);
-  const at = bones[hips.pelvis]!.pivot;
-  const [left, right] = hips.thighs.map((i) => bones[i]!.pivot) as [Vec3, Vec3];
-  const middle = at[1];
-  const out = (Math.abs(left[1] - middle) + Math.abs(right[1] - middle)) / 2;
-  const tall = (left[2] + right[2]) / 2;
-  const own = new Set<number>([hips.pelvis, ...hips.thighs]);
-  let back: Vec3 | undefined;
-  for (const i of drawn(mesh)) {
-    const v = i * STRIDE;
-    if (weightIn(view, v, own) < 0.5) continue;
-    const p: Vec3 = [view.getFloat32(v, true), view.getFloat32(v + 4, true), view.getFloat32(v + 8, true)];
-    if (p[2] < tall * 0.8 || p[2] > tall * 1.1 || p[0] > at[0] || Math.abs(p[1] - middle) > out * 1.4) continue;
-    if (!back || p[0] < back[0]) back = p;
-  }
-  if (!back || out <= 0) return undefined;
-  const radius = tall * HIPS_SIZE;
-  return { centre: [back[0] + radius * 0.6, middle + out * 0.85, Math.min(back[2], tall)], middle, radius, facing: -1 };
-}
-
-/**
- * The body mesh with its chest and bottom made bigger: a new vertex buffer, the old one left alone,
- * and the swollen breasts handed to their own bones to bounce. `swell` is how far the chest's
- * surface moves at the breast's point, in breast radii, `butt` the bottom's. A mesh this cannot
- * read comes back as it was; one whose hips it cannot find has its chest done alone.
- */
-export function enlarge(mesh: SceneMesh, bones: readonly M2Bone[], swell = BAY_SWELL, butt = BAY_BUTT): Shaped {
+export function enlarge(mesh: SceneMesh, bones: readonly M2Bone[], swell = BAY_SWELL): Shaped {
   const found = findChest(mesh, bones);
   const set = chestBones(bones);
   if (!found || !set) return { vertices: mesh.vertices };
@@ -312,14 +259,10 @@ export function enlarge(mesh: SceneMesh, bones: readonly M2Bone[], swell = BAY_S
   const chest = bones[bones.findIndex((bone) => bone.keyBoneId === SHOULDER_L)]!.parent;
   for (let up = bones[chest]!.parent; up >= 0; up = bones[up]!.parent) torso.add(up);
   const breasts = breastBones(bones, chest, found);
-  // Found on the mesh as the game made it, before the chest moves anything.
-  const bottom = butt > 0 ? findHips(mesh, bones) : undefined;
-  const hips = hipBones(bones);
   const out = mesh.vertices.slice();
   const view = new DataView(out.buffer, out.byteOffset, out.byteLength);
   // The breast's own bone takes each vertex as far as it swelled: its middle wholly, its edge not at all.
   swellPart(view, torso, { ...found, facing: 1 }, swell, breasts && ((at, side, bend) => handTo(view, at, breasts[side], Math.min(1, bend * 1.3))));
-  if (bottom && hips) swellPart(view, hips.set, bottom, butt);
   return { vertices: out, bounce: breasts && { chest, pivot: [...bones[chest]!.pivot], breasts, radius: found.radius } };
 }
 
