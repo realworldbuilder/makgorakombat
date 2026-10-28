@@ -37,17 +37,23 @@ export function counted(): boolean {
   }
 }
 
+/** A fresh id; randomUUID is only there on https and localhost, not on a dev server reached by its address. */
+function newId(): string {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID();
+  return Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+}
+
 /** This browser's id, made once and kept; one for the page load alone if storage is blocked. */
 function visitorId(): string {
   if (visitor) return visitor;
   try {
     visitor = localStorage.getItem(VISITOR) ?? undefined;
     if (!visitor) {
-      visitor = crypto.randomUUID();
+      visitor = newId();
       localStorage.setItem(VISITOR, visitor);
     }
   } catch {
-    visitor = crypto.randomUUID();
+    visitor = newId();
   }
   return visitor;
 }
