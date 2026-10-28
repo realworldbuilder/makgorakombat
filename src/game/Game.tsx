@@ -28,7 +28,8 @@ import { Challenge, enterRoom, Matching, Online, type Session, useLobby } from '
 import { Title } from './Title';
 import { loadGameFonts } from './ui/fonts';
 import { FightUi } from './ui/FightUi';
-import { drawGround, type Ground, sharedStages, type Stage, stagesFor } from './stages';
+import { BAY_STAGE, drawGround, type Ground, sharedStages, type Stage, stagesFor } from './stages';
+import { BayDress } from './BayDress';
 import { NextStage } from './NextStage';
 import { Versus } from './Versus';
 import { Watch } from './Watch';
@@ -39,6 +40,9 @@ import { Watch } from './Watch';
  * Everything the game knows about the open folder is loaded once here and handed down, with the
  * edition (edition.ts): which of the folder's games is open.
  */
+
+/** Booby Bay off the queue, for trying it on a dev server alone: `?bay` on the address. Never on the built site. */
+const DEV_BAY = import.meta.env.DEV && typeof location !== 'undefined' && new URLSearchParams(location.search).has('bay');
 
 /** How long a match from the queue shows FOUND and the opponent's name before the roster. */
 const FOUND_MS = 2000;
@@ -107,6 +111,9 @@ export function Game() {
   // Player 2 on PAD takes a lone controller; online this page is one player, and a pad plays it.
   useEffect(() => setPadForPlayer2(!online && p2 === 'gamepad'), [online, p2]);
   const lobbyState = useLobby(lobby);
+  // BOOBY BAY (bay.ts): a match the bay made, or the dev server's ?bay. Its own beach is the only ground, and its dress is over every screen.
+  const inBay = online?.bay ?? DEV_BAY;
+  const stagesHere = () => (inBay ? [BAY_STAGE] : loaded!.stages);
   // A match the lobby made, while both pages find each other in its room; `found` when the queue made it.
   const [matching, setMatching] = useState<{ name: string; found?: boolean; error?: string }>();
   const matchLink = useRef<Link>(null);
@@ -324,7 +331,7 @@ export function Game() {
     return lobby.onMatch((match) => {
       // The queue found someone, NEXT OPPONENT did, or a challenge this page made was taken up: call the player back.
       // One who has just accepted is looking already.
-      if (match.queued || match.role === 'host') callToFight(match.queued ? `Found: ${match.with.name}. To the ring!` : `${match.with.name} accepted. To the ring!`);
+      if (match.queued || match.role === 'host') callToFight(match.queued ? `Found: ${match.with.name}. To ${match.bay ? 'Booby Bay' : 'the ring'}!` : `${match.with.name} accepted. To the ring!`);
       setShowOnline(false);
       setMatching({ name: match.with.name, found: match.queued });
       matchLink.current = null;
@@ -360,7 +367,7 @@ export function Game() {
             if (session.link.closed || !session.link.peer) {
               session.link.close();
               setMatching({ name: match.with.name, error: `${match.with.name} left the room.` });
-            } else startSession({ ...session, them: match.with.name });
+            } else startSession({ ...session, them: match.with.name, bay: match.bay });
           }, wait);
         },
         (cause: unknown) => {
@@ -498,7 +505,7 @@ export function Game() {
   });
   const newSeed = () => crypto.getRandomValues(new Uint32Array(1))[0]!;
   /** The stages both installs have, for the host's draw. */
-  const shared = () => sharedStages(loaded!.stages, online!.theirProduct);
+  const shared = () => sharedStages(stagesHere(), online!.theirProduct);
 
   /** Into the ring from the VS screen: offline at once; online the host sends its hello and goes, the guest goes on the hello's terms. */
   const startFight = (fighters: [BuiltFighter, BuiltFighter], ground: Ground, pick: OnlinePick | undefined) => {
@@ -652,7 +659,7 @@ export function Game() {
           client={client.current!}
           fighters={loaded.fighters}
           legends={loaded.legends}
-          stages={loaded.stages}
+          stages={[...loaded.stages, BAY_STAGE]}
           screens={loaded.screens}
           assets={{ client: client.current!, races: loaded.races, portraits: loaded.portraits }}
           onBack={stopWatching}
@@ -688,6 +695,7 @@ export function Game() {
             online={rosterOnline}
             paused={showOnline || left !== undefined || matching !== undefined || challenge !== undefined}
             onOnline={() => setShowOnline(true)}
+            bay={inBay}
           />
         );
       case 'versus':
@@ -695,7 +703,7 @@ export function Game() {
           <Versus
             client={client.current!}
             fighters={screen.fighters}
-            stages={loaded.stages}
+            stages={stagesHere()}
             screens={loaded.screens}
             onFight={(ground) => {
               // Once per VS screen, and only while it is still up: a ground still rising when the player
@@ -714,7 +722,7 @@ export function Game() {
           <NextStage
             client={client.current!}
             fighters={screen.fighters}
-            stages={loaded.stages}
+            stages={stagesHere()}
             screens={loaded.screens}
             ground={screen.sent ? screen.sent.stage : hello?.drawn ? hello.stage : undefined}
             onFight={(ground) => fightDrawn(screen, ground)}
@@ -755,6 +763,7 @@ export function Game() {
         />
       )}
       {!showOnline && lobbyState.notice && !challenge && !matching && <div class="lobby-toast">{lobbyState.notice}</div>}
+      {inBay && !watching && <BayDress quiet={screen.kind === 'fight'} />}
       {matching && <Matching name={matching.name} found={matching.found} error={matching.error} onCancel={endMatching} />}
       {challenge && <Challenge from={challenge.name} until={challenge.until} onAccept={() => lobby?.accept()} onDecline={() => lobby?.decline()} />}
       {left && (

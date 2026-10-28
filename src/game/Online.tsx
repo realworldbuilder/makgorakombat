@@ -21,6 +21,8 @@ import { useModalKeys } from './ui/modal';
  * Beside WHO'S HERE is TOP TEN, the relay's board, and each name here carries its record tonight.
  * A small switch asks the browser to notify the player when a fight comes while they look away.
  * TOURNAMENT (T) is for whoever runs the night: a bracket of the players here, see Tournament.tsx.
+ * Waiting in the queue, 80085 typed (or the clock tapped five times) moves the page to BOOBY BAY,
+ * the queue's secret corner, where only those who found it are paired (bay.ts). Nothing says so.
  * The same panel as the guide, and all of it from the keyboard.
  */
 
@@ -35,6 +37,8 @@ export interface Session {
   theirProduct: string;
   /** The other player's name, when the lobby matched the two. */
   them?: string;
+  /** Booby Bay matched the two (bay.ts): its roster for both. */
+  bay?: boolean;
 }
 
 /** Waits for the other page in the room and the handshake's first step: both say their version, and a different one is refused. */
@@ -160,6 +164,18 @@ function OnFor({ since }: { since: number }) {
 
 type View = 'name' | 'here' | 'board' | 'code' | 'cup';
 
+/** Typed while waiting in the queue, it takes the page to Booby Bay: the digits a calculator shows upside down. */
+export const BAY_CODE = '80085';
+/** Taps on the waiting clock that do the same, for a player with no keyboard. */
+const BAY_TAPS = 5;
+
+/** The code typed so far after one more key: the longest end of it that starts the code. */
+export function typedToward(typed: string, key: string, code = BAY_CODE): string {
+  const next = typed + key;
+  for (let start = 0; start < next.length; start++) if (code.startsWith(next.slice(start))) return next.slice(start);
+  return '';
+}
+
 export function Online({ lobby, name, onName, product, onReady, onClose, onWatch }: OnlineProps) {
   const [view, setView] = useState<View>(name ? 'here' : 'name');
   const state = useLobby(lobby);
@@ -170,6 +186,19 @@ export function Online({ lobby, name, onName, product, onReady, onClose, onWatch
   const [copied, setCopied] = useState<string>();
   const waited = useSince(state.queued ? state.queuedAt : undefined);
   const [notify, setNotifyState] = useState(notifyOn);
+  // Toward Booby Bay: the code typed so far, and the taps on the clock.
+  const typed = useRef('');
+  const taps = useRef<number[]>([]);
+  const toBay = () => {
+    typed.current = '';
+    taps.current = [];
+    if (state.queued && !state.bay) lobby?.quick(true, true);
+  };
+  const tapClock = () => {
+    const now = performance.now();
+    taps.current = [...taps.current.filter((at) => now - at < 2000), now];
+    if (taps.current.length >= BAY_TAPS) toBay();
+  };
   /** Shut, the panel takes this page out of the queue: nobody waits there unseen. */
   const close = () => {
     // Even while the wire is down and the page shows nothing queued: it would ask again as it came back.
@@ -227,6 +256,15 @@ export function Online({ lobby, name, onName, product, onReady, onClose, onWatch
     if (view !== 'here') return;
     const onKey = (event: KeyboardEvent) => {
       const key = event.code;
+      // The secret, while waiting: digits on either row of the keyboard.
+      const digit = /^(?:Digit|Numpad)(\d)$/.exec(key)?.[1];
+      if (digit !== undefined && state.queued && !state.bay) {
+        event.stopPropagation();
+        event.preventDefault();
+        typed.current = typedToward(typed.current, digit);
+        if (typed.current === BAY_CODE) toBay();
+        return;
+      }
       if (!['Escape', 'ArrowUp', 'ArrowDown', 'Enter', 'NumpadEnter', 'KeyQ', 'KeyN', 'KeyB', 'KeyT', 'KeyW'].includes(key)) return;
       event.stopPropagation();
       event.preventDefault();
@@ -314,9 +352,10 @@ export function Online({ lobby, name, onName, product, onReady, onClose, onWatch
               <button type="button" class="link" onClick={() => setView('name')}>change · N</button>
             </p>
             {state.queued ? (
-              <div class={`find on ${at < 0 ? 'chosen' : ''}`} role="status" onMouseEnter={() => setChosen(-1)}>
-                <span class="clock">{waited}</span>
-                <span class="words">waiting for an opponent</span>
+              <div class={`find on ${at < 0 ? 'chosen' : ''} ${state.bay ? 'bay' : ''}`} role="status" onMouseEnter={() => setChosen(-1)}>
+                {state.bay && <span class="big">BOOBY BAY</span>}
+                <span class="clock" onClick={tapClock}>{waited}</span>
+                <span class="words">{state.bay ? 'waiting for another who found the bay' : 'waiting for an opponent'}</span>
                 <button type="button" class="button" onClick={quick}>LEAVE THE QUEUE · ESC</button>
               </div>
             ) : (

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'preact/hooks';
 import { type Camera, CharacterRenderer, DEFAULT_CAMERA } from '@mogshot/render/renderer';
 import { releaseRenderer } from './arena';
+import type { Bounce } from './bay';
 import type { BuiltFighter } from './fighters';
 
 /*
@@ -36,6 +37,8 @@ export function Preview({ fighter, locked, side }: PreviewProps) {
   fighterRef.current = fighter;
   // The turn the player gave by dragging, on top of the screen's own, and its speed after letting go.
   const spin = useRef({ yaw: 0, speed: 0, dragging: false, x: 0, at: 0 });
+  // Booby Bay's springs for the champion shown, made afresh for each new one.
+  const bounce = useRef<{ fighter: BuiltFighter; springs: Bounce }>(null);
 
   useEffect(() => {
     const element = canvas.current!;
@@ -82,7 +85,13 @@ export function Preview({ fighter, locked, side }: PreviewProps) {
         sequence = intro.sequence;
         time = sinceLock;
       }
-      draw.setPose({ meshes: current.rig.pose(sequence, time), bounds: current.result.scene.bounds, pose: current.result.scene.pose });
+      const meshes = current.rig.pose(sequence, time);
+      // Booby Bay's springs (bay.ts): the body's bones are this pose's own, so they are moved in place.
+      if (current.bounce && meshes[0]) {
+        if (bounce.current?.fighter !== current) bounce.current = { fighter: current, springs: current.bounce() };
+        bounce.current.springs.apply(meshes[0].bones, now);
+      }
+      draw.setPose({ meshes, bounds: current.result.scene.bounds, pose: current.result.scene.pose });
       // Turned a little toward the middle of the screen, swaying as on character select.
       const sway = Math.sin(now / 2600) * 6 * DEGREE;
       const turned: Camera = { ...DEFAULT_CAMERA, yaw: (side === 'left' ? -28 : side === 'right' ? 28 : -8) * DEGREE + sway + turn.yaw, pitch: 4 * DEGREE, fov: 28 * DEGREE };

@@ -4,6 +4,7 @@ import { posableRig, type PosableRig } from '@mogshot/model/posable';
 import type { FighterResult, FightSoundSet, ItemSearchResult } from '@mogshot/worker/api';
 import type { DataClient } from '@mogshot/worker/client';
 import { ALL_MOVE_NAMES, type MoveTable, resolveMoves } from '../engine/moves';
+import { BAY_CLASS, BAY_SEX, Bounce, type BounceRig, enlarge } from './bay';
 import { type FighterFx, loadFighterFx } from './fx';
 import type { Tile, WeaponKit } from './roster';
 import { savedChampion } from './saved';
@@ -28,6 +29,8 @@ export interface Champion {
   gear: [Slot, number][];
   /** A legend: the creature display the worker builds as the game draws it; raceId and sex are then its. */
   npc?: number;
+  /** Booby Bay's: built with the chest made bigger (bay.ts). */
+  bay?: boolean;
 }
 
 export interface BuiltFighter {
@@ -39,7 +42,12 @@ export interface BuiltFighter {
   sounds: Promise<FightSoundSet | undefined>;
   /** The game's models of the fighter's spells, read the first time they are asked for; none when they could not be. */
   fx: () => Promise<FighterFx>;
+  /** Booby Bay's: a fresh set of springs for the breasts (bay.ts), one for each place the fighter is drawn. */
+  bounce?: () => Bounce;
 }
+
+/** The build key of Booby Bay's champion of a race. */
+export const bayKey = (raceId: number) => `bay:${raceId}:${BAY_SEX}:${BAY_CLASS}`;
 
 /** How many built fighters are kept. */
 export const KEEP = 8;
@@ -51,9 +59,23 @@ export class Fighters {
 
   constructor(readonly client: DataClient, private readonly classes: readonly ClassEntry[]) {}
 
-  /** The champion a tile stands for with the player's sex and class choices applied. */
-  async champion(tile: Tile, sex: number, classId: number | undefined): Promise<Champion | undefined> {
+  /** The champion a tile stands for with the player's sex and class choices applied; in Booby Bay, a race's warrior woman in no armour. */
+  async champion(tile: Tile, sex: number, classId: number | undefined, bay = false): Promise<Champion | undefined> {
     if (tile.kind === 'random' || tile.kind === 'create') return undefined;
+    if (bay && tile.kind === 'race') {
+      return {
+        key: bayKey(tile.race.id),
+        name: tile.race.name.toUpperCase(),
+        title: (this.classes.find((c) => c.id === BAY_CLASS)?.name ?? 'Warrior').toUpperCase(),
+        raceId: tile.race.id,
+        sex: BAY_SEX,
+        classId: BAY_CLASS,
+        choices: [],
+        // Nothing at all: no armour and no weapon, hand to hand.
+        gear: [],
+        bay: true,
+      };
+    }
     if (tile.kind === 'legend') {
       return {
         key: `legend:${tile.legend.slug}:${tile.displayId}`,
@@ -184,6 +206,14 @@ export class Fighters {
         }
         return first;
       }).then((result) => {
+        // The body is the scene's first mesh; its vertices are reshaped once, here, before anything draws them.
+        const body = result.scene.meshes[0];
+        let bounce: BounceRig | undefined;
+        if (champion.bay && body) {
+          const shaped = enlarge(body, result.rig.body.bones);
+          result.scene.meshes[0] = { ...body, vertices: shaped.vertices };
+          bounce = shaped.bounce;
+        }
         const rig = posableRig(result.rig);
         if (rig.meshCount !== result.scene.meshes.length) throw new Error(`The fighter's rig has ${rig.meshCount} meshes for ${result.scene.meshes.length} in the scene`);
         if (result.scene.problems.length > 0) console.warn(`${champion.name}: ${result.scene.problems.join('; ')}`);
@@ -197,7 +227,9 @@ export class Fighters {
           });
         let spells: Promise<FighterFx> | undefined;
         const fx = () => (spells ??= loadFighterFx(this.client, champion.classId, result.wielding));
-        return { champion, result, rig, moves: resolveMoves(result.scene.animations, result.wielding), sounds, fx };
+        const built: BuiltFighter = { champion, result, rig, moves: resolveMoves(result.scene.animations, result.wielding), sounds, fx };
+        if (bounce) built.bounce = () => new Bounce(bounce);
+        return built;
       });
       fighter.catch(() => this.built.delete(champion.key));
       this.built.set(champion.key, fighter);

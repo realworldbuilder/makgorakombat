@@ -173,6 +173,33 @@ describe('the lobby socket', () => {
     lobby.close();
   });
 
+  it('goes into Booby Bay when asked, and back into it for the next opponent after a match it made', () => {
+    const lobby = new Lobby('Chris', 'chris-0001', 'https://relay.test');
+    lobby.setMode('free');
+    FakeSocket.made[0]!.open();
+    lobby.quick(true);
+    lobby.quick(true, true);
+    expect(FakeSocket.made[0]!.sent).toEqual([JSON.stringify({ t: 'quick' }), JSON.stringify({ t: 'quick', bay: true })]);
+    FakeSocket.made[0]!.say({ t: 'queued', bay: true });
+    expect(lobby.state).toMatchObject({ queued: true, bay: true });
+    const bays: (boolean | undefined)[] = [];
+    lobby.onMatch((match) => bays.push(match.bay));
+    FakeSocket.made[0]!.say({ t: 'fight', code: 'BCDFGH', role: 'guest', with: { id: 'will-0001', name: 'Will' }, bay: true });
+    expect(bays).toEqual([true]);
+    expect(lobby.state.bay).toBe(undefined);
+    // NEXT OPPONENT from the bay's match: back into the bay, as the socket opened free asks.
+    lobby.setMode('busy');
+    lobby.queueAgain();
+    lobby.setMode('free');
+    expect(FakeSocket.made.at(-1)!.url).toContain('&requeue=1&bay=1');
+    // Out of the queue, the bay is forgotten.
+    FakeSocket.made.at(-1)!.open();
+    lobby.leaveQueue();
+    lobby.queueAgain();
+    expect(FakeSocket.made.at(-1)!.sent.at(-1)).toBe(JSON.stringify({ t: 'quick' }));
+    lobby.close();
+  });
+
   it('tries again when the wire drops, waiting longer each time', () => {
     const lobby = new Lobby('Chris', 'chris-0001', 'https://relay.test');
     lobby.setMode('free');

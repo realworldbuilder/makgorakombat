@@ -14,6 +14,8 @@ import { type Env, openRoom } from './index';
  * the fight itself then goes through the room as before, and the lobby only marks the two busy
  * until their sockets here come back. A page back from a match that asks for the next opponent
  * (requeue=1) goes straight into the queue; one left in it ten minutes with nobody coming is let go.
+ * The queue has a secret corner, Booby Bay (the game's bay.ts): a player who asks for it (bay) is
+ * paired only with another in it, and both are told the match is the bay's.
  *
  * Nothing is kept in memory: the players are the sockets and what is attached to them, and the
  * open challenges, the queue and the rooms' head counts are in storage, so the lobby can sleep
@@ -63,10 +65,11 @@ interface Challenge {
   to: string;
   at: number;
 }
-/** A place in the queue: who, and since when. */
+/** A place in the queue: who, since when, and whether in Booby Bay's corner of it. */
 interface Waiting {
   id: string;
   at: number;
+  bay?: boolean;
 }
 /** How many are in a room, as it last said, and when; and for a room the lobby made, who it was made for. */
 interface Heads {
@@ -118,7 +121,7 @@ type Incoming =
   | { t: 'cancel'; to: string }
   | { t: 'accept'; from: string }
   | { t: 'decline'; from: string }
-  | { t: 'quick' }
+  | { t: 'quick'; bay?: boolean }
   | { t: 'unquick' };
 
 function parse(message: string | ArrayBuffer): Incoming | undefined {
@@ -170,7 +173,7 @@ export class Lobby extends DurableObject<Env> {
     server.serializeAttachment(seat);
     this.log.visit(id, name, seat.at);
     // Back from a match for the next opponent: straight into the queue, as if they had asked.
-    if (url.searchParams.get('requeue') === '1' && !seat.busy) await this.quick(server, seat);
+    if (url.searchParams.get('requeue') === '1' && !seat.busy) await this.quick(server, seat, url.searchParams.get('bay') === '1');
     else await this.beat();
     return new Response(null, { status: 101, webSocket: client });
   }
@@ -189,7 +192,7 @@ export class Lobby extends DurableObject<Env> {
       case 'decline':
         return this.withdraw((c) => c.from === String(said.from) && c.to === me.id, 'declined');
       case 'quick':
-        return this.quick(ws, me);
+        return this.quick(ws, me, said.bay === true);
       case 'unquick':
         await this.setQueue((await this.queue()).filter((w) => w.id !== me.id));
         ws.send(JSON.stringify({ t: 'unqueued', queued: false }));
@@ -307,37 +310,38 @@ export class Lobby extends DurableObject<Env> {
   /**
    * Pairs the sender with the one who has waited longest, or puts them at the back of the queue.
    * Asking again while in it keeps their place. A player waiting there can still be challenged, and
-   * leaves the queue for the match if they accept.
+   * leaves the queue for the match if they accept. `bay`: Booby Bay's corner, where only those in
+   * it are paired with each other; moving into it or out of it is a new place at the back.
    */
-  private async quick(ws: WebSocket, me: Seat): Promise<void> {
+  private async quick(ws: WebSocket, me: Seat, bay = false): Promise<void> {
     if (me.busy) {
       ws.send(JSON.stringify({ t: 'error', message: 'You are in a match.' }));
       return this.beat();
     }
     await this.withdraw((c) => c.from === me.id, 'cancelled');
     const queue = (await this.queue()).filter((w) => this.seatById(w.id)?.busy === false);
-    const mine = queue.find((w) => w.id === me.id);
-    const waiting = queue.filter((w) => w.id !== me.id);
-    const first = waiting[0];
+    const kept = queue.find((w) => w.id === me.id);
+    const mine = kept && (kept.bay === true) === bay ? kept : undefined;
+    const first = queue.find((w) => w.id !== me.id && (w.bay === true) === bay);
     if (first === undefined) {
-      const place = mine ?? { id: me.id, at: Date.now() };
-      await this.setQueue([place]);
-      ws.send(JSON.stringify({ t: 'queued', queued: true, since: place.at }));
+      const place: Waiting = mine ?? (bay ? { id: me.id, at: Date.now(), bay } : { id: me.id, at: Date.now() });
+      await this.setQueue([...queue.filter((w) => w.id !== me.id), place]);
+      ws.send(JSON.stringify(bay ? { t: 'queued', queued: true, since: place.at, bay } : { t: 'queued', queued: true, since: place.at }));
       return this.beat();
     }
     // The one who waited longer hosts. They stay in the queue until the room is made, so a room
     // that cannot be made does not lose them their place.
     const now = Date.now();
     const seconds = (at: number) => Math.max(0, Math.round((now - at) / 1000));
-    await this.match(first.id, me.id, first.id, [seconds(first.at), mine ? seconds(mine.at) : 0]);
+    await this.match(first.id, me.id, first.id, [seconds(first.at), mine ? seconds(mine.at) : 0], bay);
   }
 
   /**
    * A room for two, both told, both busy, and anything else either had open called off. `waiting`
    * is the one the queue gave, who must still be in it; `waits` how long each waited in it, in
-   * seconds, for the night's report.
+   * seconds, for the night's report; `bay` that Booby Bay paired them, which both are told.
    */
-  private async match(host: string, guest: string, waiting?: string, waits?: [number | null, number | null]): Promise<void> {
+  private async match(host: string, guest: string, waiting?: string, waits?: [number | null, number | null], bay = false): Promise<void> {
     const pair = [host, guest];
     // The room is made with both names, as they are now; the seats are read again once it is back.
     const before = pair.map((id) => this.seatById(id));
@@ -374,8 +378,9 @@ export class Lobby extends DurableObject<Env> {
     }
     await this.withdraw((c) => pair.includes(c.from) || pair.includes(c.to), 'busy');
     await this.setQueue((await this.queue()).filter((w) => !pair.includes(w.id)));
-    this.tell(host, { t: 'fight', code, role: 'host', with: { id: guestSeat.id, name: guestSeat.name } });
-    this.tell(guest, { t: 'fight', code, role: 'guest', with: { id: hostSeat.id, name: hostSeat.name } });
+    const corner = bay ? { bay } : {};
+    this.tell(host, { t: 'fight', code, role: 'host', with: { id: guestSeat.id, name: guestSeat.name }, ...corner });
+    this.tell(guest, { t: 'fight', code, role: 'guest', with: { id: hostSeat.id, name: hostSeat.name }, ...corner });
     await this.beat();
   }
 
