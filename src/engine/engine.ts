@@ -1,6 +1,6 @@
 import { ABILITY_MELEE_RANGE, ABILITY_SLOTS, DOT_TICK_FRAMES, EXECUTE_BELOW, MAX_RESOURCE, RESOURCE_NAMES, type ResolvedAbility, type SlotIndex } from './abilities';
 import { BRAND } from './brand';
-import { type Beat, directionOf, impactFrame, PENALTY_FRAMES, type SequenceToken, STEP_FRAMES } from './fatalities';
+import { type Beat, clipTime, directionOf, impactFrame, PENALTY_FRAMES, type SequenceToken, STEP_FRAMES } from './fatalities';
 import { MELEE_RANGE, type Move, type MoveRef, type MoveTable, type Strike, variationOf } from './moves';
 import { type Rules, RULES, type RulesName } from './rules';
 import {
@@ -1551,6 +1551,11 @@ function readSequence(match: Match, i: 0 | 1, inputs: Inputs): Inputs {
   return out;
 }
 
+/** How far into a pulling beat the loser is dragged in. */
+const PULL_AT = 0.35;
+/** A fatality's spark sits on the loser's chest: this much of their height up. */
+const CHEST = 0.62;
+
 function fatalityBeat(match: Match): Beat {
   const winner = match.roundWinner ?? 0;
   return match.tables[winner].fatality.spec.beats[match.fatality!.beat]!;
@@ -1624,17 +1629,21 @@ function fatalityStep(match: Match): void {
   const beat = fatalityBeat(match);
   const toward: 1 | -1 = l.x >= w.x ? 1 : -1;
 
-  // The animations run at the beat's time scale; a looping one wraps.
-  w.t += TICK_MS * match.slowmo;
-  const duration = durationOf(match, winner);
-  if (beat.loop && w.t >= duration && duration > 0) w.t %= duration;
-  if (l.state !== 'dazed' || beat.loser) l.t += TICK_MS * match.slowmo;
+  // The winner's clip is fitted to the beat, its blow on the beat's impact tick (fatalities.ts);
+  // the loser's runs at the beat's time scale, round again if it loops, else held at its end.
+  w.t = clipTime(beat, run.t + 1, durationOf(match, winner), match.tables[winner].fatality.blow[run.beat] ?? 0.5, match.slowmo);
+  l.t += TICK_MS * match.slowmo;
+  const losing = durationOf(match, other(winner));
+  if (moveOf(match, other(winner), l.move).loop && losing > 0 && l.t >= losing) l.t %= losing;
 
   const s = run.t / beat.frames;
   switch (beat.motion) {
-    case 'dash':
-      if (Math.abs(l.x - w.x) > contactOf(match) + 0.1) w.x += toward * 0.3;
+    case 'dash': {
+      // The run covers the ground over the whole beat, arriving as it ends, so the feet are never running on the spot.
+      const target = l.x - toward * contactOf(match);
+      if (Math.abs(l.x - run.fromX) > contactOf(match)) w.x = run.fromX + (target - run.fromX) * Math.min(1, (run.t + 1) / beat.frames);
       break;
+    }
     case 'leap': {
       const target = l.x - toward * contactOf(match);
       w.x = run.fromX + (target - run.fromX) * s;
@@ -1648,24 +1657,23 @@ function fatalityStep(match: Match): void {
       break;
     }
     case 'pull':
-      if (Math.abs(l.x - w.x) > contactOf(match)) l.x -= toward * 0.22;
+      // The grip takes hold a third of the way into the cast, then yanks.
+      if (s >= PULL_AT && Math.abs(l.x - w.x) > contactOf(match)) l.x -= toward * 0.3;
       break;
     default:
       break;
   }
   if (beat.motion !== 'leap' && beat.motion !== 'retreat') w.z = 0;
 
-  // The blow lands, and lands again for a volley or a channel.
+  // The blow lands, and lands again for a volley or a channel: each one jolts a flinching loser afresh.
   if (beat.impact) {
     const at = impactFrame(beat);
     const again = beat.repeat !== undefined && run.t > at && (run.t - at) % beat.repeat === 0;
     if (run.t === at || again) {
-      spark(match, l.x, 1.3 + l.z, beat.impact);
+      spark(match, l.x, CHEST * match.tables[other(winner)].stature + l.z, beat.impact);
       run.hits++;
-      if (run.t === at) {
-        victim(match, run.beat, beat);
-        if (beat.recoil) l.vx = toward * beat.recoil;
-      }
+      if (run.t === at || beat.loser?.state === 'hit') victim(match, run.beat, beat);
+      if (run.t === at && beat.recoil) l.vx = toward * beat.recoil;
     }
   }
 

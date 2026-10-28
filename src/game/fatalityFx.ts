@@ -202,7 +202,8 @@ function warrior(m: Moment): void {
     if (m.t === 0) dust(m, from(m), 8);
     pool.stream(DUST, per(m, 1.2), from(m), WG, [0.2, 1], [0, 0], 0.3, [0, 0], 0.006);
   } else if (m.k === 1) {
-    spin(m, BLADE, STEEL, 20);
+    // One turn of the blade per blow, as the spin is played.
+    spin(m, BLADE, STEEL, m.beat.repeat ?? 20);
     if (m.blow) {
       pool.ring(STEEL, 36, WG, 0, rig.winnerChest * 0.7, 1.0, [0.12, 0.22], 0.4);
       dustRing(m, WG, 14, 0.06);

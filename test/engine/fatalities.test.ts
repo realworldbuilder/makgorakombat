@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { BRAND } from '../../src/engine/brand';
 import { cpuInputs } from '../../src/engine/cpu';
 import { type Inputs, type Match, moveOf, poseOf, tick } from '../../src/engine/engine';
-import { ALL_FATALITIES, directionOf, fatalityFor, fatalityFrames, PENALTY_FRAMES, type SequenceToken, STEP_FRAMES } from '../../src/engine/fatalities';
+import { ALL_FATALITIES, type Beat, clipTime, directionOf, fatalityFor, fatalityFrames, impactFrame, PENALTY_FRAMES, type SequenceToken, STEP_FRAMES } from '../../src/engine/fatalities';
 import { ALL_MOVE_NAMES } from '../../src/engine/moves';
-import { FINISH_FRAMES, KO_SLOWMO } from '../../src/engine/stage';
-import { fakeMatch, fakeTable, FULL_SET, inputs, MAGE, place, rig, run, SHAMAN, skipIntro, until, WARRIOR } from './fake';
+import { FINISH_FRAMES, KO_SLOWMO, TICK_MS } from '../../src/engine/stage';
+import { fakeMatch, fakeTable, FULL_SET, inputs, MAGE, place, rig, run, SHAMAN, skipIntro, until, WARLOCK, WARRIOR } from './fake';
 
 /** A match in the finish with `winner` standing over the dazed other, `gap` apart. */
 function finish(winner: 0 | 1 = 0, classes: [number, number] = [WARRIOR, WARRIOR], seed = 1, gap = 1.5): Match {
@@ -215,6 +215,93 @@ describe('the sequence', () => {
   });
 });
 
+describe('the beats’ clips', () => {
+  const blow: Beat = { frames: 100, winner: [], impact: 'crit', impactAt: 0.21, slowmo: 0.4 };
+  const hit = impactFrame(blow);
+
+  it('reaches its blow on the impact tick and its end with the beat, whatever its length', () => {
+    expect(hit).toBe(21);
+    for (const duration of [500, 866, 2000]) {
+      expect(clipTime(blow, hit, duration, 0.4, 0.4)).toBeCloseTo(0.4 * duration, 6);
+      expect(clipTime(blow, blow.frames, duration, 0.4, 0.4)).toBeCloseTo(duration, 6);
+      let last = 0;
+      for (let t = 1; t <= blow.frames; t++) {
+        const time = clipTime(blow, t, duration, 0.4, 0.4);
+        expect(time).toBeGreaterThanOrEqual(last);
+        last = time;
+      }
+    }
+    // The execute's blade comes down at 40%: the wind-up runs at its own pace and the follow-through at the beat's slow motion.
+    expect(clipTime(blow, hit, 866, 0.4, 0.4) - clipTime(blow, hit - 1, 866, 0.4, 0.4)).toBeCloseTo(TICK_MS, 0);
+    expect(clipTime(blow, hit + 1, 866, 0.4, 0.4) - clipTime(blow, hit, 866, 0.4, 0.4)).toBeCloseTo((0.6 * 866) / (blow.frames - hit), 6);
+  });
+
+  it('a wind-up shorter than the lead starts late at half pace rather than crawling', () => {
+    expect(clipTime(blow, 16, 400, 0.1, 0.4)).toBe(0);
+    expect(clipTime(blow, 17, 400, 0.1, 0.4)).toBeGreaterThan(0);
+    expect(clipTime(blow, hit, 400, 0.1, 0.4) - clipTime(blow, hit - 1, 400, 0.1, 0.4)).toBeCloseTo(TICK_MS / 2, 6);
+    expect(clipTime(blow, hit, 400, 0.1, 0.4)).toBeCloseTo(40, 6);
+  });
+
+  it('a clip with no blow fills the beat within reason; a looping one goes round at its own pace, or once per repeat when the beat cycles', () => {
+    const plain: Beat = { frames: 50, winner: [] };
+    expect(clipTime(plain, 25, 1000, 0.5, 1)).toBeCloseTo(500, 6);
+    expect(clipTime(plain, 50, 1000, 0.5, 1)).toBeCloseTo(1000, 6);
+    expect(clipTime(plain, 50, 5000, 0.5, 1)).toBeCloseTo(2.5 * TICK_MS * 50, 6);
+    const loop: Beat = { frames: 80, winner: [], loop: true, impact: 'hit', repeat: 16, slowmo: 0.7 };
+    expect(clipTime(loop, 10, 1000, 0.5, 0.7)).toBeCloseTo(10 * TICK_MS * 0.7, 6);
+    expect(clipTime({ ...loop, cycle: true }, 8, 1000, 0.5, 0.7)).toBeCloseTo(500, 6);
+    expect(clipTime({ ...loop, cycle: true }, 16, 1000, 0.5, 0.7)).toBeCloseTo(0, 6);
+  });
+
+  it('in the fight the dazed loser sways on through a beat that leaves them be, and a cower goes round', () => {
+    const match = finish();
+    enter(match, 0, WARRIOR_SEQUENCE.slice(0, -1));
+    press(match, 0, WARRIOR_SEQUENCE.at(-1)!, 0);
+    // The charge: nothing is done to the loser yet, who once froze mid-sway here.
+    run(match, 3);
+    const a = poseOf(match, 1).time;
+    run(match, 3);
+    expect(poseOf(match, 1).time).toBeGreaterThan(a);
+
+    const lock = finish(0, [WARLOCK, WARRIOR]);
+    const spec = lock.tables[0].fatality.spec;
+    enter(lock, 0, spec.sequence.slice(0, -1));
+    press(lock, 0, spec.sequence.at(-1)!, 0);
+    expect(spec.beats[0]!.loser?.loop).toBe(true);
+    run(lock, spec.beats[0]!.frames + spec.beats[1]!.frames);
+    // Longer than the cower's clip by now, so it has come round rather than held its last frame.
+    const time = poseOf(lock, 1).time;
+    expect(time).toBeGreaterThan(0);
+    expect(time).toBeLessThan(1000);
+  });
+
+  it('each blow of a volley jolts the flinch afresh; a cowering loser is left to cower', () => {
+    const match = finish();
+    enter(match, 0, WARRIOR_SEQUENCE.slice(0, -1));
+    press(match, 0, WARRIOR_SEQUENCE.at(-1)!, 0);
+    const beats = match.tables[0].fatality.spec.beats;
+    const spin = beats[1]!;
+    run(match, beats[0]!.frames + impactFrame(spin) + spin.repeat!);
+    expect(match.fatality!.hits).toBe(1);
+    expect(match.fighters[1].t).toBeGreaterThan(0);
+    run(match, 1);
+    expect(match.fatality!.hits).toBe(2);
+    expect(match.fighters[1].state).toBe('hit');
+    expect(match.fighters[1].t).toBe(0);
+
+    const lock = finish(0, [WARLOCK, WARRIOR]);
+    const spec = lock.tables[0].fatality.spec;
+    enter(lock, 0, spec.sequence.slice(0, -1));
+    press(lock, 0, spec.sequence.at(-1)!, 0);
+    const drain = spec.beats[1]!;
+    run(lock, spec.beats[0]!.frames + impactFrame(drain) + drain.repeat! + 1);
+    expect(lock.fatality!.hits).toBe(2);
+    expect(lock.fighters[1].state).toBe('dazed');
+    expect(lock.fighters[1].t).toBeGreaterThan(0);
+  });
+});
+
 describe('the fatality', () => {
   it('plays its beats off the tick clock and ends in death under DISHONOR! with its name', () => {
     const match = finish();
@@ -261,7 +348,10 @@ describe('the fatality', () => {
     enter(match, 0, WARRIOR_SEQUENCE.slice(0, -1));
     press(match, 0, WARRIOR_SEQUENCE.at(-1)!, 0);
     expect(Math.abs(match.fighters[1].x - match.fighters[0].x)).toBeGreaterThan(4);
-    run(match, 40);
+    // Half way through the charge, half way there: the run covers the ground over the whole beat.
+    run(match, 20);
+    expect(Math.abs(match.fighters[1].x - match.fighters[0].x)).toBeCloseTo((4.2 + 1.25) / 2, 1);
+    run(match, 20);
     expect(Math.abs(match.fighters[1].x - match.fighters[0].x)).toBeLessThan(1.4);
     expect(match.fighters[1].state).toBe('dazed');
     run(match, 20);
