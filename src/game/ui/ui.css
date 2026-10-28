@@ -501,6 +501,139 @@
   color: var(--bone);
 }
 
+/* SEND FEEDBACK under the rematch hint: a quiet line, and the small box it opens growing up from it. */
+.wowui .feedback-end {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 6.3em;
+  display: flex;
+  justify-content: center;
+}
+
+.wowui .feedback-line {
+  pointer-events: auto;
+  font: inherit;
+  font-size: 0.7em;
+  letter-spacing: 0.08em;
+  color: rgba(244, 241, 230, 0.6);
+  background: none;
+  border: 0;
+  padding: 0.2em 0.6em;
+  cursor: pointer;
+  text-shadow: 0 1px 2px #000, 0 0 0.4em #000;
+}
+
+.wowui .feedback-line:hover {
+  color: var(--bone);
+}
+
+.wowui .feedback-line b {
+  color: var(--gold-dim);
+}
+
+.wowui .feedback-line.said {
+  cursor: default;
+  color: var(--gold-dim);
+}
+
+.wowui .feedback-box {
+  position: absolute;
+  bottom: 0;
+  width: 26em;
+  max-width: calc(100vw - 32px);
+  box-sizing: border-box;
+  pointer-events: auto;
+  user-select: text;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4em;
+  padding: 0.6em;
+  font-size: 0.8em;
+  background: linear-gradient(180deg, rgba(42, 37, 34, 0.96), rgba(21, 17, 15, 0.96));
+  border: 2px solid #0a0706;
+  border-radius: 0.35em;
+  box-shadow:
+    inset 0 0 0 1px var(--stone-light),
+    inset 0 0 0 2px #0a0706,
+    inset 0 0 0 3px #5a4a24,
+    0 0.3em 0.9em rgba(0, 0, 0, 0.8);
+}
+
+.wowui .feedback-head,
+.wowui .feedback-foot {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+}
+
+.wowui .feedback-head {
+  justify-content: space-between;
+  color: var(--gold);
+  letter-spacing: 0.08em;
+}
+
+.wowui .feedback-box .stars button {
+  font: inherit;
+  font-size: 1.1em;
+  background: none;
+  border: 0;
+  padding: 0 0.1em;
+  cursor: pointer;
+  color: var(--stone-light);
+}
+
+.wowui .feedback-box .stars button.on,
+.wowui .feedback-box .stars button:hover {
+  color: var(--gold);
+}
+
+.wowui .feedback-box textarea {
+  font-family: system-ui, sans-serif;
+  font-size: 0.95em;
+  resize: none;
+  color: var(--bone);
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid var(--stone-light);
+  border-radius: 0.2em;
+  padding: 0.4em;
+}
+
+.wowui .feedback-box textarea:focus {
+  outline: 1px solid var(--gold-dim);
+}
+
+.wowui .feedback-foot .count {
+  flex: 1;
+  font-size: 0.75em;
+  color: rgba(244, 241, 230, 0.55);
+}
+
+.wowui .feedback-foot .count b {
+  color: var(--bone);
+}
+
+.wowui .feedback-button {
+  font: inherit;
+  font-size: 0.8em;
+  letter-spacing: 0.06em;
+  color: var(--bone);
+  background: linear-gradient(180deg, #4a423b, #221c19);
+  border: 1px solid #0a0706;
+  border-radius: 0.2em;
+  padding: 0.3em 0.8em;
+  cursor: pointer;
+}
+
+.wowui .feedback-button.send {
+  color: var(--gold);
+}
+
+.wowui .feedback-button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 .fightbar {
   display: flex;
   gap: 0.3em;

@@ -111,6 +111,10 @@ The fight's sound is read from the game folder like everything else: weapon swin
 ![Setting up a tournament](docs/tournament-setup.png)
 ![The bracket, with UP NEXT](docs/tournament-bracket.png)
 
+### Feedback
+
+At the end of every match, under the rematch hint, **SEND FEEDBACK · F** opens a small box for a few lines and, if you like, a rating out of five. It is optional and stays out of the way: Enter still means rematch and Escape the roster while it is closed; while it is open it has the keyboard, Escape closes it and Enter sends it. What you write goes to the relay with the fight it followed (the two champions, the ground, who won, how it was played, the build) and the name you gave the lobby, if any; nothing else about you. How it is kept and read back: [relay/README.md](relay/README.md#feedback).
+
 ## Running it yourself
 
 ```

@@ -2,6 +2,7 @@ import { DurableObject } from 'cloudflare:workers';
 import type { Fighter, Span } from './board';
 import { CHAT_GAP_MS, type ChatLine, ChatLog, chatOf } from './chat';
 import { isCode, newCode } from './code';
+import { asText, authorized, FEEDBACK, type FeedbackStore, MAX_BODY, readFeedback } from './feedback';
 import type { Ending, Fight, NetStats, ReportSpan } from './fights';
 import { cleanName, isPlayerId, LOBBY, type Lobby } from './lobby';
 import { Picks } from './picks';
@@ -10,6 +11,7 @@ import { HELD_MAX, RECONNECT_MS, SILENT_MS } from './seats';
 import { readHit, SITE, type Site, type SiteSpan } from './site';
 import { channelName, closeVoice, openVoice, type Voice, type VoiceEnv, sweepVoice, voiceOn } from './voice';
 
+export { FeedbackStore } from './feedback';
 export { Lobby } from './lobby';
 export { Site } from './site';
 
@@ -61,6 +63,9 @@ export interface Env extends VoiceEnv {
   ROOMS: DurableObjectNamespace<Room>;
   LOBBY: DurableObjectNamespace<Lobby>;
   SITE: DurableObjectNamespace<Site>;
+  FEEDBACK: DurableObjectNamespace<FeedbackStore>;
+  /** The bearer token that reads the players' feedback back (GET /feedback). A secret: `wrangler secret put FEEDBACK_TOKEN`. Without it nobody can. */
+  FEEDBACK_TOKEN?: string;
   /** More pages allowed to use the relay, comma separated (`https://makgora.gg,https://www.makgora.gg`): a domain of the game's own. Set at deploy, `--var ORIGINS:...`. */
   ORIGINS?: string;
 }
@@ -824,7 +829,27 @@ export default {
       return Response.json(report, { headers: { ...cors, 'Cache-Control': 'no-store' } });
     }
 
-    if (url.pathname === '/') return new Response('makgora-relay: GET /lobby/ws?name=&id=[&busy=1|&requeue=1], GET /lobby/stats, GET /lobby/board?span=night|all[&id=], GET /lobby/report?span=night|day|week|all; GET /voice, POST /rooms/:code/voice?role=&id=; POST /site/hit, GET /site/report?span=day|week|month|all; or POST /rooms, then GET /rooms/:code/ws?role=host|guest|watch[&id=]', { headers: cors });
+    // What players say at the end of a fight (feedback.ts): a message sent as plain text, and the list of them for whoever holds the token.
+    if (url.pathname === '/feedback' && request.method === 'POST') {
+      const length = Number(request.headers.get('Content-Length') ?? 0);
+      if (length > MAX_BODY) return new Response('Too long.', { status: 413, headers: cors });
+      const read = readFeedback(await request.text());
+      if ('refused' in read) return new Response(read.refused, { status: read.status, headers: cors });
+      const kept = await env.FEEDBACK.getByName(FEEDBACK).add(read, request.headers.get('CF-Connecting-IP') ?? 'unknown');
+      if (!kept.ok) return new Response(kept.refused, { status: kept.status, headers: cors });
+      return new Response(null, { status: 204, headers: cors });
+    }
+    if (url.pathname === '/feedback' && request.method === 'GET') {
+      if (!env.FEEDBACK_TOKEN) return new Response('Reading feedback is not set up: wrangler secret put FEEDBACK_TOKEN.', { status: 404 });
+      if (!(await authorized(request.headers.get('Authorization'), env.FEEDBACK_TOKEN))) return new Response('Not without the token.', { status: 401, headers: { 'WWW-Authenticate': 'Bearer' } });
+      const limit = Math.min(1000, Math.max(1, Number(url.searchParams.get('limit')) || 100));
+      const before = Number(url.searchParams.get('before')) || undefined;
+      const messages = await env.FEEDBACK.getByName(FEEDBACK).list(limit, before);
+      if (url.searchParams.get('format') === 'text') return new Response(asText(messages), { headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' } });
+      return Response.json({ feedback: messages }, { headers: { 'Cache-Control': 'no-store' } });
+    }
+
+    if (url.pathname === '/') return new Response('makgora-relay: GET /lobby/ws?name=&id=[&busy=1|&requeue=1], GET /lobby/stats, GET /lobby/board?span=night|all[&id=], GET /lobby/report?span=night|day|week|all; GET /voice, POST /rooms/:code/voice?role=&id=; POST /site/hit, GET /site/report?span=day|week|month|all; POST /feedback, GET /feedback?limit=&before=&format=text with the token; or POST /rooms, then GET /rooms/:code/ws?role=host|guest|watch[&id=]', { headers: cors });
     return new Response('Not found', { status: 404, headers: cors });
   },
 

@@ -7,10 +7,12 @@ import type { MoveTable, Weapon } from '../../engine/moves';
 import { actionLabel, type InputAction } from '../../engine/input';
 import { ROUNDS_TO_WIN } from '../../engine/stage';
 import { type FighterView, fighterView } from '../../engine/view';
+import type { FeedbackFight } from '../feedback';
 import type { BuiltFighter } from '../fighters';
 import { headshotOf } from '../headshot';
 import { usePadUse, usingPad } from '../pads';
 import type { Source } from '../Select';
+import { FeedbackBox } from './FeedbackBox';
 import { FightBar } from './FightBar';
 import { SequenceStrip, type SequenceView } from './SequenceStrip';
 import { iconsFor, type UiAssets } from './icons';
@@ -32,6 +34,8 @@ export interface FightUiProps {
   me?: 0 | 1;
   /** Online with the lobby open: the match's end offers N, the next opponent from the queue. */
   next?: boolean;
+  /** The match's end offers SEND FEEDBACK (F), for the fight played this way; none for a watcher. */
+  feedback?: Pick<FeedbackFight, 'mode' | 'stage' | 'game'>;
 }
 
 interface Frame {
@@ -97,7 +101,7 @@ function sequenceOf(match: Match, p2: Source, me: 0 | 1 | undefined): SequenceVi
 
 const liveMatch = (): Match | undefined => (window as unknown as { mk?: { match?: () => Match } }).mk?.match?.();
 
-export function FightUi({ fighters, p2, assets, me, next }: FightUiProps) {
+export function FightUi({ fighters, p2, assets, me, next, feedback }: FightUiProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const icons = useMemo(() => iconsFor(assets), [assets.client]);
   const [frame, setFrame] = useState<Frame>();
@@ -214,6 +218,19 @@ export function FightUi({ fighters, p2, assets, me, next }: FightUiProps) {
         <div class="hint end">
           {me === 1 ? <>the host calls the rematch</> : <><b>{onPad ? 'START' : 'ENTER'}</b> rematch</>}
           {next && <> · <b>N</b> next opponent</>} · <b>{onPad ? 'BACK' : 'ESC'}</b> new champions
+        </div>
+      )}
+      {feedback && (
+        <div class="feedback-end">
+          <FeedbackBox
+            ended={frame.phase === 'matchEnd'}
+            fight={{
+              ...feedback,
+              fighters: [fighters[0].champion.name, fighters[1].champion.name],
+              winner: frame.views[0].wins > frame.views[1].wins ? 0 : frame.views[1].wins > frame.views[0].wins ? 1 : undefined,
+              me,
+            }}
+          />
         </div>
       )}
       <div class="bottom">
