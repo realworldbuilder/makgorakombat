@@ -82,6 +82,16 @@ and tells each of them its code and whether they host. Nobody reads a code out.
   `drops`; `never` the rooms with none. The queue waits are in seconds; `busiest` is the hour in
   New York with the most matches started and `hours` those started by hour of the day there.
   `fights`, every record oldest first, comes with `night` and `day` only.
+- Each page also tells its room how the match is going on the wire, every ten seconds and at the
+  end: `{"t":"net","game","delay","rtt","rttSlow","fps","fpsSlow","ticks","held","heldMs","eased","wall"}`
+  (round trips to the other page in ms, the middle and the one slower than nine in ten; frames a
+  second, the middle and the slow tenth; ticks played; frames and ms the fight stood waiting for
+  the other's inputs; ms its clock gave back easing off; ms since the match began). The room keeps
+  the latest from each side, passes it to nobody, and puts it in the match's record as
+  `net:{host,guest}`, with the hello's `delay` and `colos:{host,guest}`, the Cloudflare edge each
+  player came in by (an airport code). The report's `wire:{told,rtt,laggy}` counts the matches with
+  a word on the wire, their middle round trip, and those where a side stood waiting a tenth of the
+  match or more.
 
 ## Voice on Discord
 
