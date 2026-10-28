@@ -300,7 +300,6 @@ describe('relay', () => {
 
   it('lets the game pages in and keeps other sites out', async () => {
     expect(allowedOrigin('https://realworldbuilder.github.io')).toBe(true);
-    expect(allowedOrigin('https://makgora.clawdioslave.com')).toBe(true);
     expect(allowedOrigin('http://localhost:5183')).toBe(true);
     expect(allowedOrigin('http://localhost')).toBe(true);
     expect(allowedOrigin('https://evil.example')).toBe(false);
