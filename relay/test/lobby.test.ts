@@ -63,7 +63,7 @@ describe('lobby', () => {
     expect((await stub.fetch('https://relay.test/lobby/ws?name=X&id=chris-0001', ws)).status).toBe(400);
     expect((await stub.fetch('https://relay.test/lobby/ws?name=Chris&id=no', ws)).status).toBe(400);
     expect((await SELF.fetch('https://relay.test/lobby/ws?name=Chris&id=chris-0001', { headers: { Upgrade: 'websocket', Origin: 'https://evil.example' } })).status).toBe(403);
-    const response = await SELF.fetch('https://relay.test/lobby/ws?name=Chris&id=route-0001', { headers: { Upgrade: 'websocket', Origin: 'https://makgora.clawdioslave.com' } });
+    const response = await SELF.fetch('https://relay.test/lobby/ws?name=Chris&id=route-0001', { headers: { Upgrade: 'websocket', Origin: 'https://realworldbuilder.github.io' } });
     expect(response.status).toBe(101);
     const chris = new Client(response.webSocket!);
     await hereWith(chris, ['route-0001']);
@@ -322,9 +322,9 @@ describe('lobby', () => {
     third.ws.close(1000, 'bye');
 
     // The Worker answers the main lobby's numbers to any page that may use the relay.
-    const stats = await SELF.fetch('https://relay.test/lobby/stats', { headers: { Origin: 'https://makgora.clawdioslave.com' } });
+    const stats = await SELF.fetch('https://relay.test/lobby/stats', { headers: { Origin: 'https://realworldbuilder.github.io' } });
     expect(stats.status).toBe(200);
-    expect(stats.headers.get('Access-Control-Allow-Origin')).toBe('https://makgora.clawdioslave.com');
+    expect(stats.headers.get('Access-Control-Allow-Origin')).toBe('https://realworldbuilder.github.io');
     expect(Object.keys((await stats.json()) as Counts).sort()).toEqual(['fighting', 'fights', 'online', 'waiting']);
   });
 
