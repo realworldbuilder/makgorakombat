@@ -14,10 +14,9 @@ import { RELAY_URL, relayUrl, setRelayUrl } from './net/relay';
 const RULES_STORAGE = 'makgora.rules';
 /**
  * One rule set for everyone while the room is small: with a handful of players online, two
- * rule sets would halve the chance of a fair match. KOMBAT, so the attack, the guard and the
- * dash are always there while the abilities cool down. Set to undefined to give the choice back.
+ * rule sets would halve the chance of a fair match. Set to undefined to give the choice back.
  */
-const ONE_RULESET: RulesName | undefined = 'kombat';
+const ONE_RULESET: RulesName | undefined = 'warcraft';
 /** KOMBAT until the player chooses otherwise, where there is a choice. */
 let rules: RulesName = 'kombat';
 try {

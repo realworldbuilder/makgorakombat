@@ -226,7 +226,7 @@ export function FightUi({ fighters, p2, assets, me, next }: FightUiProps) {
                   'YOUR OPPONENT'
                 ) : human[i] ? (
                   <>
-                    {RULES[frame.rules].word} rules · <b>{keyOf(i, 'left')}</b> <b>{keyOf(i, 'right')}</b> move{frame.rules === 'kombat' ? ', back blocks, twice dashes' : ''} · <b>{keyOf(i, 'jump')}</b> jump · <b>{keyOf(i, 'attack')}</b> attack · hover or hold a key for what it does
+                    {RULES[frame.rules].word} rules · <b>{keyOf(i, 'left')}</b> <b>{keyOf(i, 'right')}</b> move{RULES[frame.rules].block ? ', back blocks, twice dashes' : ''} · <b>{keyOf(i, 'jump')}</b> jump · <b>{keyOf(i, 'attack')}</b> attack · hover or hold a key for what it does
                   </>
                 ) : (
                   'COMPUTER'
