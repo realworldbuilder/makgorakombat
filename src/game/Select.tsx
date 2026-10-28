@@ -7,7 +7,8 @@ import { GLYPHS } from './ActionBar';
 import { type Edition, editionOf } from './edition';
 import type { EditionArt } from './editionArt';
 import { type KeyLayout, keyLayout, LAYOUT_WORDS, MENU_KEYS, ROSTER_KEYS, setKeyLayout } from '../engine/input';
-import { type BuiltFighter, type Champion, type Fighters } from './fighters';
+import { BAY_RACES, BAY_SEX } from './bay';
+import { bayKey, type BuiltFighter, type Champion, type Fighters } from './fighters';
 import { headshotOf, storedHeadshot } from './headshot';
 import { usePadMode, usePadUse } from './pads';
 import { Preview } from './Preview';
@@ -78,6 +79,8 @@ interface SelectProps {
   paused?: boolean;
   /** O: PLAY ONLINE, from the roster. */
   onOnline?: () => void;
+  /** BOOBY BAY (bay.ts): the queue's secret corner, where the roster is its two warrior women alone. */
+  bay?: boolean;
 }
 
 interface Cursor {
@@ -127,20 +130,24 @@ const freshPlayer = (sex: number): Player => ({
 /** The legends' portraits are rendered once through the Mogshot command line and shipped with the game, as the browser has no portrait atlas for NPCs. */
 const legendPortrait = (slug: string) => `${import.meta.env.BASE_URL}legends/${slug}.png`;
 
-export function Select({ edition, art, others, onEdition, races, classes, records, legends, portraits, fighters, saved, onSaved, startOnCreate, p2, onP2, onReady, onBack, online, paused, onOnline }: SelectProps) {
+export function Select({ edition, art, others, onEdition, races, classes, records, legends, portraits, fighters, saved, onSaved, startOnCreate, p2, onP2, onReady, onBack, online, paused, onOnline, bay = false }: SelectProps) {
   const roster = useMemo(() => rosterTiles(races), [races]);
   usePadMode('roster');
   const padUse = usePadUse();
   const [layout, setLayout] = useState<KeyLayout>(keyLayout());
   const champions = useMemo(() => championTiles(records, races), [records, races]);
   // The legends' row: the legends, the built-in champions, the question mark, and the champions made here, newest first.
-  const legendRow = useMemo(() => championRow(legends, saved, races), [legends, saved, races]);
+  // In Booby Bay the row is its two races alone, and nothing else is on the screen.
+  const legendRow = useMemo(
+    () => (bay ? BAY_RACES.flatMap((id): Tile[] => races.filter((race) => race.id === id).map((race) => ({ kind: 'race', id: `race:${race.id}`, race }))) : championRow(legends, saved, races)),
+    [bay, legends, saved, races],
+  );
   const createAt = legendRow.indexOf(CREATE_TILE);
   // The rows from the top, leaving out the empty ones; the cursor moves up and down through them.
   // For now the ring is for the legends only (William, 24 Oct 2026); the races and your own
   // characters come back with `?all` on the address. An install with no legend the game
   // can draw still gets the full roster rather than an empty screen.
-  const legendsOnly = LEGENDS_ONLY && legends.length > 0;
+  const legendsOnly = bay || (LEGENDS_ONLY && legends.length > 0);
   /** A player's roster keys, or a controller's buttons once they play with one; the legends alone have no sex or class to change. */
   const hint = (who: 0 | 1) => {
     const [move, more] = padUse[who] ? PAD_HINT : ROSTER_HINTS[layout][who];
@@ -155,7 +162,7 @@ export function Select({ edition, art, others, onEdition, races, classes, record
     return rows;
   }, [legendRow, champions, roster, legendsOnly]);
   /** Where the computer and a random pick choose from: the legends alone, or the races. */
-  const pool: { zone: Cursor['zone']; tiles: Tile[] } = legendsOnly ? { zone: 'legends', tiles: legends } : { zone: 'roster', tiles: roster };
+  const pool: { zone: Cursor['zone']; tiles: Tile[] } = bay ? { zone: 'legends', tiles: legendRow } : legendsOnly ? { zone: 'legends', tiles: legends } : { zone: 'roster', tiles: roster };
   // The ring opens on Tyrande against Thrall when the folder has them; otherwise on the roster.
   // CREATE YOUR CHAMPION, open over the roster for the player who chose the question mark.
   const [making, setMaking] = useState<{ who: 0 | 1; editing?: SavedChampion }>();
@@ -165,6 +172,8 @@ export function Select({ edition, art, others, onEdition, races, classes, record
       const player = freshPlayer(sex);
       return index >= 0 ? { ...player, cursor: { zone: 'legends', index } } : player;
     };
+    // Booby Bay: player 1 on the human, player 2 on the night elf.
+    if (bay) return [{ ...freshPlayer(BAY_SEX), cursor: { zone: 'legends', index: 0 } }, { ...freshPlayer(BAY_SEX), cursor: { zone: 'legends', index: Math.min(1, legendRow.length - 1) } }];
     const first = opening('tyrande', 1);
     return [startOnCreate ? { ...first, cursor: { zone: 'legends', index: createAt } } : first, opening('thrall', 0)];
   });
@@ -226,7 +235,7 @@ export function Select({ edition, art, others, onEdition, races, classes, record
     const sex = tile.kind === 'record' ? tile.record.sex : tile.kind === 'saved' ? tile.saved.sex : tile.kind === 'legend' ? tile.sex : sexFor(tile.race, player.sex);
     const classId = tile.kind !== 'race' ? undefined : (classesOf(tile.race, classes).some((c) => c.id === player.classId) ? player.classId : cycleClass(tile.race, classes, undefined, 1));
     void fighters
-      .champion(tile, sex, classId)
+      .champion(tile, sex, classId, bay)
       .then(async (champion) => {
         if (!champion) return;
         if (requests.current[who] !== id) return;
@@ -294,6 +303,7 @@ export function Select({ edition, art, others, onEdition, races, classes, record
   const keyOf = (tile: Tile | undefined, player: Player) => {
     if (!tile || tile.kind === 'random' || tile.kind === 'create') return undefined;
     if (tile.kind === 'record' || tile.kind === 'legend' || tile.kind === 'saved') return faceKey(tile);
+    if (bay) return bayKey(tile.race.id);
     const classId = classesOf(tile.race, classes).some((c) => c.id === player.classId) ? player.classId : cycleClass(tile.race, classes, undefined, 1);
     return `race:${tile.race.id}:${sexFor(tile.race, player.sex)}:${classId ?? 0}`;
   };
@@ -423,6 +433,8 @@ export function Select({ edition, art, others, onEdition, races, classes, record
           update(who, (player) => {
             if (player.locked) return player;
             const tile = tileAt(player.cursor);
+            // Booby Bay's champions are who they are: no other sex, no other class.
+            if (bay && (action === 'sex' || action === 'classPrev' || action === 'classNext')) return player;
             switch (action) {
               case 'up': return move(player, 0, -1);
               case 'down': return move(player, 0, 1);
@@ -615,11 +627,12 @@ export function Select({ edition, art, others, onEdition, races, classes, record
             {/* Each player's sex shows on their own cursor; otherwise the race's first. */}
             {(tile.kind === 'record' || tile.kind === 'saved') && headshots.has(faceKey(tile)) ? (
               <img class="face" src={headshots.get(faceKey(tile))} alt={nameOf(tile)} draggable={false} />
-            ) : portraitOf(tile, here[0] ? players[0].sex : here[1] ? players[1].sex : tile.race.sexes[0] ?? 0) ? (
-              <img src={portraitOf(tile, here[0] ? players[0].sex : here[1] ? players[1].sex : tile.race.sexes[0] ?? 0)} alt={tile.race.name} draggable={false} />
+            ) : portraitOf(tile, bay ? BAY_SEX : here[0] ? players[0].sex : here[1] ? players[1].sex : tile.race.sexes[0] ?? 0) ? (
+              <img src={portraitOf(tile, bay ? BAY_SEX : here[0] ? players[0].sex : here[1] ? players[1].sex : tile.race.sexes[0] ?? 0)} alt={tile.race.name} draggable={false} />
             ) : (
               <span class="noface">{tile.race.name}</span>
             )}
+            {bay && tile.kind === 'race' && <span class="name">{tile.race.name}</span>}
             {(tile.kind === 'record' || tile.kind === 'saved') && (
               <span class="name">
                 {classKey && portraits.classes.get(classKey) && <img class="class" src={portraits.classes.get(classKey)} alt="" />}
@@ -678,7 +691,8 @@ export function Select({ edition, art, others, onEdition, races, classes, record
         right: (
           <>
             {classIcon && <img class="class" src={classIcon} alt="" />}
-            {kitSpec(classId, player.built?.result.wielding ?? 'oneHand').className === 'CHAMPION' ? 'Champion' : (classEntry?.name ?? '')}
+            {/* Booby Bay's are warriors with bare hands, not the kit's nameless champion. */}
+            {!bay && kitSpec(classId, player.built?.result.wielding ?? 'oneHand').className === 'CHAMPION' ? 'Champion' : (classEntry?.name ?? '')}
           </>
         ),
       });
@@ -697,6 +711,7 @@ export function Select({ edition, art, others, onEdition, races, classes, record
       const faction = factionOf(tile);
       if (faction === 'alliance' || faction === 'horde') lines.push({ left: faction === 'alliance' ? 'Alliance' : 'Horde', hue: faction });
       if (tile.kind === 'legend') lines.push({ kind: 'gap' }, { left: `"${tile.legend.title}"`, hue: 'gold' });
+      if (bay) lines.push({ kind: 'gap' }, { left: '"No armour, no weapons: hand to hand in Booby Bay, with what nature gave, and then some."', hue: 'gold' });
     } else if (tile?.kind === 'random') {
       lines.push({ left: 'A champion is picked for you.', hue: 'gold' });
     } else if (!tile && champion) {
@@ -748,7 +763,7 @@ export function Select({ edition, art, others, onEdition, races, classes, record
   };
 
   return (
-    <div class={`screen select edition-${edition.key}`}>
+    <div class={`screen select edition-${edition.key} ${bay ? 'bay' : ''}`}>
       {art.backdrop && <div class="edition-backdrop" style={{ backgroundImage: `url(${art.backdrop})` }} aria-hidden="true" />}
       <div class="sides">
         <div class="side left">
@@ -770,11 +785,11 @@ export function Select({ edition, art, others, onEdition, races, classes, record
           {!online && <Presence online="O" />}
         </header>
         <div class={`grid ${legendsOnly ? 'legends-only' : ''}`}>
-          <div class="label">{legends.length > 0 ? 'LEGENDS' : 'YOUR CHAMPIONS'}</div>
+          <div class="label">{bay ? 'BOOBY BAY' : legends.length > 0 ? 'LEGENDS' : 'YOUR CHAMPIONS'}</div>
           <div
             class="tiles legends"
             // Legends only: two rows, widening as the champions made here join them, then a third.
-            style={legendsOnly ? { gridTemplateColumns: `repeat(${Math.min(7, Math.max(4, Math.ceil(legendRow.length / 2)))}, minmax(0, 1fr))` } : undefined}
+            style={legendsOnly ? { gridTemplateColumns: `repeat(${bay ? Math.min(5, legendRow.length) : Math.min(7, Math.max(4, Math.ceil(legendRow.length / 2)))}, minmax(0, 1fr))` } : undefined}
           >
             {legendRow.map((tile, i) => tileView(tile, 'legends', i))}
           </div>

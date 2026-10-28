@@ -2941,3 +2941,130 @@ code {
     width: min(620px, 72vw, 52vh);
   }
 }
+
+/* BOOBY BAY (bay.ts): the queue's secret corner, warm sand and sea over the usual gold. */
+.guide.online .find.bay {
+  border-color: #ff8fb8;
+  background: linear-gradient(180deg, rgba(255, 143, 184, 0.14), rgba(64, 196, 220, 0.12));
+  color: #ffc2d8;
+}
+
+.screen.select.bay .grid .label {
+  color: #ff8fb8;
+}
+
+/* The roster in the bay: a sunset over the sea in place of the edition's loading screen, a low sun on the water. */
+.screen.select.bay .edition-backdrop {
+  opacity: 1;
+  background-image:
+    radial-gradient(circle at 50% 58%, #fff3b0 0, #ffd36e 5%, rgba(255, 140, 120, 0.7) 12%, transparent 30%),
+    linear-gradient(180deg, #2a1240 0%, #8c2f6b 26%, #ff7a7a 46%, #ffb36b 57%, #1f8fa8 58.5%, #0f5f7a 72%, #e8c48a 86%, #c99a5c 100%) !important;
+}
+
+.screen.select.bay .edition-backdrop::after {
+  background:
+    repeating-linear-gradient(180deg, transparent 0 9px, rgba(255, 220, 160, 0.12) 9px 11px) 0 58% / 100% 14% no-repeat,
+    radial-gradient(ellipse 60% 70% at 50% 45%, transparent 0%, rgba(20, 0, 30, 0.35) 75%, rgba(20, 0, 30, 0.7) 100%);
+}
+
+.screen.select.bay .tiles .tile {
+  border-color: #ff8fb8;
+}
+
+.screen.select.bay h1 {
+  color: #ffb3d1;
+  text-shadow: 0 3px 0 #b8336e, 0 6px 16px rgba(60, 0, 40, 0.8);
+}
+
+/* BayDress.tsx: over the whole screen, taking nothing from the player. */
+.bay-dress {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.bay-glow {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 120% 60% at 50% 115%, rgba(255, 110, 170, 0.28), transparent 60%),
+    radial-gradient(ellipse 90% 50% at 50% -15%, rgba(255, 170, 90, 0.18), transparent 60%);
+  mix-blend-mode: screen;
+}
+
+.bay-dress.quiet .bay-glow {
+  opacity: 0.6;
+}
+
+.bay-float {
+  position: absolute;
+  bottom: -60px;
+  line-height: 1;
+  animation-name: bay-rise;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  will-change: transform, opacity;
+}
+
+.bay-float.heart {
+  color: #ff6fa8;
+  text-shadow: 0 0 10px rgba(255, 80, 150, 0.8);
+}
+
+.bay-float.bubble {
+  color: rgba(190, 245, 255, 0.85);
+  text-shadow: 0 0 6px rgba(120, 220, 255, 0.7);
+}
+
+.bay-dress.quiet .bay-float {
+  opacity: 0.5;
+}
+
+@keyframes bay-rise {
+  0% {
+    transform: translate(0, 0) scale(0.6);
+    opacity: 0;
+  }
+  10% {
+    opacity: 0.9;
+  }
+  50% {
+    transform: translate(var(--drift), -55vh) scale(1);
+  }
+  85% {
+    opacity: 0.7;
+  }
+  100% {
+    transform: translate(calc(var(--drift) * -0.5), -112vh) scale(1.15);
+    opacity: 0;
+  }
+}
+
+.bay-mark {
+  position: absolute;
+  right: 18px;
+  bottom: 14px;
+  font-family: var(--warcraft);
+  font-size: 1.6rem;
+  letter-spacing: 0.08em;
+  background: linear-gradient(180deg, #fff0f6, #ff8fb8 50%, #3fd0e8);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.8));
+}
+
+.bay-mark .heart {
+  color: #ff6fa8;
+  -webkit-text-fill-color: #ff6fa8;
+}
+
+.bay-dress.quiet .bay-mark {
+  top: 12px;
+  bottom: auto;
+  right: 50%;
+  transform: translate(50%, 150px);
+  font-size: 1.2rem;
+}

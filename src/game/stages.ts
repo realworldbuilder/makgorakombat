@@ -62,6 +62,13 @@ export const STAGES: Stage[] = [
   { slug: 'frozen-throne', name: 'The Frozen Throne', where: 'Icecrown Citadel', map: 631, x: 503, y: -2124, z: 841, facing: 270, reach: REACH, why: 'The top of the citadel, the ice stair up to the Lich King\'s throne behind: the last fight of Wrath.' },
 ];
 
+/**
+ * BOOBY BAY's own ground (bay.ts): a beach on the Stranglethorn coast with the sea behind. Not one of
+ * STAGES, so no other fight draws it; a match the bay made fights here and nowhere else. Both
+ * continents of 2004 are on every install, so both players can always draw it.
+ */
+export const BAY_STAGE: Stage = { slug: 'booby-bay', name: 'Booby Bay', where: 'Stranglethorn Vale', map: 0, x: -14710, y: 300, facing: 90, reach: REACH, why: 'The Wild Shore below Booty Bay: open sand at the water\'s edge, palms and tall ships out across the sea.' };
+
 /** The stages an install can draw: those whose map it has on disk, and whose ground its game (see edition.ts) still has. */
 export function stagesFor(maps: readonly number[], world: 'classic' | 'retail'): Stage[] {
   return STAGES.filter((stage) => maps.includes(stage.map) && (!stage.only || stage.only === world));

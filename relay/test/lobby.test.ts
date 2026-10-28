@@ -239,6 +239,54 @@ describe('lobby', () => {
     for (const c of [back, late, will, third, fourth]) c.ws.close(1000, 'bye');
   });
 
+  it('pairs Booby Bay only with Booby Bay, and tells both the match is the bay\'s', async () => {
+    const { enter } = lobby();
+    const chris = await enter('Chris', ids.chris);
+    const will = await enter('Will', ids.will);
+    const third = await enter('Thrall', ids.third);
+    const fourth = await enter('Jaina', ids.fourth);
+    await hereWith(fourth, [ids.chris, ids.will, ids.third, ids.fourth]);
+
+    // Thrall waits in the plain queue, Chris in the bay: neither is paired with the other.
+    send(third, { t: 'quick' });
+    await third.next('queued');
+    send(chris, { t: 'quick', bay: true });
+    expect(await chris.next('queued')).toMatchObject({ queued: true, bay: true });
+    expect(third.kinds()).not.toContain('fight');
+
+    // Will finds the bay too, and is paired with Chris there, not with Thrall who waited longer.
+    send(will, { t: 'quick', bay: true });
+    expect(await chris.next<Fight>('fight')).toMatchObject({ role: 'host', with: { id: ids.will }, bay: true });
+    expect(await will.next<Fight>('fight')).toMatchObject({ role: 'guest', with: { id: ids.chris }, bay: true });
+
+    // Jaina, in the plain queue, takes Thrall, and their match is not the bay's.
+    send(fourth, { t: 'quick' });
+    const plain = await third.next<Fight & { bay?: boolean }>('fight');
+    expect(plain).toMatchObject({ role: 'host', with: { id: ids.fourth } });
+    expect(plain.bay).toBeUndefined();
+
+    // Back from the bay's match for the next opponent, straight into the bay again.
+    const back = await enter('Chris', ids.chris, '&busy=0&requeue=1&bay=1');
+    expect(await back.next('queued')).toMatchObject({ bay: true });
+    for (const c of [back, will, third, fourth]) c.ws.close(1000, 'bye');
+  });
+
+  it('moves a player waiting in the plain queue to the bay when they ask for it', async () => {
+    const { enter } = lobby();
+    const chris = await enter('Chris', ids.chris);
+    const will = await enter('Will', ids.will);
+    await hereWith(will, [ids.chris, ids.will]);
+    send(chris, { t: 'quick' });
+    const plain = await chris.next('queued');
+    send(chris, { t: 'quick', bay: true });
+    expect(await chris.next('queued', plain.k + 1)).toMatchObject({ bay: true });
+    // Will in the plain queue now waits alone.
+    send(will, { t: 'quick' });
+    expect(await will.next('queued')).toMatchObject({ queued: true });
+    expect(will.kinds()).not.toContain('fight');
+    for (const c of [chris, will]) c.ws.close(1000, 'bye');
+  });
+
   it('counts who is online, waiting and fighting, with every list and at /lobby/stats', async () => {
     const { stub, enter } = lobby();
     const chris = await enter('Chris', ids.chris);
