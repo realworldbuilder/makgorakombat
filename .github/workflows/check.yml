@@ -1,0 +1,24 @@
+name: Check
+
+on:
+  # ready_for_review and unlabeled too, so a draft marked ready or a PR taken off hold runs again and Ship sees it.
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, unlabeled]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+      - run: pnpm build

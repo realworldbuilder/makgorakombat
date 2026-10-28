@@ -1,0 +1,50 @@
+name: Ship
+
+# A pull request from one of the two of us goes live as soon as its Check passes: merged into
+# main, then the site deployed. A draft, or one labelled "hold", waits. The merge is made with
+# the workflow's own token, which does not start other workflows, so Deploy is started by hand,
+# and Relay too when the pull request touched relay/.
+
+on:
+  workflow_run:
+    workflows: [Check]
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+concurrency:
+  group: ship
+  cancel-in-progress: false
+
+jobs:
+  ship:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      SHA: ${{ github.event.workflow_run.head_sha }}
+      SHIPPERS: realworldbuilder clawdioslave
+    steps:
+      - name: Merge the pull request and deploy
+        run: |
+          pr=$(gh pr list --state open --search "$SHA" --json number,author,isDraft,headRefOid,labels \
+            | jq -c --arg sha "$SHA" '[.[] | select(.headRefOid == $sha)][0] // empty')
+          if [ -z "$pr" ]; then echo "No open pull request at $SHA (pushed again since?)"; exit 0; fi
+          n=$(jq -r .number <<<"$pr"); author=$(jq -r .author.login <<<"$pr")
+          if ! grep -qw "$author" <<<"$SHIPPERS"; then echo "#$n is from $author, not one of us: left for review"; exit 0; fi
+          if [ "$(jq -r .isDraft <<<"$pr")" = true ]; then echo "#$n is a draft: waits"; exit 0; fi
+          if jq -e '.labels[] | select(.name == "hold")' <<<"$pr" >/dev/null; then echo "#$n is on hold"; exit 0; fi
+          if ! gh pr merge "$n" --merge --match-head-commit "$SHA"; then
+            gh pr comment "$n" --body "Ship could not merge this: it probably conflicts with main now. Bring main into the branch (\`git fetch origin && git merge origin/main\`), fix the conflicts, test, and push; it ships once Check passes again."
+            exit 1
+          fi
+          gh workflow run deploy.yml --ref main
+          echo "#$n merged by Ship; the site is deploying"
+          if gh pr view "$n" --json files -q '.files[].path' | grep -q '^relay/'; then
+            gh workflow run relay.yml --ref main
+            echo "#$n changed the relay; it is deploying too"
+          fi

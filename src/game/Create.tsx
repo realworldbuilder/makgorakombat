@@ -5,18 +5,26 @@ import { BRAND } from '../engine/brand';
 import { keyLayout, MENU_KEYS, ROSTER_KEYS } from '../engine/input';
 import type { BuiltFighter, Champion, Fighters } from './fighters';
 import { headshotOf } from './headshot';
+import { usePadMode } from './pads';
+import { averageLevel, CLASS_COLOURS, DOLL_SLOTS, equip, type ItemInfo, SLOT_NAMES } from './slots';
+import { ItemPicker, PaperDoll } from './PaperDoll';
 import { Preview } from './Preview';
 import { classesOf, rosterTiles, sexFor } from './roster';
-import { cleanName, defaultName, madeKey, NAME_LENGTH, newSavedId, type SavedChampion } from './saved';
+import { cleanName, defaultName, fullName, isBuiltin, madeKey, NAME_LENGTH, newSavedId, type SavedChampion } from './saved';
+import { iconsFor } from './ui/icons';
+import { BAG_CLOSE, BAG_OPEN, pickUpFile, playFile, putDownFile, SHEET_CLOSE, SHEET_OPEN } from './uiSound';
 import { type Line, type Quality, WowTooltip } from './ui/WowTooltip';
 
 /*
  * CREATE YOUR CHAMPION, over the roster: the champion drawn full size on one side and a short
  * column of drop-downs on the other, as the game's own character creation screen has them:
  * race, sex, class, every appearance option the model offers for that race and sex, the armour
- * (the class's sets by name, or a random outfit), and a name. Each change rebuilds the champion
+ * (the class's sets by name, or a random outfit), and a name. Round the champion are the slots of
+ * the game's character sheet (PaperDoll.tsx): a click on one, or J on the Gear row, chooses
+ * what goes there from every item the folder has for it. Each change rebuilds the champion
  * after a moment; the builds go through the fighter cache under a key of the look, so the tile
- * on the roster afterwards is the same build.
+ * on the roster afterwards is the same build. Opened on a champion built into the game, it shows
+ * that champion and says so, with nothing to change and only CANCEL to press.
  */
 
 interface CreateProps {
@@ -34,8 +42,11 @@ interface CreateProps {
   onCancel: () => void;
 }
 
-/** Where the armour comes from: a set of the class (the best one until the sets are read), a random outfit, nothing, or what a saved champion wore. */
-type Armour = { kind: 'set'; id?: number } | { kind: 'random' } | { kind: 'none' } | { kind: 'kept'; label: string };
+/** Where the armour comes from: a set of the class (the best one until the sets are read), a random outfit, nothing, pieces chosen slot by slot, or what a saved champion wore. */
+type Armour = { kind: 'set'; id?: number } | { kind: 'random' } | { kind: 'none' } | { kind: 'own' } | { kind: 'kept'; label: string };
+
+/** The armour's name for gear chosen slot by slot, as it is saved. */
+const OWN = 'Hand-picked';
 
 interface Draft {
   /** Set when editing a saved champion. */
@@ -63,6 +74,7 @@ interface Choice {
 type Row =
   | { kind: 'select'; key: string; label: string; value: string; choices: Choice[]; change: (value: string) => void; icon?: string; swatch?: string }
   | { kind: 'wait'; key: string; label: string }
+  | { kind: 'gear'; key: 'gear' }
   | { kind: 'name'; key: 'name' }
   | { kind: 'actions'; key: 'actions' };
 
@@ -72,10 +84,6 @@ const BUILD_MS = 300;
 /** Epic and better, as Mogshot's own random outfit. */
 const RANDOM_QUALITY = 4;
 const QUALITIES: readonly Quality[] = ['poor', 'common', 'uncommon', 'rare', 'epic', 'legendary'];
-const SLOT_NAMES: Record<Slot, string> = {
-  head: 'Head', shoulder: 'Shoulder', back: 'Back', chest: 'Chest', shirt: 'Shirt', tabard: 'Tabard', wrist: 'Wrist',
-  hands: 'Hands', waist: 'Waist', legs: 'Legs', feet: 'Feet', mainHand: 'Main Hand', offHand: 'Off Hand',
-};
 const FACTION_WORDS = { alliance: 'Alliance', neutral: 'Neutral', unknown: 'Neutral', horde: 'Horde' } as const;
 
 const setGear = (set: ItemSetInfo): [Slot, ItemSummary][] => [...set.pieces, ...set.weapons];
@@ -106,16 +114,21 @@ function savedDraft(saved: SavedChampion): Draft {
     choices: saved.choices,
     gear: saved.gear,
     worn: [],
-    armour: saved.armour === 'Random' ? { kind: 'random' } : saved.armour === 'None' ? { kind: 'none' } : { kind: 'kept', label: saved.armour ?? 'Their own' },
+    armour:
+      saved.armour === 'Random' ? { kind: 'random' }
+      : saved.armour === 'None' ? { kind: 'none' }
+      : saved.armour === OWN ? { kind: 'own' }
+      : { kind: 'kept', label: saved.armour ?? 'Their own' },
     name: saved.name,
     named: true,
   };
 }
 
-/** The armour a class change leaves: a set follows the class (its best set); a random outfit or none stays. */
-const armourFor = (armour: Armour): Armour => (armour.kind === 'random' || armour.kind === 'none' ? armour : { kind: 'set' });
+/** The armour a class change leaves: a set follows the class (its best set); a random outfit, none, or pieces chosen by hand stay. */
+const armourFor = (armour: Armour): Armour => (armour.kind === 'random' || armour.kind === 'none' || armour.kind === 'own' ? armour : { kind: 'set' });
 
 export function Create({ races, classes, portraits, fighters, saved, editing, onSave, onDelete, onCancel }: CreateProps) {
+  usePadMode('roster');
   const order = useMemo(() => rosterTiles(races).flatMap((tile) => (tile.kind === 'race' ? [tile.race] : [])), [races]);
   const [draft, setDraft] = useState<Draft>(() => (editing ? savedDraft(editing) : freshDraft(order[0]!, classes)));
   const [sets, setSets] = useState<{ classId: number; list: ItemSetInfo[] }>();
@@ -123,10 +136,35 @@ export function Create({ races, classes, portraits, fighters, saved, editing, on
   const [building, setBuilding] = useState(false);
   const [error, setError] = useState<string>();
   const [row, setRow] = useState(0);
-  const [button, setButton] = useState<Button>('save');
+  // A champion that comes with the game is shown, not changed: no rows to step through, CANCEL alone.
+  const builtin = editing !== undefined && isBuiltin(editing.id);
+  const [button, setButton] = useState<Button>(builtin ? 'cancel' : 'save');
   const [deleting, setDeleting] = useState(false);
   const nameInput = useRef<HTMLInputElement>(null);
   const request = useRef(0);
+  // The slot whose picker is open, and the slot the Gear row's arrows are on.
+  const [picking, setPicking] = useState<Slot>();
+  const [dollAt, setDollAt] = useState(0);
+  const pickerKeys = useRef<((event: KeyboardEvent) => void) | undefined>(undefined);
+  const icons = useMemo(() => iconsFor({ client: fighters.client, races, portraits }), [fighters, races, portraits]);
+  const sound = (fileId: number | undefined) => playFile(fighters.client, fileId);
+
+  // The sheet opens and closes with the game's own sounds, and the picker with a bag's.
+  useEffect(() => {
+    sound(SHEET_OPEN);
+    return () => sound(SHEET_CLOSE);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const wasPicking = useRef(false);
+  useEffect(() => {
+    if (picking && !wasPicking.current) sound(BAG_OPEN);
+    wasPicking.current = picking !== undefined;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [picking]);
+  const closePicker = () => {
+    sound(BAG_CLOSE);
+    setPicking(undefined);
+  };
 
   const race = races.find((r) => r.id === draft.raceId) ?? order[0]!;
   const classEntry = classes.find((c) => c.id === draft.classId);
@@ -162,12 +200,31 @@ export function Create({ races, classes, portraits, fighters, saved, editing, on
     }
   }, [classSets, draft.armour]);
 
+  // Gear known only by id (a saved champion's) is read for the slots' icons and names.
+  const unread = draft.gear.filter(([slot, id]) => !draft.worn.some(([s, item]) => s === slot && item.id === id));
+  const unreadKey = unread.map(([slot, id]) => `${slot}=${id}`).join(',');
+  useEffect(() => {
+    if (unread.length === 0) return;
+    let stale = false;
+    void fighters.itemsOf(unread).then((found) => {
+      if (stale || found.length === 0) return;
+      setDraft((d) => ({
+        ...d,
+        worn: [...d.worn.filter(([slot]) => !found.some(([s]) => s === slot)), ...found.filter(([slot, item]) => d.gear.some(([s, id]) => s === slot && id === item.id))],
+      }));
+    });
+    return () => {
+      stale = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [unreadKey, fighters]);
+
   // The class has no sets read yet, or no class: the armour cannot wait for them.
   const gearReady = !(draft.armour.kind === 'set' && draft.armour.id === undefined) || draft.classId === undefined;
 
   const champion: Champion = {
     key: madeKey(draft.raceId, draft.sex, draft.classId, draft.choices, draft.gear),
-    name: (cleanName(draft.name) || defaultName(race)).toUpperCase(),
+    name: (builtin && editing ? fullName(editing) : cleanName(draft.name) || defaultName(race)).toUpperCase(),
     title: `${race.name.toUpperCase()} ${classEntry?.name.toUpperCase() ?? ''}`.trim(),
     raceId: draft.raceId,
     sex: draft.sex,
@@ -219,7 +276,7 @@ export function Create({ races, classes, portraits, fighters, saved, editing, on
         name: d.named ? d.name : defaultName(next),
       };
     });
-  const chooseSex = (sex: number) => setDraft((d) => (d.sex === sex || !race.sexes.includes(sex) ? d : { ...d, sex, choices: [] }));
+  const chooseSex = (sex: number) => setDraft((d) => (builtin || d.sex === sex || !race.sexes.includes(sex) ? d : { ...d, sex, choices: [] }));
   const chooseClass = (classId: number) => setDraft((d) => (d.classId === classId ? d : { ...d, classId, armour: armourFor(d.armour) }));
   const chooseOption = (option: number, choice: number) => setDraft((d) => ({ ...d, choices: [...d.choices.filter(([o]) => o !== option), [option, choice]] }));
   const roll = () => {
@@ -236,21 +293,30 @@ export function Create({ races, classes, portraits, fighters, saved, editing, on
       if (set) setDraft((d) => ({ ...d, armour: { kind: 'set', id: set.id }, gear: ids(setGear(set)), worn: setGear(set) }));
     }
   };
+  // One slot changed by hand: the outfit is the player's own from then on. It goes on with its own put-down sound, or comes off with its pick-up.
+  const wear = (slot: Slot, item: ItemSummary | undefined) => {
+    const off: ItemInfo | undefined = draft.worn.find(([s]) => s === slot)?.[1];
+    sound(item ? putDownFile((item as ItemInfo).soundGroup) : pickUpFile(off?.soundGroup));
+    setDraft((d) => ({ ...d, armour: { kind: 'own' }, ...equip(d.gear, d.worn, slot, item) }));
+  };
   const open = (value: string) => {
     const entry = saved.find((s) => s.id === value);
     setDraft(entry ? savedDraft(entry) : freshDraft(order[0]!, classes));
     setDeleting(false);
+    setPicking(undefined);
   };
 
   const armourLabel = (): string => {
     const { armour } = draft;
     if (armour.kind === 'random') return 'Random';
     if (armour.kind === 'none') return 'None';
+    if (armour.kind === 'own') return OWN;
     if (armour.kind === 'kept') return armour.label;
     return classSets?.find((s) => s.id === armour.id)?.name ?? 'None';
   };
 
   const save = () => {
+    if (builtin) return;
     const entry: SavedChampion = {
       id: draft.id ?? newSavedId(),
       name: cleanName(draft.name) || defaultName(race),
@@ -274,7 +340,7 @@ export function Create({ races, classes, portraits, fighters, saved, editing, on
     onDelete(draft.id);
   };
   const press = (which: Button) => (which === 'save' ? save() : which === 'cancel' ? onCancel() : remove());
-  const buttons: Button[] = draft.id ? ['save', 'cancel', 'delete'] : ['save', 'cancel'];
+  const buttons: Button[] = builtin ? ['cancel'] : draft.id ? ['save', 'cancel', 'delete'] : ['save', 'cancel'];
 
   // ---- the rows ----
 
@@ -353,6 +419,7 @@ export function Create({ races, classes, portraits, fighters, saved, editing, on
     value: draft.armour.kind === 'set' ? `set:${draft.armour.id ?? ''}` : draft.armour.kind,
     choices: [
       ...(draft.armour.kind === 'kept' ? [{ value: 'kept', label: draft.armour.label }] : []),
+      ...(draft.armour.kind === 'own' ? [{ value: 'own', label: OWN }] : []),
       ...(draft.armour.kind === 'set' && draft.armour.id === undefined ? [{ value: 'set:', label: '…' }] : []),
       ...(classSets ?? []).map((set) => ({ value: `set:${set.id}`, label: set.name })),
       { value: 'random', label: 'Random' },
@@ -360,7 +427,9 @@ export function Create({ races, classes, portraits, fighters, saved, editing, on
     ],
     change: chooseArmour,
   });
-  rows.push({ kind: 'name', key: 'name' }, { kind: 'actions', key: 'actions' });
+  rows.push({ kind: 'gear', key: 'gear' }, { kind: 'name', key: 'name' }, { kind: 'actions', key: 'actions' });
+  // A built-in champion: the preview shows the look, and CANCEL is the one thing to press.
+  if (builtin) rows.splice(0, rows.length, { kind: 'actions', key: 'actions' });
 
   const at = Math.min(row, rows.length - 1);
   const here = rows[at]!;
@@ -377,17 +446,22 @@ export function Create({ races, classes, portraits, fighters, saved, editing, on
       setButton(buttons[(i + by + buttons.length) % buttons.length] ?? 'save');
       return;
     }
+    if (target.kind === 'gear') {
+      setDollAt((i) => (i + by + DOLL_SLOTS.length) % DOLL_SLOTS.length);
+      return;
+    }
     if (target.kind !== 'select') return;
-    // A saved champion's own armour and the set still being read are shown, but stepped past.
-    const list = target.choices.filter((choice) => choice.value === target.value || (choice.value !== 'kept' && choice.value !== 'set:'));
+    // A saved champion's own armour, pieces chosen by hand and the set still being read are shown, but stepped past.
+    const list = target.choices.filter((choice) => choice.value === target.value || (choice.value !== 'kept' && choice.value !== 'own' && choice.value !== 'set:'));
     if (list.length < 2) return;
     const i = list.findIndex((choice) => choice.value === target.value);
     // Stepping onto the random entry rolls an outfit.
     target.change(list[(i + by + list.length) % list.length]!.value);
   };
 
-  const stateRef = useRef({ rows, at, button, step, press, save, roll, onCancel, chooseSex, draft });
-  stateRef.current = { rows, at, button, step, press, save, roll, onCancel, chooseSex, draft };
+  const pickHere = () => setPicking(DOLL_SLOTS[dollAt]);
+  const stateRef = useRef({ rows, at, button, step, press, save, roll, onCancel, chooseSex, draft, pickHere });
+  stateRef.current = { rows, at, button, step, press, save, roll, onCancel, chooseSex, draft, pickHere };
 
   // Keys, before the roster's: up and down choose a row, left and right change it, Enter saves, Esc cancels.
   useEffect(() => {
@@ -395,6 +469,11 @@ export function Create({ races, classes, portraits, fighters, saved, editing, on
       const s = stateRef.current;
       const typing = event.target instanceof HTMLInputElement;
       event.stopPropagation();
+      // The item picker, while it is open, has the keys: its search, its list, Enter and Esc.
+      if (pickerKeys.current) {
+        pickerKeys.current(event);
+        return;
+      }
       // A key held down from the roster (Enter chooses there on the game's keys) must not save or cancel the moment the creator opens.
       if (event.repeat && !['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.code)) {
         if (!typing) event.preventDefault();
@@ -409,6 +488,7 @@ export function Create({ races, classes, portraits, fighters, saved, editing, on
         event.preventDefault();
         const current = s.rows[s.at];
         if (current?.kind === 'actions') s.press(s.button);
+        else if (current?.kind === 'gear') s.pickHere();
         else s.save();
         return;
       }
@@ -425,6 +505,7 @@ export function Create({ races, classes, portraits, fighters, saved, editing, on
         case 'right': s.step(current, 1); break;
         case 'confirm':
           if (current.kind === 'actions') s.press(s.button);
+          else if (current.kind === 'gear') s.pickHere();
           else if (current.key === 'armour' && s.draft.armour.kind === 'random') s.roll();
           else setRow((s.at + 1) % s.rows.length);
           break;
@@ -478,6 +559,21 @@ export function Create({ races, classes, portraits, fighters, saved, editing, on
             }}
           />
         </label>
+      );
+    }
+    if (r.kind === 'gear') {
+      const slot = DOLL_SLOTS[dollAt]!;
+      const item = draft.worn.find(([s]) => s === slot)?.[1];
+      return (
+        <div class={cls} key={r.key} onMouseDown={focus}>
+          <span class="label">Gear</span>
+          <button type="button" class="arrow" aria-label="Previous slot" tabIndex={-1} onClick={() => step(r, -1)}>‹</button>
+          <button type="button" class="gear-pick" tabIndex={-1} onClick={() => setPicking(slot)}>
+            <span class="gear-slot">{SLOT_NAMES[slot]}</span>
+            <span class={`gear-item ${item ? `h-${QUALITIES[Math.min(item.quality, 5)] ?? 'common'}` : 'dim'}`}>{item?.name ?? (draft.gear.some(([s]) => s === slot) ? '…' : 'Empty')}</span>
+          </button>
+          <button type="button" class="arrow" aria-label="Next slot" tabIndex={-1} onClick={() => step(r, 1)}>›</button>
+        </div>
       );
     }
     if (r.kind === 'actions') {
@@ -541,29 +637,71 @@ export function Create({ races, classes, portraits, fighters, saved, editing, on
     );
   };
 
+  const wearer = { classId: draft.classId, classes };
+  const itemLevel = averageLevel(draft.worn);
   const missing = built ? built.result.scene.problems.filter((problem) => /is not installed|is not part of this build/.test(problem)) : [];
 
   return (
     <div class="creator-backdrop">
       <div class="creator">
         <div class="stage">
-          <Preview fighter={built} locked={false} side="middle" />
           <div class="plate-name">
             <div class="name">{champion.name}</div>
             <div class="title">
               {classEntry && portraits.classes.get(classEntry.key) && <img class="class" src={portraits.classes.get(classEntry.key)} alt="" />}
-              {champion.title}
+              <span>{race.name.toUpperCase()}</span>
+              {classEntry && <span style={{ color: CLASS_COLOURS[classEntry.id] }}>{classEntry.name.toUpperCase()}</span>}
             </div>
+            {itemLevel !== undefined && (
+              <div class="item-level">
+                Item Level <b>{itemLevel}</b>
+              </div>
+            )}
             {building && <div class="status">{BRAND.summoning}</div>}
             {error && <div class="status bad">{error}</div>}
             {!error && missing.length > 0 && <div class="status bad">{missing.length} piece(s) not in this install: {missing[0]}</div>}
           </div>
+          <PaperDoll
+            icons={icons}
+            worn={draft.worn}
+            gear={draft.gear}
+            wearer={wearer}
+            cursor={picking ?? (here.kind === 'gear' ? DOLL_SLOTS[dollAt] : undefined)}
+            picking={picking !== undefined}
+            readOnly={builtin}
+            onPick={(slot) => {
+              setPicking(slot);
+              setDollAt(DOLL_SLOTS.indexOf(slot));
+            }}
+          >
+            <Preview fighter={built} locked={false} side="middle" />
+          </PaperDoll>
         </div>
         <div class="column">
-          <h1>{draft.id ? 'EDIT YOUR CHAMPION' : 'CREATE YOUR CHAMPION'}</h1>
+          <h1>{builtin ? 'BUILT-IN CHAMPION' : draft.id ? 'EDIT YOUR CHAMPION' : 'CREATE YOUR CHAMPION'}</h1>
+          {builtin && editing && (
+            <p class="built-in">
+              {fullName(editing)} comes with the game, so there is nothing here to change or delete. Make a champion of your own with the question mark beside {editing.name}.
+            </p>
+          )}
           <div class="rows">{rows.map(rowView)}</div>
-          {here.key === 'armour' && <WowTooltip class="armour-tip" lines={armourTip()} />}
-          <p class="dim small hint">↑ ↓ or W S a row · ← → or A D change it · Enter save · Esc cancel</p>
+          {here.key === 'armour' && !picking && <WowTooltip class="armour-tip" lines={armourTip()} />}
+          {picking && (
+            <ItemPicker
+              slot={picking}
+              fighters={fighters}
+              icons={icons}
+              wearer={wearer}
+              current={draft.gear.find(([s]) => s === picking)?.[1]}
+              keys={pickerKeys}
+              onChoose={(item) => {
+                wear(picking, item);
+                setPicking(undefined);
+              }}
+              onClose={closePicker}
+            />
+          )}
+          <p class="dim small hint">{builtin ? 'Enter or Esc back to the roster' : '↑ ↓ or W S a row · ← → or A D change it · J on Gear picks an item · Enter save · Esc cancel'}</p>
         </div>
       </div>
     </div>

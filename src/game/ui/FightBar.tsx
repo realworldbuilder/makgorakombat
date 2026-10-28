@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { Ability } from '../../engine/abilities';
-import { type InputAction, KEYS, keyLabel } from '../../engine/input';
+import { actionLabel, type InputAction, KEYS } from '../../engine/input';
+import { usePadUse } from '../pads';
 import type { Weapon } from '../../engine/moves';
 import type { AbilityView, FighterView } from '../../engine/view';
 import { describeAbility, describeWeapon, type Tooltip } from './describe';
@@ -25,6 +26,8 @@ export interface FightBarProps {
   /** The abilities' numbers, by id, for the tooltips. */
   specs: ReadonlyMap<string, Ability>;
   weapon: Weapon;
+  /** Whose keys the bar labels and flashes for: its own player's by default; online, this keyboard's player 1 for the local fighter and none for the other. */
+  keys?: 0 | 1 | null;
 }
 
 /** How long the flash of a pressed key lasts. */
@@ -32,13 +35,18 @@ const FLASH_MS = 180;
 /** Holding a key this long opens its tooltip. */
 const HOLD_MS = 350;
 
-export function FightBar({ side, view, icons, specs, weapon }: FightBarProps) {
+export function FightBar({ side, view, icons, specs, weapon, keys = side }: FightBarProps) {
   // When each action's key went down (and whether it is still down), so a slot can flash even
   // when the press did nothing, and show its tooltip while the key is held.
   const pressed = useRef(new Map<InputAction, { at: number; down: boolean }>());
   const [hovered, setHovered] = useState<string>();
+  const pads = usePadUse();
+  /** The key for an action, or the controller's button once this player plays with one. */
+  const labelOf = (action: InputAction) => actionLabel(keys!, pads[keys!] ? 'gamepad' : 'keyboard', action);
   useEffect(() => {
-    const actionsOf = (code: string) => (Object.keys(KEYS[side]) as InputAction[]).filter((action) => KEYS[side][action].includes(code));
+    if (keys === null) return;
+    const map = KEYS[keys];
+    const actionsOf = (code: string) => (Object.keys(map) as InputAction[]).filter((action) => map[action].includes(code));
     const onDown = (event: KeyboardEvent) => {
       if (event.repeat) return;
       for (const action of actionsOf(event.code)) pressed.current.set(action, { at: performance.now(), down: true });
@@ -55,7 +63,7 @@ export function FightBar({ side, view, icons, specs, weapon }: FightBarProps) {
       window.removeEventListener('keydown', onDown);
       window.removeEventListener('keyup', onUp);
     };
-  }, [side]);
+  }, [keys]);
   const now = performance.now();
   const flashing = (action: InputAction) => now - (pressed.current.get(action)?.at ?? -Infinity) < FLASH_MS;
   const held = (action: InputAction) => {
@@ -75,14 +83,14 @@ export function FightBar({ side, view, icons, specs, weapon }: FightBarProps) {
       >
         <Icon url={icons.get('attack')} name={attackTip.name.toUpperCase()} />
         <span class="sweep" style={{ '--sweep': swingSweep }} />
-        <span class="key">{keyLabel(side, 'attack')}</span>
+        {keys !== null && <span class="key">{labelOf('attack')}</span>}
         <span class="rim" />
         {(hovered === 'attack' || held('attack')) && <TooltipBox tip={attackTip} why={swing.inReach ? undefined : 'OUT OF RANGE'} colour={view.resource.colour} />}
       </div>
       {view.abilities.map((ability) => (
         <AbilitySlot
           key={ability.id}
-          side={side}
+          label={keys === null ? undefined : labelOf(ability.action)}
           ability={ability}
           spec={specs.get(ability.id)}
           resource={view.resource}
@@ -97,7 +105,8 @@ export function FightBar({ side, view, icons, specs, weapon }: FightBarProps) {
 }
 
 interface SlotProps {
-  side: 0 | 1;
+  /** The key or button that casts it, when the bar is this machine's. */
+  label: string | undefined;
   ability: AbilityView;
   spec: Ability | undefined;
   resource: FighterView['resource'];
@@ -107,7 +116,7 @@ interface SlotProps {
   onHover: () => void;
 }
 
-function AbilitySlot({ side, ability, spec, resource, icon, flash, open, onHover }: SlotProps) {
+function AbilitySlot({ label, ability, spec, resource, icon, flash, open, onHover }: SlotProps) {
   const cooling = ability.cooldown.remaining > 0 && ability.cooldown.total > 0;
   const onGcd = !cooling && ability.gcd > 0;
   const sweep = cooling ? ability.cooldown.remaining / ability.cooldown.total : onGcd ? ability.gcd / ability.gcdTotal : 0;
@@ -133,7 +142,7 @@ function AbilitySlot({ side, ability, spec, resource, icon, flash, open, onHover
       <Icon url={icon} name={ability.short} />
       <span class="sweep" style={{ '--sweep': sweep }} />
       {cooling && <span class="time">{seconds(ability.cooldown.remaining)}</span>}
-      <span class="key">{keyLabel(side, ability.action)}</span>
+      {label !== undefined && <span class="key">{label}</span>}
       {ability.cost > 0 && <span class="cost">{ability.cost}</span>}
       <span class="rim" />
       {open && <TooltipBox tip={tip} why={why} colour={resource.colour} />}

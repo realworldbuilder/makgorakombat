@@ -1,16 +1,16 @@
 import type { FightSoundName, FightSoundSet, SoundKitClips } from '@mogshot/worker/api';
 import { BRAND } from '../engine/brand';
-import type { Fighter, Match, Projectile, Spark } from '../engine/engine';
+import { type Fighter, type Match, moveOf, type Projectile, type Spark } from '../engine/engine';
 
 /*
  * The fight's sound. The engine says nothing about sound, so the mixer watches the match from
  * the outside once a frame: a spark that was not there last frame is a hit, a fighter whose move
  * clock went back started a move, a banner that changed is a round event. Every clip is one of
  * the player's own game files (see Mogshot's character/sounds.ts for how each was chosen),
- * decoded once with WebAudio.
+ * decoded once with WebAudio and kept for the last few fighters heard.
  *
  * Browsers keep audio silent until the page has seen a key or a click, so the AudioContext is
- * made on the first key press anywhere and nothing plays before it. M mutes.
+ * made on the first key press anywhere and nothing plays before it. M mutes; P, on any screen, turns only the music off.
  */
 
 /** The page's one audio context, made on the first key press. */
@@ -20,20 +20,28 @@ let master: GainNode | undefined;
 let musicBus: GainNode | undefined;
 let effectsBus: GainNode | undefined;
 const listeners = new Set<() => void>();
+/** Who wants to hear of a change to the settings, so the music tab and the settings panel stay true. */
+const watchers = new Set<() => void>();
 
-/** The sound settings, remembered in the browser: the mute and a level for the music and for the effects, 0 to 1. */
+/**
+ * The sound settings, remembered in the browser: the mute, the music on or off, and a level for the
+ * music and for the effects, 0 to 1. Music off keeps the effects, so the lobby's call to fight is
+ * still heard while queued.
+ */
 export interface SoundSettings {
   muted: boolean;
+  musicOn: boolean;
   music: number;
   effects: number;
 }
 
 const SOUND_STORAGE = 'makgora.sound';
-const settings: SoundSettings = { muted: false, music: 1, effects: 1 };
+const settings: SoundSettings = { muted: false, musicOn: true, music: 1, effects: 1 };
 try {
   if (typeof localStorage !== 'undefined') {
     const saved = JSON.parse(localStorage.getItem(SOUND_STORAGE) ?? '{}') as Partial<SoundSettings>;
     if (typeof saved.muted === 'boolean') settings.muted = saved.muted;
+    if (typeof saved.musicOn === 'boolean') settings.musicOn = saved.musicOn;
     if (typeof saved.music === 'number') settings.music = Math.max(0, Math.min(1, saved.music));
     if (typeof saved.effects === 'number') settings.effects = Math.max(0, Math.min(1, saved.effects));
   }
@@ -42,6 +50,7 @@ try {
 }
 
 function remember(): void {
+  for (const watcher of watchers) watcher();
   try {
     if (typeof localStorage !== 'undefined') localStorage.setItem(SOUND_STORAGE, JSON.stringify(settings));
   } catch {
@@ -60,7 +69,7 @@ function unlock(): void {
     master.gain.value = settings.muted ? 0 : 1;
     master.connect(context.destination);
     musicBus = context.createGain();
-    musicBus.gain.value = settings.music;
+    musicBus.gain.value = musicGain();
     musicBus.connect(master);
     effectsBus = context.createGain();
     effectsBus.gain.value = settings.effects;
@@ -72,9 +81,29 @@ function unlock(): void {
   for (const listener of listeners) listener();
 }
 
+/** The key that turns the music on and off on every screen; no screen uses it for anything else. */
+export const MUSIC_KEY = 'KeyP';
+
+/** P flips the music wherever it is pressed, unless a name or an address is being typed. */
+function musicKey(event: KeyboardEvent): void {
+  if (event.code !== MUSIC_KEY || event.repeat || event.metaKey || event.ctrlKey || event.altKey) return;
+  const target = event.target;
+  if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return;
+  if (target instanceof HTMLElement && target.isContentEditable) return;
+  toggleMusic();
+}
+
 if (typeof window !== 'undefined') {
   window.addEventListener('keydown', unlock);
   window.addEventListener('pointerdown', unlock);
+  // Capture, and added before any screen's own keys, so no screen can swallow it.
+  window.addEventListener('keydown', musicKey, true);
+}
+
+/** Call `watcher` on every change to the sound settings; returns the way to stop. */
+export function watchSound(watcher: () => void): () => void {
+  watchers.add(watcher);
+  return () => watchers.delete(watcher);
 }
 
 export function isMuted(): boolean {
@@ -99,12 +128,30 @@ export function toggleMute(): boolean {
   return settings.muted;
 }
 
+/** The music bus's gain: its level, or nothing while the music is off. */
+function musicGain(): number {
+  return settings.musicOn ? settings.music : 0;
+}
+
+/** Turn the music on or off, leaving the effects as they are. */
+export function setMusicOn(on: boolean): void {
+  settings.musicOn = on;
+  if (musicBus && context) musicBus.gain.setTargetAtTime(musicGain(), context.currentTime, 0.1);
+  remember();
+}
+
+/** Flip the music, and say whether it is now on. */
+export function toggleMusic(): boolean {
+  setMusicOn(!settings.musicOn);
+  return settings.musicOn;
+}
+
 /** Set the music's or the effects' level, 0 to 1. */
 export function setLevel(bus: 'music' | 'effects', level: number): void {
   const value = Math.max(0, Math.min(1, level));
   settings[bus] = value;
   const node = bus === 'music' ? musicBus : effectsBus;
-  if (node && context) node.gain.setTargetAtTime(value, context.currentTime, 0.02);
+  if (node && context) node.gain.setTargetAtTime(bus === 'music' ? musicGain() : value, context.currentTime, 0.02);
   remember();
 }
 
@@ -130,30 +177,123 @@ interface Decoded {
   clips: { buffer: AudioBuffer; volume: number; weight: number }[];
 }
 
+/** How many fighters' decoded sounds are kept: both sides of this fight and the last. */
+export const KEEP_VOICES = 4;
+
+/**
+ * Each fighter's clips decoded, by kit, for the last few fighters heard. Decoded sound is
+ * large (a second in stereo is a third of a megabyte), so it is kept for the fighters likely
+ * to be heard again, picked once more after a trip back to the roster, and not for every one
+ * ever built. Keyed by the fighter's own sound set, which the roster's cache hands back with
+ * the fighter: a fighter rebuilt has a new set and is decoded again, and both sides of a
+ * mirror match share one.
+ */
+const decodedSets = new Map<FightSoundSet, Promise<Map<number, Decoded>>>();
+
+/** A set's clips, decoded with WebAudio once while they are kept. */
+export function decodedSet(ctx: Pick<BaseAudioContext, 'decodeAudioData'>, set: FightSoundSet): Promise<Map<number, Decoded>> {
+  let decoded = decodedSets.get(set);
+  if (decoded) {
+    // Heard again: it goes to the back of the line.
+    decodedSets.delete(set);
+    decodedSets.set(set, decoded);
+    return decoded;
+  }
+  decoded = decode(ctx, set);
+  decodedSets.set(set, decoded);
+  while (decodedSets.size > KEEP_VOICES) decodedSets.delete(decodedSets.keys().next().value!);
+  return decoded;
+}
+
+async function decode(ctx: Pick<BaseAudioContext, 'decodeAudioData'>, set: FightSoundSet): Promise<Map<number, Decoded>> {
+  const decoded = new Map<number, Decoded>();
+  await Promise.all(
+    Object.values(set.kits).map(async (kit: SoundKitClips) => {
+      const clips: Decoded['clips'] = [];
+      for (const clip of kit.clips) {
+        try {
+          // decodeAudioData takes the buffer, so each clip is copied out of the set.
+          const buffer = await ctx.decodeAudioData(clip.bytes.slice().buffer as ArrayBuffer);
+          clips.push({ buffer, volume: clip.volume, weight: clip.weight });
+        } catch (error) {
+          console.warn(`Sound file ${clip.fileId} did not decode:`, error);
+        }
+      }
+      if (clips.length > 0) decoded.set(kit.kit, { kit: kit.kit, pitchVariation: kit.pitchVariation, clips });
+    }),
+  );
+  const gong = set.sounds.gong === undefined ? undefined : decoded.get(set.sounds.gong);
+  if (gong) keptGong = gong;
+  return decoded;
+}
+
+/**
+ * The round gong as last decoded from the player's files, kept past its fighter for the lobby's
+ * calls outside a fight: a challenge, a match found. Every fighter has the same one.
+ */
+let keptGong: Decoded | undefined;
+
+/** Whether a gong from the game files is at hand; until a fight has decoded one, the lobby's calls are synthesized. */
+export function gongKept(): boolean {
+  return keptGong !== undefined;
+}
+
+/** A kit's clip, by the weights the game gives them. */
+function pickClip(sound: Decoded): Decoded['clips'][number] {
+  const total = sound.clips.reduce((n, clip) => n + clip.weight, 0);
+  let roll = Math.random() * total;
+  for (const candidate of sound.clips) {
+    roll -= candidate.weight;
+    if (roll <= 0) return candidate;
+  }
+  return sound.clips[0]!;
+}
+
+/**
+ * The lobby's call to fight, through the effects bus like the fight's sounds, so the mute and the
+ * effects level hold: the round gong from the game files, or, before any fight has decoded it, a
+ * short two-tone. Silent until the page has seen a key or a click, as all sound is.
+ */
+export function playCall(): void {
+  if (!context || !effectsBus) return;
+  if (context.state === 'suspended') void context.resume();
+  if (keptGong) {
+    const clip = pickClip(keptGong);
+    const source = context.createBufferSource();
+    source.buffer = clip.buffer;
+    const volume = context.createGain();
+    volume.gain.value = clip.volume;
+    source.connect(volume).connect(effectsBus);
+    source.start();
+    return;
+  }
+  // Two struck tones a fourth apart, each dying away.
+  const now = context.currentTime;
+  for (const [k, frequency] of [196, 262].entries()) {
+    const at = now + k * 0.22;
+    const tone = context.createOscillator();
+    tone.type = 'triangle';
+    tone.frequency.value = frequency;
+    const volume = context.createGain();
+    volume.gain.setValueAtTime(0.0001, at);
+    volume.gain.exponentialRampToValueAtTime(0.5, at + 0.01);
+    volume.gain.exponentialRampToValueAtTime(0.0001, at + 0.9);
+    tone.connect(volume).connect(effectsBus);
+    tone.start(at);
+    tone.stop(at + 0.95);
+  }
+}
+
 /** One fighter's decoded sounds, by name. */
 class Voice {
-  private readonly decoded = new Map<number, Decoded>();
+  private decoded = new Map<number, Decoded>();
   /** Set once the clips are decoded; until then everything is silent. */
   ready = false;
 
   constructor(readonly set: FightSoundSet) {}
 
   async decode(ctx: AudioContext): Promise<void> {
-    await Promise.all(
-      Object.values(this.set.kits).map(async (kit: SoundKitClips) => {
-        const clips: Decoded['clips'] = [];
-        for (const clip of kit.clips) {
-          try {
-            // decodeAudioData takes the buffer, so each clip is copied out of the set.
-            const buffer = await ctx.decodeAudioData(clip.bytes.slice().buffer as ArrayBuffer);
-            clips.push({ buffer, volume: clip.volume, weight: clip.weight });
-          } catch (error) {
-            console.warn(`Sound file ${clip.fileId} did not decode:`, error);
-          }
-        }
-        if (clips.length > 0) this.decoded.set(kit.kit, { kit: kit.kit, pitchVariation: kit.pitchVariation, clips });
-      }),
-    );
+    this.decoded = await decodedSet(ctx, this.set);
     this.ready = true;
   }
 
@@ -220,16 +360,7 @@ export class Mixer {
     const sound = voice.pick(name);
     if (!sound) return;
     // Weighted choice among the kit's files, as the game does.
-    const total = sound.clips.reduce((n, clip) => n + clip.weight, 0);
-    let roll = Math.random() * total;
-    let clip = sound.clips[0]!;
-    for (const candidate of sound.clips) {
-      roll -= candidate.weight;
-      if (roll <= 0) {
-        clip = candidate;
-        break;
-      }
-    }
+    const clip = pickClip(sound);
     const source = context.createBufferSource();
     source.buffer = clip.buffer;
     const [below, above] = sound.pitchVariation;
@@ -297,7 +428,8 @@ export class Mixer {
     for (let i = 0 as 0 | 1; i < 2; i++) {
       const f = match.fighters[i];
       const was = this.last[i];
-      const started = was === undefined ? false : f.move !== was.move || f.state !== was.state || f.t < was.t;
+      // A looping move (a stun, a cast, a channel) going round again is not a new one: it would cry every second.
+      const started = was === undefined ? false : f.move !== was.move || f.state !== was.state || (f.t < was.t && !moveOf(match, i, f.move).loop);
       if (started) this.onMove(match, i, f);
       this.last[i] = { state: f.state, move: f.move, t: f.t };
     }

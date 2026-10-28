@@ -4,7 +4,7 @@ import type { Stage } from './stages';
 
 /*
  * The music: the game's own tracks, read from the open folder by file id like everything else.
- * CHOOSE YOUR CHAMPION has the login screen's theme; the VS screen plays the music of the stage
+ * CHOOSE YOUR CHAMPION has the open game's login theme (edition.ts); the VS screen plays the music of the stage
  * under the cursor, as the game plays it in that zone; the fight keeps that music on underneath,
  * lower, and lower still while a fatality plays.
  *
@@ -24,9 +24,6 @@ export interface Cue {
   groups: readonly (readonly number[])[];
 }
 
-/** The login screen's "Legends of Azeroth", as the original game shipped it, then classic's own copy. */
-export const TITLE: Cue = { key: 'title', groups: [[53223], [8176610]] };
-
 /** The battlegrounds' music, for a fight before a loading screen. */
 export const BATTLEGROUND: Cue = { key: 'battleground', groups: [[53684, 53685, 53686, 53687, 53688]] };
 
@@ -43,6 +40,12 @@ const ZONES: Record<string, Cue> = {
   goldshire: { key: 'forest', groups: [[8180778, 8180780, 8180782], [53492, 53493, 53494]] },
   darnassus: { key: 'darnassus', groups: [[8180752, 8180754, 8180756], [53184, 53185, 53186]] },
   'thunder-bluff': { key: 'thunder-bluff', groups: [[8180997, 8180999, 8181001], [53213, 53214, 53215]] },
+  // The Maul has none of its own; Dire Maul's is Zone-EnchantedForest.
+  'the-maul': { key: 'enchanted-forest', groups: [[8180792, 8180784, 8180790, 8180786, 8180788], [53457, 53453, 53456, 53454, 53455]] },
+  'obsidian-sanctum': { key: 'chamber-of-aspects', groups: [[229783, 229784, 229785, 229786, 229787, 229788, 229789, 229790, 229791, 229792, 229794]] },
+  zangarmarsh: { key: 'zangarmarsh', groups: [[53819, 53820, 53821, 53822, 53823, 53824]] },
+  // The Frozen Throne's area has none, so it is the citadel's: Zone-IcecrownDungeon.
+  'frozen-throne': { key: 'icecrown-citadel', groups: [[349988, 350067, 350027, 350034, 350040, 350051, 349991, 350005]] },
 };
 
 /** The music for a fight's ground: the stage's zone, else the battlegrounds'. */
@@ -66,6 +69,8 @@ interface Playing {
 
 export class Music {
   private client: DataClient | undefined;
+  /** Which open folder and product the tracks were read from. */
+  private opened: string | undefined;
   private wanted: { cue: Cue; level: number } | undefined;
   private playing: Playing | undefined;
   /** Bumped by every change of cue, so a track still loading for an old one is dropped. */
@@ -80,10 +85,11 @@ export class Music {
     });
   }
 
-  /** The open folder to read tracks from; a new folder forgets the old one's. */
-  use(client: DataClient): void {
-    if (client === this.client) return;
+  /** The open folder to read tracks from, `opened` naming the folder and product; another forgets the old one's. */
+  use(client: DataClient, opened: string): void {
+    if (client === this.client && opened === this.opened) return;
     this.client = client;
+    this.opened = opened;
     for (const url of this.urls.values()) void url.then((u) => u && URL.revokeObjectURL(u));
     this.urls.clear();
     this.lists.clear();

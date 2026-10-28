@@ -54,9 +54,21 @@ describe('measured strikes in the fight', () => {
   });
 
   it('reaches as far as the blade does, to the front of the body', () => {
-    // 2.0 of blade and half a body: 2.45 between the two.
-    expect(landsAfter(struck('kombat', BLOW, 2.35))).toBeGreaterThan(0);
-    expect(landsAfter(struck('kombat', BLOW, 2.6))).toBe(-1);
+    // 2.0 of blade and half a body between the two.
+    expect(landsAfter(struck('kombat', BLOW, 2 + BODY / 2 - 0.1))).toBeGreaterThan(0);
+    expect(landsAfter(struck('kombat', BLOW, 2 + BODY / 2 + 0.15))).toBe(-1);
+  });
+
+  it('reaches the front of a bigger body further off, and an attacker’s own size does not stretch it', () => {
+    const sized = (attacker: number, target: number) => {
+      const tables = [struckTable(BLOW), struckTable(BLOW)] as const;
+      const match = newMatch([{ ...tables[0], body: attacker }, { ...tables[1], body: target }], 1, ['P1', 'P2'], 'kombat');
+      skipIntro(match);
+      place(match, 2 + BODY / 2 + 0.15);
+      return match;
+    };
+    expect(landsAfter(sized(BODY / 2, BODY))).toBeGreaterThan(0);
+    expect(landsAfter(sized(BODY, BODY / 2))).toBe(-1);
   });
 
   it('sparks where the weapon came in, kept on the body', () => {

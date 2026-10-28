@@ -3,6 +3,7 @@ import type { AnimationInfo } from '@mogshot/character/scene';
 import { ABILITY_ANIMATIONS, type Kit, resolveKit, type SlotIndex } from './abilities';
 import { finderOf, type HitWindow, type Move, moveFrom, type Variation } from './anim';
 import { FATALITY_ANIMATIONS, resolveFatality, type ResolvedFatality } from './fatalities';
+import { BODY } from './stage';
 
 export type { Finder, HitWindow, Move, Strike, Variation } from './anim';
 
@@ -21,6 +22,8 @@ export type MoveName =
   | 'jumpEnd'
   /** The auto-attack: Attack* with all its variations. */
   | 'swing'
+  /** A bow's, a gun's or a thrown weapon's auto-attack at close quarters: a blow by hand, as a hunter in melee range swings in the game. */
+  | 'jab'
   | 'dodge'
   | 'parry'
   /** Casting: held while the cast bar fills. */
@@ -45,15 +48,19 @@ export type Wielding = WeaponKind | 'unarmed';
 /** The weapon the fighter swings with: how often, how hard, and whether it shoots. */
 export interface Weapon {
   wielding: Wielding;
-  /** Frames between auto-attacks: 2.0 s one-hand and unarmed, 3.4 s two-hand, 3.0 s ranged. */
+  /** Frames between auto-attacks: 1.5 s one-hand, unarmed and thrown, 2.4 s two-hand, 2.0 s a bow, gun or crossbow (`SPEED`). */
   speed: number;
+  /** The average blow; each one rolls up to `spread` of it either side, as a weapon's damage range does. */
   damage: number;
+  spread: number;
   /** Bows, guns, crossbows and thrown weapons: the auto-attack is a shot. */
   ranged: boolean;
   /** Reach of a swing, or of a shot. */
   range: number;
   /** An off-hand shield: blocks. */
   shield: boolean;
+  /** A ranged weapon's blow when the target is inside `MELEE_RANGE`, where it does not shoot: a fist's damage at the weapon's speed. */
+  close: { damage: number; spread: number } | undefined;
 }
 
 export interface MoveTable {
@@ -66,6 +73,8 @@ export interface MoveTable {
   hasJump: boolean;
   /** How tall the fighter stands, in yards: where a blow on them can land. */
   stature: number;
+  /** The room the body takes in front of its feet, in yards (`bodyRadius`): how close it stands and how far its arms reach. */
+  body: number;
 }
 
 const READY: Record<Wielding, string[]> = {
@@ -104,6 +113,8 @@ const PARRY: Record<Wielding, string[]> = {
 /** Seconds between swings, by weapon: the game's 2.0 / 3.4 / 3.0, three quarters of them, so the ring keeps moving. */
 const SPEED: Record<Wielding, number> = { unarmed: 1.5, oneHand: 1.5, twoHand: 2.4, long: 2.4, bow: 2.0, rifle: 2.0, crossbow: 2.0, thrown: 1.5 };
 const DAMAGE: Record<Wielding, number> = { unarmed: 7, oneHand: 8, twoHand: 14, long: 14, bow: 9, rifle: 9, crossbow: 9, thrown: 7 };
+/** How far a blow strays from the average, either way: a two-hander's range is the widest, a fist's the narrowest. */
+const SPREAD: Record<Wielding, number> = { unarmed: 0.2, oneHand: 0.25, twoHand: 0.3, long: 0.3, bow: 0.2, rifle: 0.25, crossbow: 0.2, thrown: 0.2 };
 const RANGED: ReadonlySet<Wielding> = new Set(['bow', 'rifle', 'crossbow', 'thrown']);
 
 /** A swing reaches this far: two bodies and a little; fighters that look to be touching can hit. */
@@ -130,6 +141,7 @@ function candidates(wielding: Wielding, shield: boolean): Record<MoveName, { nam
     jump: { names: ['Jump'], loop: true },
     jumpEnd: { names: ['JumpEnd', 'JumpLandRun'], loop: false },
     swing: { names: uniq(ATTACK[wielding], ['AttackUnarmed']), loop: false, hit: SWING_HIT },
+    jab: { names: RANGED.has(wielding) ? ['AttackUnarmed', 'Attack1H'] : uniq(ATTACK[wielding], ['AttackUnarmed']), loop: false, hit: SWING_HIT },
     dodge: { names: ['Dodge', 'Walkbackwards'], loop: false },
     parry: { names: uniq(shield ? ['ShieldBlock'] : [], [...PARRY[wielding], 'Parry1H', 'Parry2H', 'ParryUnarmed', 'ShieldBlock', 'Dodge']), loop: false },
     cast: { names: ['ChannelCastDirected', 'ReadySpellDirected', 'ReadySpellOmni', 'SpellCastDirected'], loop: true },
@@ -145,7 +157,7 @@ function candidates(wielding: Wielding, shield: boolean): Record<MoveName, { nam
 }
 
 export const MOVE_NAMES: readonly MoveName[] = [
-  'idle', 'walk', 'back', 'jumpStart', 'jump', 'jumpEnd', 'swing', 'dodge', 'parry', 'cast',
+  'idle', 'walk', 'back', 'jumpStart', 'jump', 'jumpEnd', 'swing', 'jab', 'dodge', 'parry', 'cast',
   'hit', 'crit', 'knockdown', 'dazed', 'death', 'finisher', 'intro', 'win',
 ];
 
@@ -170,8 +182,9 @@ export const ALL_MOVE_NAMES: readonly string[] = [
  * Picks a move table out of what a model animates: the first candidate the model has wins.
  * A move with no candidate borrows the idle animation (a jump still jumps, a dodge still dodges).
  * The kit and the fatality are the class's, or a warrior's (a hunter's behind a bow) when the class is unknown.
+ * `body` is the room the body takes in front of its feet, a human's when not given.
  */
-export function resolveMoves(animations: readonly AnimationInfo[], wielding: Wielding, classId?: number, shield = false): MoveTable {
+export function resolveMoves(animations: readonly AnimationInfo[], wielding: Wielding, classId?: number, shield = false, body = BODY / 2): MoveTable {
   const find = finderOf(animations);
   const spec = candidates(wielding, shield);
   const idleInfos = find(spec.idle.names) ?? (animations[0] ? [animations[0]] : undefined);
@@ -184,21 +197,24 @@ export function resolveMoves(animations: readonly AnimationInfo[], wielding: Wie
   let hasJump = false;
   for (const name of MOVE_NAMES) {
     const c = spec[name];
-    const move = name === 'idle' ? idle : moveFrom(find, name, c.names, c.loop, idle, name === 'swing');
+    const move = name === 'idle' ? idle : moveFrom(find, name, c.names, c.loop, idle, name === 'swing' || name === 'jab');
     if (move.animation && (name === 'jumpStart' || name === 'jump')) hasJump = true;
     if (c.hit) move.hit = c.hit;
     moves[name] = move;
   }
   const ranged = RANGED.has(wielding);
+  const kit = resolveKit(classId, wielding, find, idle);
   const weapon: Weapon = {
     wielding,
     speed: Math.round(SPEED[wielding] * 60),
-    damage: DAMAGE[wielding],
+    damage: DAMAGE[wielding] * kit.swing * kit.power,
+    spread: SPREAD[wielding],
     ranged,
     range: ranged ? SHOT_RANGE : MELEE_RANGE,
     shield,
+    close: ranged ? { damage: DAMAGE.unarmed * kit.swing * kit.power, spread: SPREAD.unarmed } : undefined,
   };
-  return { moves, kit: resolveKit(classId, wielding, find, idle), weapon, fatality: resolveFatality(classId, wielding, find, idle), hasJump, stature: STATURE };
+  return { moves, kit, weapon, fatality: resolveFatality(classId, wielding, find, idle), hasJump, body, stature: STATURE };
 }
 
 /** The variation a fighter plays: `variation` cycles through the move's list. */

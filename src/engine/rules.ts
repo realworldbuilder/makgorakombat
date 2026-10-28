@@ -16,6 +16,9 @@ export type RulesName = 'warcraft' | 'kombat';
 
 export const RULES_NAMES: readonly RulesName[] = ['warcraft', 'kombat'];
 
+/** Is this a rule set's name? For a word that came over the wire or out of storage. */
+export const isRulesName = (value: unknown): value is RulesName => typeof value === 'string' && (RULES_NAMES as readonly string[]).includes(value);
+
 /** The chances of each outcome on the hit table, taken in turn from one draw. */
 export interface HitTable {
   miss: number;

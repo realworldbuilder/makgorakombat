@@ -1,0 +1,5 @@
+# esbuild bundles the Worker and workerd is the runtime the tests and wrangler dev run in; both
+# fetch their platform binary in an install script, which pnpm 12 refuses unless allowed here.
+allowBuilds:
+  esbuild: true
+  workerd: true

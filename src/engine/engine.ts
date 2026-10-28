@@ -1,7 +1,7 @@
 import { ABILITY_MELEE_RANGE, ABILITY_SLOTS, DOT_TICK_FRAMES, EXECUTE_BELOW, MAX_RESOURCE, RESOURCE_NAMES, type ResolvedAbility, type SlotIndex } from './abilities';
 import { BRAND } from './brand';
 import { type Beat, directionOf, impactFrame, PENALTY_FRAMES, type SequenceToken, STEP_FRAMES } from './fatalities';
-import { type Move, type MoveRef, type MoveTable, type Strike, variationOf } from './moves';
+import { MELEE_RANGE, type Move, type MoveRef, type MoveTable, type Strike, variationOf } from './moves';
 import { type Rules, RULES, type RulesName } from './rules';
 import {
   BODY, FINISH_FRAMES, GRAVITY, HALF, HP, INTRO_FRAMES, JUMP_V, KO_SLOWMO, ROUND_END_FRAMES, ROUND_FRAMES,
@@ -51,6 +51,8 @@ export interface Cast {
   /** Frames into the cast and the cast's length. */
   t: number;
   total: number;
+  /** Blows that have set the bar back so far. */
+  delays: number;
 }
 
 export interface Dash {
@@ -155,6 +157,8 @@ export interface Fighter {
   dashT: number;
   /** This jump's attack has been thrown; the landing costs a few frames. */
   airAttack: boolean;
+  /** This auto-attack is a ranged weapon's blow by hand, the target having been inside melee range when it started. */
+  close: boolean;
 }
 
 export interface Projectile {
@@ -209,6 +213,8 @@ export interface FloatingText {
   side: 0 | 1;
   /** Who caused it: the other fighter for a blow, the fighter itself for a heal, a buff or a note. */
   from: 0 | 1;
+  /** The ability whose damage it is, for the HUD to colour by its school; undefined for a swing or a word. */
+  spell: string | undefined;
   t: number;
   life: number;
 }
@@ -335,6 +341,8 @@ const TEXT_LIFE = 72;
 const INFO_LIFE = 45;
 const KNOCKDOWN_FRAMES = 30;
 const PROJECTILE_Z = 1.25;
+/** A projectile strikes when it is this close to the target's middle. */
+export const PROJECTILE_HIT = 0.7;
 const HP_EASE = 0.08;
 /** How far into the release animation a bolt leaves the hand. */
 const BOLT_AT = 0.22;
@@ -345,17 +353,24 @@ const ABILITY_RECOVER = 0.45;
 const DODGE_RECOVER = 0.4;
 /** Reach beyond the ability's range once it is already swinging. */
 const REACH_SLACK = 0.4;
-/** A body starts this far in front of its centre: a blade reaching that far touches it. */
-const TARGET_HALF = BODY / 2;
 /** How far behind them a jumping attack still reaches a target passed under. */
 const AIR_UNDER = 0.5;
 const DASH_SPEED = 0.3;
-const DASH_STOP = 1.4;
+/** A charge stops this far short of contact. */
+/**
+ * A charge ends this far short of contact: its end animation (CombatChargeEnd) carries the body
+ * on another 1 to 2 yd, and stopping at contact buried Cairne in his target. Still in reach.
+ */
+const DASH_STOP = 0.9;
 const DASH_LIMIT = 60;
 const RIPOSTE_FRAMES = 90;
+/** A blow sets a cast bar back half a second, twice at most, as in the game; a stun, a fear or an interrupt ends it. */
+const CAST_DELAY = 30;
+const CAST_DELAYS = 2;
 const LOCKOUT_FRAMES = 120;
 const ABSORB_FRAMES = 12 * 60;
-const BLINK_DISTANCE = 3.5;
+/** How far Blink carries the caster away from the target, in yards. */
+export const BLINK_DISTANCE = 3.5;
 const LEAP_V = 0.16;
 const LEAP_VX = 0.12;
 const SLOW_FACTOR = 0.5;
@@ -366,7 +381,7 @@ const PUSHBACK = { swing: 0.035, ability: 0.07, spell: 0.03, bolt: 0.05, charge:
 /** The game's hit table, as the WARCRAFT rules roll it. */
 export const HIT_TABLE = RULES.warcraft.hitTable;
 
-/** Rage, fury and runic power earned when a swing lands, and rage when a blow is taken. */
+/** Rage and fury earned when a swing lands, and rage when a blow is taken. Runic power comes from abilities alone, as in the game. */
 const GAIN_ON_SWING = { oneHand: 10, twoHand: 17 } as const;
 const RAGE_ON_HIT = 5;
 
@@ -430,6 +445,7 @@ function newFighter(side: 0 | 1, table: MoveTable): Fighter {
     dashDir: 1,
     dashT: 0,
     airAttack: false,
+    close: false,
   };
 }
 
@@ -518,7 +534,8 @@ export function moveOf(match: Match, i: 0 | 1, ref: MoveRef): Move {
   if (ref.startsWith('ability')) return table.kit.abilities[Number(ref.slice(7))]!.move;
   if (ref.startsWith('cast')) return table.kit.abilities[Number(ref.slice(4))]!.hold;
   if (ref.startsWith('fatality')) return table.fatality.winner[Number(ref.slice(8))] ?? table.moves.idle;
-  if (ref.startsWith('victim')) return table.fatality.loser[Number(ref.slice(6))] ?? table.moves.idle;
+  // The loser plays their part of the winner's fatality, on their own model.
+  if (ref.startsWith('victim')) return table.fatality.victim[match.tables[other(i)].fatality.spec.id]?.[Number(ref.slice(6))] ?? table.moves.idle;
   return table.moves[ref as keyof typeof table.moves];
 }
 
@@ -550,15 +567,19 @@ function strikeOf(match: Match, i: 0 | 1): Strike | undefined {
 }
 
 /**
- * When the current swing connects, how far it reaches and when the fighter may act again: around
- * the blow as the model plays it when measured, the rules' fixed window and the weapon's range otherwise.
+ * When the current swing connects, how far it reaches (a range as inReach takes it) and when the
+ * fighter may act again: around the blow as the model plays it when measured, the rules' fixed
+ * window and the weapon's range otherwise. A measured reach is from the attacker's feet, so it
+ * hits a body whose front it gets to: inReach adds both bodies less a human's, and this takes off
+ * the attacker's.
  */
 function swingOf(match: Match, i: 0 | 1): { from: number; to: number; recover: number; reach: number } {
   const rules = rulesOf(match);
   const s = strikeOf(match, i);
-  if (!s) return { ...rules.swingHit, reach: match.tables[i].weapon.range + REACH_SLACK };
+  const table = match.tables[i];
+  if (!s) return { ...rules.swingHit, reach: (match.fighters[i].close ? MELEE_RANGE : table.weapon.range) + REACH_SLACK };
   const { lead, follow, recover } = rules.strike;
-  return { from: Math.max(0, s.contact - lead), to: Math.min(1, s.contact + follow), recover: Math.min(1, s.contact + recover), reach: s.reach + TARGET_HALF };
+  return { from: Math.max(0, s.contact - lead), to: Math.min(1, s.contact + follow), recover: Math.min(1, s.contact + recover), reach: s.reach + BODY - table.body };
 }
 
 /** The same for an ability's strike; its reach stays the kit's. */
@@ -577,7 +598,7 @@ function impactAt(match: Match, ai: 0 | 1, ti: 0 | 1, dir: number): [number, num
   if (!s) return [target.x - dir * 0.3, 1.3 + target.z];
   const top = match.tables[ti].stature;
   const z = Math.min(Math.max(f.z + s.height - target.z, top * 0.3), top * 0.85);
-  return [target.x - dir * TARGET_HALF * 0.8, target.z + z];
+  return [target.x - dir * match.tables[ti].body * 0.8, target.z + z];
 }
 
 /** Can this fighter start a new action this tick? */
@@ -614,9 +635,9 @@ function helpless(f: Fighter): boolean {
   return f.airborne || f.state === 'stun' || f.state === 'knockdown' || f.state === 'fear' || f.state === 'dazed' || f.state === 'death';
 }
 
-function text(match: Match, side: 0 | 1, kind: TextKind, words: string, from: 0 | 1 = side): void {
+function text(match: Match, side: 0 | 1, kind: TextKind, words: string, from: 0 | 1 = side, spell?: string): void {
   const f = match.fighters[side];
-  match.texts.push({ x: f.x, z: 2.3 + f.z, text: words, kind, side, from, t: 0, life: kind === 'info' ? INFO_LIFE : TEXT_LIFE });
+  match.texts.push({ x: f.x, z: 2.3 + f.z, text: words, kind, side, from, spell, t: 0, life: kind === 'info' ? INFO_LIFE : TEXT_LIFE });
 }
 
 function spark(match: Match, x: number, z: number, kind: SparkKind): void {
@@ -633,11 +654,32 @@ function cancelCast(f: Fighter): void {
   if (f.state === 'cast') play(f, 'idle', 'idle');
 }
 
-/** Is the target in front of `f` within `range` (or within it on either side when `both`), and near the ground? */
-function inReach(f: Fighter, o: Fighter, range: number, both: boolean): boolean {
+/** How close the two bodies may come, feet to feet: two humans' BODY, more for big ones, less for small. */
+export function contactOf(match: Match): number {
+  return match.tables[0].body + match.tables[1].body;
+}
+
+/**
+ * Is the target in front of `f` within `range` (or within it on either side when `both`), and near the ground?
+ * Ranges are a human's against a human; big bodies reach as much further as they stand apart, as the game's combat reach does.
+ */
+function inReach(match: Match, f: Fighter, o: Fighter, range: number, both: boolean): boolean {
   if (Math.abs(o.z - f.z) >= 1.2) return false;
+  const reach = range + contactOf(match) - BODY;
   const ahead = f.facing * (o.x - f.x);
-  return both ? Math.abs(ahead) <= range : ahead > 0 && ahead <= range;
+  return both ? Math.abs(ahead) <= reach : ahead > 0 && ahead <= reach;
+}
+
+/**
+ * Where `f` ends up stepping `step` along x: up to the other body and no further. A fighter walks
+ * into contact and stops there, as players do, instead of shoving the other back across the ring.
+ */
+function stepTo(match: Match, f: Fighter, o: Fighter, step: number): number {
+  const x = f.x + step;
+  const toward = Math.sign(o.x - f.x);
+  if (Math.sign(step) !== toward || Math.abs(o.z - f.z) >= 1.2) return x;
+  const stop = o.x - toward * contactOf(match);
+  return toward > 0 ? Math.max(f.x, Math.min(x, stop)) : Math.min(f.x, Math.max(x, stop));
 }
 
 /** Why an ability cannot be used right now, or undefined when it can. */
@@ -653,9 +695,11 @@ export function abilityBlocked(match: Match, i: 0 | 1, n: number): string | unde
   const dist = Math.abs(o.x - f.x);
   switch (a.kind) {
     case 'melee':
-      if (!inReach(f, o, a.range, a.both)) return 'OUT OF RANGE';
+      if (!inReach(match, f, o, a.range, a.both)) return 'OUT OF RANGE';
       return undefined;
     case 'spell':
+      if (a.both ? !inReach(match, f, o, a.range, true) : dist > a.range) return 'OUT OF RANGE';
+      return undefined;
     case 'bolt':
       if (dist > a.range) return 'OUT OF RANGE';
       return undefined;
@@ -701,7 +745,8 @@ function fire(match: Match, i: 0 | 1, n: number): void {
   spellEvent(match, i, a.id, 'release', f.x, f.z);
   switch (a.kind) {
     case 'spell':
-      if (Math.abs(o.x - f.x) > a.range + REACH_SLACK) return;
+      // A nova reaches all round as far as a blow, bigger bodies standing further apart.
+      if (a.both ? !inReach(match, f, o, a.range + REACH_SLACK, true) : Math.abs(o.x - f.x) > a.range + REACH_SLACK) return;
       strike(match, i, ti, { damage: a.damage, roll: 'spell', ability: a, pushback: PUSHBACK.spell, hitstop: a.damage > 0 ? 4 : 0 }, f.facing, o.x, 1.3 + o.z);
       return;
     case 'self':
@@ -748,7 +793,7 @@ export function useAbility(match: Match, i: 0 | 1, n: number): boolean {
   f.queued = false;
   // A cast pays its cost and starts its cooldown only when it goes off.
   if (a.cast > 0) {
-    f.cast = { ability: n, t: 0, total: castFrames(match, a) };
+    f.cast = { ability: n, t: 0, total: castFrames(match, a), delays: 0 };
     play(f, 'cast', `cast${n as SlotIndex}`);
     return true;
   }
@@ -866,7 +911,9 @@ function swingAt(match: Match, i: 0 | 1): void {
   f.chainPress = false;
   f.connected = false;
   f.swings++;
-  play(f, 'attack', 'swing');
+  // A bow does not shoot at a target inside melee range: the fighter strikes by hand instead.
+  f.close = match.tables[i].weapon.close !== undefined && inReach(match, f, match.fighters[other(i)], MELEE_RANGE, false);
+  play(f, 'attack', f.close ? 'jab' : 'swing');
   if (rules.swingTimer) f.swingT = match.tables[i].weapon.speed;
   f.queued = false;
 }
@@ -950,7 +997,7 @@ function applyInputs(match: Match, i: 0 | 1, inputs: Inputs): void {
     return;
   }
   if (wantsSwing && f.swingT === 0) {
-    if (inReach(f, o, table.weapon.range, false)) {
+    if (inReach(match, f, o, table.weapon.range, false)) {
       swingAt(match, i);
       return;
     }
@@ -981,13 +1028,13 @@ function applyInputs(match: Match, i: 0 | 1, inputs: Inputs): void {
     const forward = dir * f.facing > 0;
     const wanted: MoveRef = forward ? 'walk' : 'back';
     if (f.move !== wanted || f.state !== wanted) play(f, wanted, wanted);
-    f.x += dir * (forward ? rules.walk : rules.back) * (f.slowT > 0 ? SLOW_FACTOR : 1);
+    f.x = stepTo(match, f, o, dir * (forward ? rules.walk : rules.back) * (f.slowT > 0 ? SLOW_FACTOR : 1));
     return;
   }
   // Holding the attack with nowhere else to go follows the target into reach, as the game's follow does.
-  if (f.auto && !table.weapon.ranged && !inReach(f, o, table.weapon.range, false) && Math.abs(o.z - f.z) < 1.2 && o.state !== 'death') {
+  if (f.auto && !table.weapon.ranged && !inReach(match, f, o, table.weapon.range, false) && Math.abs(o.z - f.z) < 1.2 && o.state !== 'death') {
     if (f.move !== 'walk' || f.state !== 'walk') play(f, 'walk', 'walk');
-    f.x += f.facing * rules.walk * (f.slowT > 0 ? SLOW_FACTOR : 1);
+    f.x = stepTo(match, f, o, f.facing * rules.walk * (f.slowT > 0 ? SLOW_FACTOR : 1));
     return;
   }
   // A move past its recover point plays out unless something else is asked for.
@@ -1007,6 +1054,11 @@ function advanceMove(match: Match, i: 0 | 1): void {
   if (s && rules.strike.startup > 0 && f.t < s.contact * duration) rate = Math.max(rate, (s.contact * duration) / (rules.strike.startup * TICK_MS));
   f.t += TICK_MS * match.slowmo * rate;
   if (f.t < duration) return;
+  // The dead stay down, whatever animation stands in for their death.
+  if (f.state === 'death') {
+    f.t = duration;
+    return;
+  }
   if (move.loop) {
     f.t = duration > 0 ? f.t % duration : 0;
     return;
@@ -1030,8 +1082,8 @@ function advanceMove(match: Match, i: 0 | 1): void {
       f.t = duration;
       return;
     default:
-      // A stun, a fear, the fatality's last beat and a death hold their last frame.
-      if (f.state === 'stun' || f.state === 'fear' || f.state === 'finisher' || f.state === 'death') {
+      // A stun, a fear and the fatality's last beat hold their last frame (a death is held above).
+      if (f.state === 'stun' || f.state === 'fear' || f.state === 'finisher') {
         f.t = duration;
         return;
       }
@@ -1069,7 +1121,7 @@ function timers(match: Match, i: 0 | 1): void {
     dot.nextTick = DOT_TICK_FRAMES;
     dot.ticksLeft--;
     if (f.hp > 0) {
-      damage(match, dot.source, i, dot.damage, 'dot');
+      damage(match, dot.source, i, dot.damage, 'dot', dot.name);
       spark(match, f.x, 1.4 + f.z, 'dot');
     }
     if (dot.ticksLeft <= 0) f.dots.splice(k, 1);
@@ -1110,14 +1162,14 @@ function dashes(match: Match, i: 0 | 1): void {
   f.x += toward * DASH_SPEED;
   let arrived: boolean;
   if (a.kind === 'rush') arrived = Math.abs(f.x - f.dash.fromX) >= a.range || f.dash.t >= DASH_LIMIT;
-  else arrived = Math.abs(o.x - f.x) <= DASH_STOP || f.dash.t >= DASH_LIMIT;
+  else arrived = Math.abs(o.x - f.x) <= contactOf(match) + DASH_STOP || f.dash.t >= DASH_LIMIT;
   if (Math.abs(f.x) >= HALF) arrived = true;
   if (!arrived) return;
   const n = f.dash.ability;
   f.dash = undefined;
   play(f, 'ability', `ability${n as SlotIndex}`);
   f.hitDone = true;
-  if (inReach(f, o, ABILITY_MELEE_RANGE, true)) {
+  if (inReach(match, f, o, ABILITY_MELEE_RANGE, true)) {
     strike(match, i, ti, { damage: a.damage, roll: 'none', ability: a, pushback: PUSHBACK.charge, hitstop: 6, from: sideOf(o, f.x), contact: true, heavy: true }, toward, o.x, 1.3 + o.z);
   }
 }
@@ -1130,6 +1182,8 @@ interface Blow {
   roll: Roll;
   /** Undefined for an auto-attack. */
   ability: ResolvedAbility | undefined;
+  /** How far the blow strays either way, when not its ability's or its weapon's (a ranged weapon's blow by hand). */
+  spread?: number;
   pushback: number;
   hitstop: number;
   /** The side of the target it comes from, -1 or +1 along x, when it can be blocked; a spell cannot. */
@@ -1181,7 +1235,7 @@ export function rollHit(match: Match, ai: 0 | 1, ti: 0 | 1, roll: Roll): Outcome
  * Takes `amount` off `ti`'s health (the shield first), shows the number and flinches them.
  * A blow interrupts a cast and breaks a fear. Returns what reached their health.
  */
-function damage(match: Match, ai: 0 | 1, ti: 0 | 1, amount: number, kind: 'damage' | 'crit' | 'dot' | 'block'): number {
+function damage(match: Match, ai: 0 | 1, ti: 0 | 1, amount: number, kind: 'damage' | 'crit' | 'dot' | 'block', spell?: string): number {
   const target = match.fighters[ti];
   const attacker = match.fighters[ai];
   if (target.state === 'death') return 0;
@@ -1196,11 +1250,14 @@ function damage(match: Match, ai: 0 | 1, ti: 0 | 1, amount: number, kind: 'damag
   if (left > 0) {
     target.hp = Math.max(0, target.hp - left);
     target.tookDamage = true;
-    text(match, ti, kind, kind === 'block' ? `BLOCK ${left}` : String(left), ai);
+    text(match, ti, kind, kind === 'block' ? `BLOCK ${left}` : String(left), ai, spell);
     if (match.tables[ti].kit.resource === 'rage') target.resource = Math.min(MAX_RESOURCE, target.resource + RAGE_ON_HIT);
   }
   if (kind === 'dot') return left;
-  if (target.cast) cancelCast(target);
+  if (target.cast && target.state === 'cast' && left > 0 && target.cast.delays < CAST_DELAYS) {
+    target.cast.t = Math.max(0, target.cast.t - CAST_DELAY);
+    target.cast.delays++;
+  }
   if (target.state === 'fear') {
     target.fearT = 0;
     play(target, 'idle', 'idle');
@@ -1308,7 +1365,9 @@ function strike(match: Match, ai: 0 | 1, ti: 0 | 1, blow: Blow, dir: number, spa
   // It landed: a spell or a shot shows where, damage or none (a damage-over-time spell starts at 0).
   if (a || blow.roll === 'ranged') spellEvent(match, ai, a ? a.id : 'shot', 'impact', sparkX, sparkZ);
 
-  let amount = blow.damage;
+  // Every blow is rolled in its range, a weapon's or a spell's: no two land quite alike.
+  const spread = a ? a.spread : (blow.spread ?? match.tables[ai].weapon.spread);
+  let amount = blow.damage > 0 ? Math.max(1, Math.round(blow.damage * (1 + spread * (2 * nextRandom(match) - 1)))) : 0;
   let kind: 'damage' | 'crit' | 'block' = 'damage';
   if (outcome === 'crit') {
     const crit = rulesOf(match).crit;
@@ -1326,7 +1385,7 @@ function strike(match: Match, ai: 0 | 1, ti: 0 | 1, blow: Blow, dir: number, spa
     attacker.hitstop = Math.max(attacker.hitstop, stop);
     spark(match, sparkX, sparkZ, outcome === 'block' ? 'block' : outcome === 'crit' ? 'crit' : blow.roll === 'spell' ? 'spell' : 'hit');
     if (target.airborne) target.knockdownOnLand = true;
-    damage(match, ai, ti, amount, kind);
+    damage(match, ai, ti, amount, kind, a?.id);
     if (rules.hitstun.light > 0) stagger(match, ai, ti, blow, outcome === 'crit', reeling);
   }
 
@@ -1334,7 +1393,7 @@ function strike(match: Match, ai: 0 | 1, ti: 0 | 1, blow: Blow, dir: number, spa
   const kit = match.tables[ai].kit;
   if (kit.resource === 'rage' || kit.resource === 'fury' || kit.resource === 'runic') {
     let gain = a ? a.gain : 0;
-    if (!a && blow.roll === 'melee') {
+    if (!a && blow.roll === 'melee' && kit.resource !== 'runic') {
       const w = match.tables[ai].weapon.wielding;
       gain = w === 'twoHand' || w === 'long' ? GAIN_ON_SWING.twoHand : GAIN_ON_SWING.oneHand;
     }
@@ -1549,8 +1608,8 @@ function beginBeat(match: Match, k: number): void {
   if (beat.motion === 'behind') {
     // A step behind the target, or in front of them when the wall is at their back.
     const toward: 1 | -1 = l.x >= w.x ? 1 : -1;
-    const behind = l.x + toward * (BODY + 0.3);
-    w.x = Math.abs(behind) <= HALF ? behind : l.x - toward * (BODY + 0.3);
+    const behind = l.x + toward * (contactOf(match) + 0.3);
+    w.x = Math.abs(behind) <= HALF ? behind : l.x - toward * (contactOf(match) + 0.3);
     w.facing = w.x < l.x ? 1 : -1;
   }
   if (!beat.impact) victim(match, k, beat);
@@ -1574,10 +1633,10 @@ function fatalityStep(match: Match): void {
   const s = run.t / beat.frames;
   switch (beat.motion) {
     case 'dash':
-      if (Math.abs(l.x - w.x) > 1.3) w.x += toward * 0.3;
+      if (Math.abs(l.x - w.x) > contactOf(match) + 0.1) w.x += toward * 0.3;
       break;
     case 'leap': {
-      const target = l.x - toward * 1.2;
+      const target = l.x - toward * contactOf(match);
       w.x = run.fromX + (target - run.fromX) * s;
       w.z = 1.4 * 4 * s * (1 - s);
       break;
@@ -1589,7 +1648,7 @@ function fatalityStep(match: Match): void {
       break;
     }
     case 'pull':
-      if (Math.abs(l.x - w.x) > 1.2) l.x -= toward * 0.22;
+      if (Math.abs(l.x - w.x) > contactOf(match)) l.x -= toward * 0.22;
       break;
     default:
       break;
@@ -1641,7 +1700,7 @@ function attacks(match: Match, i: 0 | 1): void {
   if (f.state === 'attack') {
     const hit = swingOf(match, i);
     if (at < hit.from) return;
-    if (table.weapon.ranged) {
+    if (table.weapon.ranged && !f.close) {
       f.hitDone = true;
       launch(match, i, -1, table.weapon.damage);
       return;
@@ -1653,8 +1712,8 @@ function attacks(match: Match, i: 0 | 1): void {
     // A jumping attack reaches down: a target ahead, or just under, no higher than the attacker.
     if (f.airAttack) {
       const ahead = f.facing * (target.x - f.x);
-      if (ahead < -AIR_UNDER || ahead > hit.reach || target.z > f.z + 0.5) return;
-    } else if (!inReach(f, target, hit.reach, false)) {
+      if (ahead < -AIR_UNDER || ahead > hit.reach + contactOf(match) - BODY || target.z > f.z + 0.5) return;
+    } else if (!inReach(match, f, target, hit.reach, false)) {
       return;
     }
     f.hitDone = true;
@@ -1662,9 +1721,11 @@ function attacks(match: Match, i: 0 | 1): void {
     const rules = rulesOf(match);
     const last = rules.chain.length > 1 && f.chain === rules.chain.length - 1;
     const blow: Blow = {
-      damage: Math.round(table.weapon.damage * rules.chain[f.chain]!),
+      // Unrounded: the blow is rolled in its range and rounded once, as every other blow is.
+      damage: (f.close ? table.weapon.close!.damage : table.weapon.damage) * rules.chain[f.chain]!,
       roll: 'melee',
       ability: undefined,
+      spread: f.close ? table.weapon.close!.spread : undefined,
       pushback: PUSHBACK.swing * (last ? rules.chainEnd.pushback : 1),
       hitstop: rules.swingHitstop,
       from: sideOf(target, f.x),
@@ -1694,7 +1755,7 @@ function attacks(match: Match, i: 0 | 1): void {
     f.hitDone = true;
     return;
   }
-  if (!inReach(f, target, a.range + REACH_SLACK, a.both)) return;
+  if (!inReach(match, f, target, a.range + REACH_SLACK, a.both)) return;
   f.hitDone = true;
   const dir = target.x >= f.x ? 1 : -1;
   const [sx, sz] = impactAt(match, i, ti, dir);
@@ -1709,7 +1770,7 @@ function projectiles(match: Match): void {
     const ti = other(p.owner);
     const target = match.fighters[ti];
     let gone = Math.abs(p.x) > HALF + 1;
-    if (!gone && target.state !== 'death' && Math.abs(target.x - p.x) < 0.7 && target.z < 1.0) {
+    if (!gone && target.state !== 'death' && Math.abs(target.x - p.x) < PROJECTILE_HIT && target.z < 1.0) {
       const a = p.ability >= 0 ? abilityOf(match, p.owner, p.ability) : undefined;
       const dir = Math.sign(p.vx) || 1;
       strike(match, p.owner, ti, { damage: p.damage, roll: a ? 'spell' : 'ranged', ability: a, pushback: a ? PUSHBACK.bolt : PUSHBACK.spell, hitstop: 5, from: dir > 0 ? -1 : 1 }, dir, p.x, p.z);
@@ -1741,7 +1802,10 @@ function physics(match: Match): void {
         f.airborne = false;
         const attacked = f.airAttack;
         f.airAttack = false;
-        if (f.knockdownOnLand) {
+        if (f.state === 'death') {
+          // Killed in the air: they land dead, not knocked down to get up again.
+          f.knockdownOnLand = false;
+        } else if (f.knockdownOnLand) {
           f.knockdownOnLand = false;
           if (f.stunT > 0) play(f, 'stun', 'dazed');
           else play(f, 'knockdown', 'knockdown');
@@ -1759,14 +1823,15 @@ function physics(match: Match): void {
   for (const f of match.fighters) f.x = Math.min(HALF, Math.max(-HALF, f.x));
   // Bodies do not overlap: the one in the corner stays, the other gives way.
   const gap = Math.abs(a.x - b.x);
-  if (gap < BODY) {
-    const push = (BODY - gap) / 2;
+  const contact = contactOf(match);
+  if (gap < contact) {
+    const push = (contact - gap) / 2;
     const left = a.x <= b.x ? a : b;
     const right = left === a ? b : a;
     const leftWall = left.x - push < -HALF;
     const rightWall = right.x + push > HALF;
-    if (leftWall && !rightWall) right.x = left.x + BODY;
-    else if (rightWall && !leftWall) left.x = right.x - BODY;
+    if (leftWall && !rightWall) right.x = left.x + contact;
+    else if (rightWall && !leftWall) left.x = right.x - contact;
     else {
       left.x -= push;
       right.x += push;
@@ -1843,8 +1908,13 @@ function timeout(match: Match): void {
     return;
   }
   const winner: 0 | 1 = a.hp > b.hp ? 0 : 1;
-  const loser = other(winner);
-  play(match.fighters[loser], 'death', 'death');
+  const l = match.fighters[other(winner)];
+  l.knockdownOnLand = false;
+  l.stunT = 0;
+  l.fearT = 0;
+  l.cast = undefined;
+  l.dash = undefined;
+  play(l, 'death', 'death');
   match.projectiles.length = 0;
   knockout(match, winner);
 }

@@ -72,8 +72,11 @@ export interface ResolvedFatality {
   spec: Fatality;
   /** The winner's move for each beat. */
   winner: Move[];
-  /** The loser's move for each beat; undefined where the beat leaves them as they are. */
-  loser: (Move | undefined)[];
+  /**
+   * This model's part as the loser of every class's fatality, by fatality id: its move for each
+   * beat, undefined where the beat leaves them as they are. The winner's class picks the fatality.
+   */
+  victim: Readonly<Record<string, (Move | undefined)[]>>;
 }
 
 /** Each key of the sequence must follow the one before within 1.5 s. */
@@ -228,13 +231,22 @@ export function resolveFatality(classId: number | undefined, wielding: Wielding,
   return {
     spec,
     winner: spec.beats.map((b, k) => moveFrom(find, `fatality${k}`, b.winner, b.loop ?? false, idle)),
-    loser: spec.beats.map((b, k) => (b.loser ? moveFrom(find, `victim${k}`, b.loser.anims, false, idle) : undefined)),
+    victim: Object.fromEntries(
+      Object.values(FATALITIES).map((f) => [f.id, f.beats.map((b, k) => (b.loser ? moveFrom(find, `victim${k}`, b.loser.anims, false, idle) : undefined))]),
+    ),
   };
 }
 
 /** The frame of a beat at which its blow lands. */
 export function impactFrame(beat: Beat): number {
   return Math.floor(beat.frames * (beat.impactAt ?? 0.3));
+}
+
+/** Whether a blow lands on tick `t` of the beat: at its impact frame, and every `repeat` after for a volley or a channel. */
+export function isBlow(beat: Beat, t: number): boolean {
+  if (!beat.impact) return false;
+  const at = impactFrame(beat);
+  return t === at || (beat.repeat !== undefined && t > at && (t - at) % beat.repeat === 0);
 }
 
 /** Ticks a whole fatality takes. */

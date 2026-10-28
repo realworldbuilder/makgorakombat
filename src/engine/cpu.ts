@@ -226,8 +226,10 @@ function decide(match: Match, me: 0 | 1): Inputs {
     // A caster moves between casts: it backs off from a melee opponent at its elbow, comes in when too
     // far to reach, and otherwise steps one way or the other half the time rather than standing to cast.
     if (table.weapon.ranged) out.attack = dist <= table.weapon.range;
+    // Pinned in melee it mostly stands and fights, swinging between casts: a backpedal never outruns a
+    // runner and only spoils the next cast. The blink and the leap are its way out.
     if (dist < 2.0 && !cornered) {
-      if (nextRandom(match) < 0.7) backOff();
+      if (nextRandom(match) < 0.3) backOff();
       else out.attack = true;
     } else if (dist > 6.5) walkIn();
     else if (dist < 2.0) out.attack = true;

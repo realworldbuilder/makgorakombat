@@ -1,7 +1,7 @@
 /* LifeCraft, the fan-made Warcraft lettering, for the MAK'GORA half of the logo. */
 @font-face {
   font-family: 'LifeCraft';
-  src: url('/makgorakombat/fonts/LifeCraft.woff2') format('woff2'), url('/makgorakombat/fonts/LifeCraft.ttf') format('truetype');
+  src: url('/fonts/LifeCraft.woff2') format('woff2'), url('/fonts/LifeCraft.ttf') format('truetype');
   font-weight: normal;
   font-style: normal;
   font-display: swap;
@@ -221,6 +221,7 @@ code {
 .title .hint,
 .title .opening,
 .title .credits,
+.title .presence,
 .title .logo,
 .title .tagline,
 .title .billing {
@@ -275,6 +276,21 @@ code {
 
 .title .hint b {
   color: var(--text);
+}
+
+/* The title come back to with the folder open: the way to let it go for another. */
+.title .hint.opened .link {
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--dim);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.title .hint.opened .link:hover {
+  color: var(--gold);
 }
 
 .title .opening {
@@ -560,13 +576,28 @@ code {
   gap: 14px;
 }
 
+/* One column, never wrapped: the presence line's 100% basis would otherwise open a second column
+   beside the logo whenever the relay answers, and push logo and call off centre. */
 .select .middle.legends-only header {
   flex-direction: column;
+  flex-wrap: nowrap;
+}
+
+/* Tucked under the call, so the line costs the short screens as little height as it can. */
+.select .middle.legends-only header .presence {
+  margin-top: -4px;
 }
 
 .select .middle.legends-only .logo-art {
   width: min(100%, 640px, 60vh);
   margin: -1.5vh 0 -0.5vh;
+}
+
+/* A short screen also has the presence line to fit, so the logo gives back the height of it. */
+@media (max-height: 800px) {
+  .select .middle.legends-only .logo-art {
+    width: min(100%, 640px, 52vh);
+  }
 }
 
 /* On a short screen the tiles give a little width back so logo, call and both rows still fit. */
@@ -599,6 +630,65 @@ code {
   width: 100%;
   min-height: 0;
   display: block;
+  /* Dragged sideways to turn the champion; an up-and-down swipe still scrolls on a phone. */
+  cursor: grab;
+  touch-action: pan-y;
+}
+
+.preview:active {
+  cursor: grabbing;
+}
+
+/* The champion and, at their feet, Enter World. */
+.stand {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+/* Red and gold, as the game's own Enter World. */
+.enter-world {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 200px;
+  padding: 9px 26px;
+  border: 2px solid var(--gold-dark);
+  border-radius: 6px;
+  background: linear-gradient(180deg, #b3141c 0%, #7a0b10 55%, #4e0609 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 220, 160, 0.35), 0 3px 10px rgba(0, 0, 0, 0.6);
+  color: var(--gold);
+  font-family: var(--serif);
+  font-weight: 700;
+  font-size: 1.05rem;
+  letter-spacing: 0.06em;
+  text-shadow: 0 1px 2px #000;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.enter-world:hover:not(:disabled) {
+  background: linear-gradient(180deg, #d01a23 0%, #921015 55%, #5e080c 100%);
+  border-color: var(--gold);
+  color: #fff3b0;
+}
+
+.enter-world:active:not(:disabled) {
+  transform: translateX(-50%) translateY(1px);
+}
+
+.enter-world:disabled {
+  cursor: default;
+}
+
+/* In: greyed, as the game's button is while the world loads. */
+.enter-world.in {
+  background: linear-gradient(180deg, #3a3434, #221e1e);
+  color: var(--dim);
+  border-color: #5a4a3a;
 }
 
 .plate {
@@ -863,6 +953,28 @@ code {
 
 .controls b {
   color: var(--gold);
+}
+
+/* The select screen's one line of fine print, under its controls. */
+.select .fine {
+  flex: none;
+  margin: 0;
+  font-size: 0.66rem;
+  color: var(--dim);
+  opacity: 0.7;
+  letter-spacing: 0.03em;
+  text-align: center;
+}
+
+.select .version {
+  position: absolute;
+  left: 14px;
+  bottom: 8px;
+  font-size: 0.7rem;
+  color: var(--dim);
+  opacity: 0.8;
+  letter-spacing: 0.04em;
+  pointer-events: none;
 }
 
 /* ---- versus and the fight ------------------------------------------------------------- */
@@ -1136,7 +1248,15 @@ code {
 
 .creator .plate-name {
   text-align: center;
-  padding: 0 16px;
+  padding: 0 16px 4px;
+}
+
+.creator .plate-name .title {
+  padding: 2px 0 0;
+}
+
+.creator .plate-name .title span + span {
+  margin-left: -0.3em;
 }
 
 .creator .plate-name .name {
@@ -1334,6 +1454,323 @@ code {
   text-align: center;
 }
 
+/* Opened on a champion that comes with the game: a word on why there is nothing to change. */
+.creator .built-in {
+  margin: 0 0 14px;
+  font-family: var(--serif);
+  font-size: 0.95rem;
+  line-height: 1.45;
+  color: var(--gold);
+  text-align: center;
+}
+
+/* The character sheet's slots round the champion: head to wrist on the left, hands to feet on the right, the weapons beneath. */
+.creator .doll {
+  --slot: clamp(34px, 5.8vh, 48px);
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 6px 10px;
+  padding: 6px 16px 8px;
+}
+
+.creator .doll-side {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.creator .doll-model {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+
+.creator .doll-weapons {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+
+.creator .doll-slot {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: var(--slot);
+  height: var(--slot);
+  padding: 0;
+  border: none;
+  font-size: 16px;
+  color: var(--dim);
+  cursor: pointer;
+}
+
+.creator .doll-slot.fixed {
+  cursor: default;
+}
+
+.creator .doll-slot.small {
+  --slot: 30px;
+}
+
+.creator .doll-slot .item-icon {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  display: block;
+}
+
+/* An empty slot: the game's own outline of what goes there. */
+.creator .doll-slot .item-icon.outline {
+  opacity: 0.9;
+}
+
+/* Neck, rings and trinkets: on the sheet, but nothing worn there shows. */
+.creator .doll-slot.bare {
+  filter: saturate(0.6) brightness(0.8);
+}
+
+/* An item the champion's class could not wear: tinted red, as the game tints it. */
+.creator .doll-slot .unusable {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: rgba(255, 24, 24, 0.55);
+  mix-blend-mode: multiply;
+  pointer-events: none;
+}
+
+.creator .doll-slot:not(.fixed):hover::after,
+.creator .doll-slot.here::after {
+  box-shadow:
+    inset 0 0 0 2px var(--gold),
+    inset 0 0 0 3px rgba(0, 0, 0, 0.55),
+    inset 0 0 0.8em rgba(255, 209, 0, 0.45);
+}
+
+.creator .doll-slot:not(.fixed):hover {
+  filter: brightness(1.2);
+}
+
+/* The champion's item level under the name, as the sheet has it. */
+.creator .plate-name .item-level {
+  font-family: var(--friz, var(--serif));
+  font-size: 0.9rem;
+  color: var(--wow-gold, var(--gold));
+  text-shadow: 1px 1px 0 #000;
+}
+
+.creator .plate-name .item-level b {
+  color: #b552ff;
+  font-weight: 400;
+}
+
+.creator .slot-tip {
+  position: absolute;
+  z-index: 6;
+  width: 15em;
+  text-align: left;
+  pointer-events: none;
+}
+
+.creator .slot-tip.left {
+  left: calc(100% + 8px);
+  top: 0;
+}
+
+.creator .slot-tip.right {
+  right: calc(100% + 8px);
+  top: 0;
+}
+
+.creator .slot-tip.bottom {
+  left: 50%;
+  bottom: calc(100% + 8px);
+  transform: translateX(-50%);
+}
+
+/* The Gear row: the slot the arrows are on and what is in it. */
+.creator .gear-pick {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  padding: 4px 6px;
+  background: #0b0708;
+  border: 1px solid #5a4020;
+  border-radius: 4px;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.creator .gear-pick:hover {
+  border-color: var(--gold);
+}
+
+.creator .gear-slot {
+  flex: none;
+  font-family: var(--serif);
+  font-weight: 700;
+  font-size: 0.72rem;
+  color: var(--gold);
+}
+
+.creator .gear-item {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The picker: every item the folder has for a slot, over the column. */
+.creator .item-picker {
+  position: absolute;
+  inset: 10px;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background: linear-gradient(180deg, #1e1e24, #0d0d11);
+}
+
+.creator .picker-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.creator .picker-glyph {
+  width: 26px;
+  height: 26px;
+  margin-right: 8px;
+  border-radius: 3px;
+}
+
+.creator .picker-head .picker-close {
+  margin-left: auto;
+}
+
+.creator .picker-title {
+  font-family: var(--serif);
+  font-weight: 900;
+  font-size: 1.05rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+
+.creator .picker-close {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid #5c5c66;
+  border-radius: 4px;
+  background: #1a0d06;
+  color: var(--gold);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.creator .picker-search {
+  padding: 6px 8px;
+  background: #0b0708;
+  color: var(--text);
+  border: 1px solid #5a4020;
+  border-radius: 4px;
+  font: inherit;
+  font-size: 0.9rem;
+}
+
+.creator .picker-search:focus {
+  outline: none;
+  border-color: var(--gold);
+}
+
+.creator .picker-list {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.creator .picker-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 6px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.creator .picker-item.here {
+  border-color: var(--gold-dark);
+  background: rgba(255, 209, 0, 0.08);
+}
+
+.creator .picker-item.worn .picker-name::after {
+  content: ' ✓';
+  color: var(--gold);
+}
+
+.creator .picker-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--friz, var(--serif));
+  font-size: 0.88rem;
+  text-shadow: 1px 1px 0 #000;
+}
+
+.creator .picker-kind {
+  flex: none;
+  font-size: 0.72rem;
+  color: var(--dim);
+}
+
+.creator .picker-kind.h-red {
+  color: var(--wow-red, #ff2020);
+}
+
+.creator .picker-level {
+  flex: none;
+  min-width: 2.2em;
+  font-size: 0.72rem;
+  text-align: right;
+  color: var(--wow-gold, var(--gold));
+}
+
+/* The highlighted item's tooltip, beside the picker over the champion. */
+.creator .picker-tip {
+  position: absolute;
+  right: calc(100% + 10px);
+  top: 48px;
+  width: 17em;
+  text-align: left;
+  pointer-events: none;
+}
+
+.creator .picker-count {
+  margin: 0;
+  text-align: center;
+}
+
 /* The tile that opens the creator: a gold question mark on the legends' plate. */
 .tile.create {
   display: grid;
@@ -1390,8 +1827,19 @@ code {
     border-top: 1px solid var(--line);
   }
 
-  .creator .armour-tip {
+  .creator .armour-tip,
+  .creator .slot-tip {
     display: none;
+  }
+
+  .creator .doll {
+    --slot: 32px;
+    gap: 4px;
+    padding: 4px 8px;
+  }
+
+  .creator .doll-side {
+    gap: 3px;
   }
 }
 
@@ -1403,10 +1851,1093 @@ code {
   text-align: center;
 }
 
+.guide.folder-note {
+  width: min(560px, 94vw);
+}
+
+.guide.folder-note p {
+  margin: 0;
+}
+
 .guide .body.create-first .big {
   margin: 0;
   font-family: var(--serif);
   font-weight: 700;
   font-size: 1.2rem;
   color: var(--gold);
+}
+
+/* ---- next stage: the ground drawn for an online match ----------------------------------- */
+
+.guide .body.next-stage-card {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 24px 24px 28px;
+  text-align: center;
+}
+
+.next-stage-card p {
+  margin: 0;
+}
+
+.next-stage-card .label {
+  font-family: var(--warcraft);
+  font-size: 1.6rem;
+  letter-spacing: 0.08em;
+  color: var(--gold);
+}
+
+.next-stage-card .picture {
+  width: min(480px, 80vw);
+  aspect-ratio: 16 / 9;
+  border: 1px solid #5c5c66;
+  background: #000;
+  overflow: hidden;
+}
+
+.next-stage-card .picture img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.next-stage-card .big {
+  font-family: var(--serif);
+  font-weight: 700;
+  font-size: 1.3rem;
+  color: var(--gold);
+}
+
+.next-stage-card .names {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  margin-top: 8px;
+  font-family: var(--friz);
+  font-size: 1.1rem;
+  letter-spacing: 0.04em;
+}
+
+.next-stage-card .names .vs {
+  font-family: var(--warcraft);
+  font-size: 1.5rem;
+  color: var(--gold);
+}
+
+/* ---- report an issue ------------------------------------------------------------------ */
+
+/* The bug tab, pinned to the top of the screen as the beta pins its reporter: there on every
+   screen, quiet until the pointer finds it. */
+.reporter-tab {
+  position: fixed;
+  top: 0;
+  left: 50%;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 22px;
+  padding: 0;
+  transform: translateX(-50%);
+  background: linear-gradient(180deg, #3a0c0c, #1a0606);
+  border: 1px solid #8a6a2a;
+  border-top: none;
+  border-radius: 0 0 6px 6px;
+  color: var(--gold);
+  opacity: 0.55;
+  cursor: pointer;
+  transition: opacity 0.15s, height 0.15s;
+}
+
+.reporter-tab:hover,
+.reporter-tab:focus-visible {
+  height: 28px;
+  opacity: 1;
+}
+
+.reporter-tab .reporter-tip {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  display: none;
+  width: max-content;
+  max-width: 24em;
+  transform: translateX(-50%);
+  font-variant: normal;
+  pointer-events: none;
+}
+
+.reporter-tab:hover .reporter-tip {
+  display: block;
+}
+
+.reporter-backdrop {
+  z-index: 40;
+}
+
+/* The music tab, the same tab just right of the bug's; dimmer still while the music is off. */
+.reporter-tab.music-tab {
+  left: calc(50% + 42px);
+}
+
+.reporter-tab.music-tab.off {
+  color: #9a8a6a;
+  opacity: 0.4;
+}
+
+.reporter-tab.music-tab.off:hover,
+.reporter-tab.music-tab.off:focus-visible {
+  opacity: 1;
+}
+
+/* The voice tab, right of the music tab, in an online match only: lit while the other player is on voice and this one is not. */
+.reporter-tab.voice-tab {
+  left: calc(50% + 84px);
+}
+
+.reporter-tab.voice-tab.opening {
+  animation: pulse 0.8s ease-in-out infinite;
+}
+
+.reporter-tab.voice-tab.open {
+  color: #8fd88f;
+}
+
+.reporter-tab.voice-tab.called {
+  height: 28px;
+  opacity: 1;
+  color: #fff3c4;
+  box-shadow: 0 0 10px 2px rgba(255, 209, 0, 0.55);
+  animation: voice-call 1.2s ease-in-out infinite;
+}
+
+.reporter-tab.voice-tab.error {
+  color: #e06a5a;
+}
+
+@keyframes voice-call {
+  50% {
+    box-shadow: 0 0 3px 0 rgba(255, 209, 0, 0.2);
+  }
+}
+
+.guide.reporter {
+  width: min(560px, 94vw);
+}
+
+.reporter .body p.dim.small {
+  margin: 0 0 10px;
+}
+
+.reporter .body input,
+.reporter .body textarea {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid #5c5c66;
+  border-radius: 4px;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.95rem;
+  resize: vertical;
+}
+
+.reporter .body input:focus,
+.reporter .body textarea:focus {
+  outline: none;
+  border-color: var(--gold-dark);
+  box-shadow: 0 0 0 1px rgba(255, 209, 0, 0.3);
+}
+
+.reporter .count {
+  margin-top: -4px;
+  text-align: right;
+}
+
+.reporter .attached {
+  margin: 6px 0 14px;
+  font-size: 0.85rem;
+  color: var(--dim);
+}
+
+.reporter .attached summary {
+  color: var(--wow-gold);
+  cursor: pointer;
+}
+
+.reporter .attached ul {
+  margin: 6px 0 0;
+  padding-left: 20px;
+  overflow-wrap: anywhere;
+}
+
+.reporter .actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.reporter .button {
+  background: linear-gradient(180deg, #3a2a2a, #1a1010);
+  font: inherit;
+}
+
+.reporter .button.primary {
+  background: linear-gradient(180deg, #8a1010, #3a0606);
+}
+
+.reporter .button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.reporter .hint {
+  margin: 12px 0 0;
+}
+
+.reporter .done h3 {
+  margin-top: 0;
+  color: var(--wow-gold);
+}
+
+.reporter .done a {
+  color: var(--wow-blue);
+}
+
+/* ---- PLAY ONLINE ---------------------------------------------------------------------- */
+
+/* Under the title's action bar and the roster's call: how many are fighting online and waiting in the queue. */
+.presence {
+  flex-basis: 100%;
+  margin: 4px 0 0;
+  text-align: center;
+  color: var(--dim);
+  font-size: 0.85rem;
+  letter-spacing: 0.06em;
+}
+
+.presence b {
+  color: var(--gold);
+}
+
+.guide.online {
+  width: min(520px, 94vw);
+}
+
+.guide .body.online-here,
+.guide .body.online-name,
+.guide .body.online-code,
+.guide .body.online-challenge {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  padding: 24px 24px 22px;
+  text-align: center;
+}
+
+.guide.online p {
+  margin: 0;
+}
+
+.guide.online .choices {
+  display: flex;
+  gap: 14px;
+}
+
+.guide.online .choices .button {
+  min-width: 9em;
+  padding: 12px 18px;
+  font-size: 1.1rem;
+  background: none;
+}
+
+/* WHO'S HERE: one row a player, the chosen one lit as the roster lights a tile. */
+.guide.online .me {
+  color: var(--text);
+}
+
+.guide.online .me b {
+  color: var(--gold);
+  font-family: var(--serif);
+}
+
+.guide.online .link {
+  margin-left: 8px;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--dim);
+  font: inherit;
+  font-size: 0.85rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.guide.online .link:hover {
+  color: var(--gold);
+}
+
+.guide.online .players {
+  width: 100%;
+  max-height: 46vh;
+  overflow: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--line);
+}
+
+.guide.online .players li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 48px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--line);
+  border-left: 3px solid transparent;
+  text-align: left;
+}
+
+.guide.online .players li.chosen {
+  background: rgba(255, 209, 0, 0.06);
+  border-left-color: var(--gold);
+}
+
+.guide.online .players .name {
+  font-family: var(--serif);
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: var(--text);
+}
+
+.guide.online .players li.busy .name {
+  color: var(--dim);
+}
+
+.guide.online .players .button {
+  padding: 5px 14px;
+  background: none;
+}
+
+.guide.online .players .asking {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.guide.online .nobody {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+}
+
+/* The numbers at the top of the panel: how many are online, waiting and fighting. */
+.guide.online .counts {
+  color: var(--gold);
+  font-family: var(--serif);
+  font-weight: 700;
+  font-size: 0.95rem;
+  letter-spacing: 0.08em;
+}
+
+/* FIND A FIGHT: the queue, the panel's first and biggest thing; waiting, the seconds count up in it. */
+.guide.online .find {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 16px 18px;
+  background: rgba(255, 209, 0, 0.04);
+  border: 2px solid var(--gold-dark);
+  border-radius: 10px;
+  color: var(--gold);
+  font: inherit;
+  cursor: pointer;
+}
+
+.guide.online .find.chosen {
+  border-color: var(--gold);
+  background: rgba(255, 209, 0, 0.1);
+}
+
+.guide.online button.find:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.guide.online .find .big {
+  font-family: var(--warcraft);
+  font-size: 2rem;
+  letter-spacing: 0.06em;
+}
+
+.guide.online .find .keys {
+  color: var(--dim);
+  font-size: 0.8rem;
+}
+
+.guide.online .find.on {
+  cursor: default;
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+.guide.online .find .clock {
+  font-family: var(--serif);
+  font-weight: 700;
+  font-size: 2.4rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.guide.online .find .words {
+  color: var(--text);
+}
+
+.guide.online .find .button {
+  margin-top: 6px;
+  padding: 5px 14px;
+  background: none;
+}
+
+.guide.online .who {
+  justify-self: start;
+  margin: 6px 0 -6px;
+  color: var(--dim);
+  font-family: var(--serif);
+  font-size: 0.85rem;
+  letter-spacing: 0.12em;
+}
+
+/* Tonight's record beside a name under WHO'S HERE: "3-1". */
+.guide.online .players .record {
+  margin-left: 10px;
+  color: var(--dim);
+  font-family: inherit;
+  font-weight: 400;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+/* The switch for the browser's notification when a fight comes. */
+.guide.online .notify {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.guide.online .notify input {
+  accent-color: var(--gold);
+}
+
+/* TOP TEN: tonight or all time, the player's own row lit and, out of the ten, pinned under it. */
+.guide .body.online-board {
+  padding: 18px 24px 22px;
+}
+
+.board {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  text-align: center;
+}
+
+.board .spans {
+  display: flex;
+  gap: 6px;
+}
+
+.board .spans button {
+  padding: 5px 14px;
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--dim);
+  font-family: var(--serif);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+}
+
+.board .spans button.here {
+  color: var(--gold);
+  border-color: var(--gold);
+}
+
+.board table {
+  width: 100%;
+  border-collapse: collapse;
+  border-top: 1px solid var(--line);
+}
+
+.board td {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+
+.board .rank {
+  width: 2.2em;
+  color: var(--gold);
+  font-family: var(--serif);
+  font-weight: 700;
+  text-align: right;
+}
+
+.board .name {
+  color: var(--text);
+  font-family: var(--serif);
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+
+.board .record {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.board .streak {
+  color: var(--dim);
+  font-size: 0.85rem;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.board tr.me {
+  background: rgba(255, 209, 0, 0.06);
+}
+
+.board tr.me td:first-child {
+  box-shadow: inset 3px 0 0 var(--gold);
+}
+
+.board tr.me .name {
+  color: var(--gold);
+}
+
+.board tr.gap td {
+  padding: 2px;
+  color: var(--dim);
+  text-align: center;
+}
+
+/* On the title under the presence line: the board's top five, and the way to the whole ten. */
+.title-board {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  width: min(440px, 92vw);
+  padding: 14px 20px 12px;
+  background: rgba(8, 4, 5, 0.78);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+}
+
+.title-board h2 {
+  margin: 0;
+  color: var(--gold);
+  font-family: var(--serif);
+  font-size: 0.95rem;
+  letter-spacing: 0.3em;
+}
+
+.title-board .board {
+  width: 100%;
+  gap: 10px;
+}
+
+.title-board .board td {
+  padding: 5px 8px;
+}
+
+.title-board .board .name {
+  font-size: 0.98rem;
+}
+
+.title-board .board p {
+  margin: 0;
+}
+
+.title-board .link {
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--dim);
+  font: inherit;
+  font-size: 0.8rem;
+  letter-spacing: 0.06em;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.title-board .link:hover {
+  color: var(--gold);
+}
+
+/* A match from the queue: FOUND over the stranger's name. */
+.guide.online .found {
+  color: var(--gold);
+  font-family: var(--warcraft);
+  font-size: 1.4rem;
+  letter-spacing: 0.2em;
+}
+
+.guide.online input.name {
+  width: 12em;
+  padding: 8px 10px;
+  background: var(--stone);
+  border: 1px solid var(--gold-dark);
+  border-radius: 8px;
+  outline: none;
+  color: var(--gold);
+  font-family: var(--serif);
+  font-size: 1.5rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.guide.online input.name::placeholder {
+  color: var(--line);
+}
+
+.guide.online .join-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* The thirty seconds of a challenge, emptying. */
+.countdown {
+  flex: none;
+}
+
+.countdown circle {
+  fill: none;
+  stroke-width: 5;
+}
+
+.countdown .track {
+  stroke: var(--line);
+}
+
+.countdown .left {
+  stroke: var(--gold);
+  transition: stroke-dashoffset 0.1s linear;
+}
+
+.countdown text {
+  fill: var(--gold);
+  font-family: var(--serif);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.guide.online.challenge {
+  width: min(420px, 94vw);
+  border-color: var(--gold);
+}
+
+.guide.online .button {
+  white-space: nowrap;
+}
+
+/* Above everything, the guide and the creator too. */
+.challenge-backdrop {
+  z-index: 40;
+}
+
+.guide.online .big {
+  margin: 0;
+  font-family: var(--serif);
+  font-weight: 700;
+  font-size: 1.6rem;
+  color: var(--gold);
+}
+
+.lobby-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  z-index: 30;
+  transform: translateX(-50%);
+  padding: 10px 20px;
+  background: rgba(10, 6, 7, 0.9);
+  border: 1px solid var(--gold-dark);
+  border-radius: 8px;
+  color: var(--text);
+  pointer-events: none;
+}
+
+/* The room code, large enough to read out across a call. */
+.guide.online .code {
+  width: 7.2em;
+  padding: 6px 0 4px;
+  background: var(--stone);
+  border: 1px solid var(--gold-dark);
+  border-radius: 8px;
+  color: var(--gold);
+  font-family: var(--serif);
+  font-size: 2.6rem;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-align: center;
+  text-indent: 0.22em;
+  font-variant-numeric: tabular-nums;
+}
+
+.guide.online input.code {
+  outline: none;
+  text-transform: uppercase;
+}
+
+.guide.online .code.small {
+  width: 6.4em;
+  font-size: 1.6rem;
+}
+
+.guide.online input.code::placeholder {
+  color: var(--line);
+}
+
+.guide.online .button[disabled] {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.guide.online .waiting {
+  color: var(--text);
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+.settings .row.relay {
+  grid-template-columns: 7em 1fr auto;
+}
+
+.settings .row.relay input {
+  width: 100%;
+  padding: 6px 8px;
+  background: var(--stone);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9rem;
+}
+
+/* Over a fight being watched: whose it is, under the clock. */
+.fight .watch-banner {
+  position: absolute;
+  left: 50%;
+  top: 112px;
+  z-index: 5;
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  transform: translateX(-50%);
+  padding: 6px 18px;
+  background: rgba(10, 6, 7, 0.72);
+  border: 1px solid var(--gold-dark);
+  border-radius: 6px;
+  color: var(--dim);
+  font-family: var(--serif);
+  font-size: 0.95rem;
+  letter-spacing: 0.12em;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.fight .watch-banner b {
+  color: var(--gold);
+  letter-spacing: 0.04em;
+}
+
+.fight .watch-banner span {
+  font-family: system-ui, sans-serif;
+  font-size: 0.75rem;
+  letter-spacing: 0;
+}
+
+/* Over the fight: the wait for the other player's inputs, a desync, and the notes on how this install draws the fight. */
+.fight .net-banner {
+  position: absolute;
+  left: 50%;
+  top: 38%;
+  z-index: 5;
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+  transform: translate(-50%, -50%);
+  padding: 14px 26px;
+  background: rgba(10, 6, 7, 0.82);
+  border: 1px solid var(--gold-dark);
+  border-radius: 8px;
+  color: var(--gold);
+  font-family: var(--serif);
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  pointer-events: none;
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+.fight .net-banner.bad {
+  border-color: var(--blood);
+  color: #ff4a4a;
+  animation: none;
+}
+
+.fight .net-banner span {
+  max-width: 28em;
+  color: var(--dim);
+  font-family: system-ui, sans-serif;
+  font-size: 0.9rem;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-align: center;
+}
+
+.fight .net-notes {
+  position: absolute;
+  left: 50%;
+  top: 150px;
+  z-index: 5;
+  transform: translateX(-50%);
+  max-width: min(640px, 90vw);
+  pointer-events: none;
+  color: #ffd100;
+  font-size: 0.9rem;
+  text-align: center;
+  text-shadow: 0 1px 3px #000;
+}
+
+.fight .net-notes p {
+  margin: 4px 0;
+}
+
+/* TOURNAMENT: the panel widens for the bracket; UP NEXT over it, the rounds side by side under it. */
+.guide.online.wide {
+  width: min(1080px, 96vw);
+}
+
+.guide .body.online-cup {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  padding: 20px 24px 22px;
+  text-align: center;
+}
+
+.guide.online .online-cup .players {
+  max-height: 34vh;
+}
+
+.guide.online .online-cup .players .button {
+  white-space: nowrap;
+}
+
+.guide.online .online-cup .seeds {
+  width: 100%;
+  max-height: 30vh;
+  overflow: auto;
+  margin: 0;
+  padding: 0 0 0 2.4em;
+  border-top: 1px solid var(--line);
+  text-align: left;
+}
+
+.guide.online .online-cup .seeds li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--line);
+  color: var(--gold);
+}
+
+.guide.online .online-cup .seeds .name {
+  color: var(--text);
+  font-family: var(--serif);
+  font-weight: 700;
+}
+
+.guide.online .online-cup .seeds .link {
+  font-size: 1rem;
+  text-decoration: none;
+}
+
+.guide.online .online-cup .seeds .link:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.guide.online .online-cup .small-choices {
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.guide.online .online-cup .small-choices .button {
+  min-width: 0;
+  padding: 5px 12px;
+  font-size: 0.9rem;
+}
+
+.guide.online .online-cup .button.on {
+  border-color: var(--gold);
+  background: rgba(255, 209, 0, 0.14);
+}
+
+.guide.online .online-cup .button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.guide.online .online-cup .champion {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  padding: 8px 0 4px;
+  letter-spacing: 0.2em;
+}
+
+.guide.online .online-cup .champion .big {
+  color: var(--gold);
+  font-family: var(--warcraft);
+  font-size: 2.6rem;
+  letter-spacing: 0.06em;
+}
+
+.guide .online-cup .bracket {
+  display: flex;
+  gap: 18px;
+  width: 100%;
+  overflow-x: auto;
+  padding: 6px 0 4px;
+  border-top: 1px solid var(--line);
+}
+
+.guide .online-cup .round {
+  display: flex;
+  flex: 1 0 170px;
+  flex-direction: column;
+}
+
+.guide .online-cup .round h4 {
+  margin: 4px 0 8px;
+  color: var(--dim);
+  font-family: var(--serif);
+  font-size: 0.8rem;
+  letter-spacing: 0.14em;
+}
+
+/* Each round's bouts spread over the same height, so a bout sits level with the two that feed it. */
+.guide .online-cup .bouts {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: space-around;
+  gap: 22px;
+}
+
+.guide .online-cup .bout {
+  position: relative;
+  display: grid;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.25);
+  text-align: left;
+}
+
+.guide .online-cup .bout.ready {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 1px rgba(255, 209, 0, 0.25);
+}
+
+.guide .online-cup .bout.bye {
+  opacity: 0.45;
+}
+
+.guide .online-cup .slot {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 9px;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-family: var(--serif);
+  font-weight: 700;
+  font-size: 0.95rem;
+  text-align: left;
+}
+
+.guide .online-cup .slot + .slot {
+  border-top: 1px solid var(--line);
+}
+
+.guide .online-cup button.slot {
+  cursor: pointer;
+}
+
+.guide .online-cup button.slot:hover {
+  background: rgba(255, 209, 0, 0.12);
+  color: var(--gold);
+}
+
+.guide .online-cup .slot.won {
+  color: var(--gold);
+}
+
+.guide .online-cup .slot.lost,
+.guide .online-cup .slot.away {
+  color: var(--dim);
+}
+
+.guide .online-cup .slot .who-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.guide .online-cup .slot .score {
+  font-variant-numeric: tabular-nums;
+}
+
+.guide.online .online-cup .bout .undo {
+  position: absolute;
+  right: 4px;
+  bottom: -17px;
+  margin: 0;
+  font-size: 0.72rem;
+}
+
+.guide.online .online-cup input.name {
+  width: 14em;
+  padding: 6px 10px;
+  font-size: 1rem;
+}
+
+/* A short window (a laptop's browser) with the board on the title: the logo gives way first. */
+@media (max-height: 1120px) {
+  .title {
+    gap: 12px;
+    /* Too short still: the title scrolls, from the logo down, rather than cut both ends. */
+    justify-content: safe center;
+    overflow-y: auto;
+  }
+
+  .logo-art {
+    width: min(620px, 72vw, 52vh);
+  }
 }

@@ -4,7 +4,7 @@ import { posableRig, type PosableRig } from '@mogshot/model/posable';
 import type { SpellModel, SpellVisual } from '@mogshot/worker/api';
 import type { DataClient } from '@mogshot/worker/client';
 import { type Ability, kitSpec } from '../engine/abilities';
-import type { Match, Projectile } from '../engine/engine';
+import { type Match, PROJECTILE_HIT, type Projectile } from '../engine/engine';
 import type { Wielding } from '../engine/moves';
 import { TICK_MS } from '../engine/stage';
 
@@ -55,13 +55,13 @@ const SPELL_IDS: Record<string, number[]> = {
   earthShock: [8042],
   stormstrike: [17364],
   mindBlast: [8092],
-  shadowWordPain: [589],
+  holyNova: [15237, 132157],
   powerWordShield: [17],
   wrath: [5176, 190984],
   moonfire: [8921],
   rake: [1822],
   aimedShot: [19434],
-  killShot: [53351],
+  raptorStrike: [186270, 2973],
   disengage: [781],
   chaosStrike: [162794],
   felRush: [195072],
@@ -70,7 +70,8 @@ const SPELL_IDS: Record<string, number[]> = {
   mortalStrike: [12294],
   execute: [5308],
   frostbolt: [116],
-  fireBlast: [2136],
+  frostNova: [122],
+  howlOfTerror: [5484],
   shadowBolt: [686],
 };
 
@@ -186,14 +187,47 @@ export function anchorOf(at: AnchorAt, match: Match, side: 0 | 1, attachment: nu
   return attachment === ATTACH.chest ? chest : feet;
 }
 
+/** Where each projectile left its shooter's hand, and where the engine launched it, taken the first time it is drawn. */
+const launches = new WeakMap<Projectile, { hand: Point; x: number }>();
+
+/**
+ * Where a projectile is drawn, `back` frames of its flight behind where it is now. The engine flies
+ * every bolt and arrow at one height from a step ahead of the body: a human's waist, the hip of a
+ * taller legend, and behind the hands of a caster who lunges. The drawing instead leaves from the
+ * hand held toward the target (the bow hand, the casting hand) and runs straight to the target's
+ * chest as it stands on the floor, so a jump still clears it, arriving on the frame the engine's
+ * shot lands (it strikes PROJECTILE_HIT short of the body).
+ */
+export function flightAt(match: Match, shot: Projectile, at: AnchorAt, back = 0): Point {
+  let launch = launches.get(shot);
+  if (!launch) {
+    const f = match.fighters[shot.owner];
+    const forward = (p: Point | undefined) => (p ? p[0] * f.facing : -Infinity);
+    const right = at(shot.owner, ATTACH.rightHand);
+    const left = at(shot.owner, ATTACH.leftHand);
+    launch = { hand: (forward(left) > forward(right) ? left : right) ?? [shot.x, 0, shot.z], x: shot.x - shot.vx * shot.t };
+    launches.set(shot, launch);
+  }
+  const { hand } = launch;
+  const target = match.fighters[(1 - shot.owner) as 0 | 1];
+  const chest = at((1 - shot.owner) as 0 | 1, ATTACH.chest);
+  const to: Point = chest ? [chest[0], chest[1], chest[2] - target.z] : [target.x, 0, 1.3];
+  const dir = Math.sign(shot.vx) || 1;
+  const lands = target.x - dir * PROJECTILE_HIT;
+  const span = lands - launch.x;
+  const u = Math.abs(span) < 0.1 ? 1 : Math.max(0, Math.min(1, (shot.x - shot.vx * back - launch.x) / span));
+  return [hand[0] + (to[0] - hand[0]) * u, hand[1] + (to[1] - hand[1]) * u, hand[2] + (to[2] - hand[2]) * u];
+}
+
 /**
  * Pose every effect slot of both fighters for this frame: a missile on its projectile, the hands'
  * models while the cast bar fills, a release where the caster stands, an impact on the target, a
  * shield's aura for as long as it holds. A slot not in use is HIDDEN. Each slot shows one
  * instance at a time: a second projectile of the same spell in flight flies without a model,
- * and the newest release or impact is the one shown.
+ * and the newest release or impact is the one shown. `back` is how far behind the engine's last
+ * step the frame is drawn, in steps (smooth.ts), so a shot flies with the fighters.
  */
-export function poseFx(match: Match, fxs: readonly (FighterFx | undefined)[], at: AnchorAt, shotX: (shot: Projectile) => number = (shot) => shot.x): FxPose[][] {
+export function poseFx(match: Match, fxs: readonly (FighterFx | undefined)[], at: AnchorAt, back = 0): FxPose[][] {
   return fxs.map((fx, s) => {
     const side = s as 0 | 1;
     const f = match.fighters[side];
@@ -210,7 +244,7 @@ export function poseFx(match: Match, fxs: readonly (FighterFx | undefined)[], at
           // Every missile model of the spell (an arrow and its glow) rides the first of its projectiles.
           const shot = shots.find((p) => (p.ability < 0 ? 'shot' : idOf(p.ability)) === slot.spell);
           if (!shot) return { world: HIDDEN, time: 0 };
-          return { world: place([shotX(shot), 0, shot.z], Math.sign(shot.vx) || 1, slot.scale * MISSILE_SCALE), time: loop(shot.t * TICK_MS) };
+          return { world: place(flightAt(match, shot, at, back), Math.sign(shot.vx) || 1, slot.scale * MISSILE_SCALE), time: loop(Math.max(0, shot.t - back) * TICK_MS) };
         }
         case 'precast': {
           if (castingId !== slot.spell || !f.cast) return { world: HIDDEN, time: 0 };

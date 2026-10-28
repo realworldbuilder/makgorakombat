@@ -35,6 +35,34 @@ const MARGIN = 1.6;
 /** How much the distance blurs in a place: the fighters sharp, the skyline soft. */
 const FOCUS = 0.35;
 
+/** A scene of nothing, for emptying a renderer. */
+const NOTHING: CharacterScene = {
+  meshes: [],
+  textures: [],
+  bounds: { min: [0, 0, 0], max: [0, 0, 0] },
+  problems: [],
+  options: [],
+  choices: [],
+  animations: [],
+  presets: [],
+  pose: { sequence: 0, time: 0, duration: 0, preset: undefined },
+};
+
+/**
+ * Hand a renderer's graphics memory back, and its WebGL context with it: the browser keeps only
+ * sixteen contexts and drops the oldest, live or not, so a screen that left its context behind
+ * would after a few visits black out the canvas in front of the player. The renderer deletes
+ * what it uploaded for the scene, the place and the backdrop; losing the context takes its
+ * programs and the rest. The canvas cannot be drawn into again: a new screen brings its own.
+ */
+export function releaseRenderer(renderer: CharacterRenderer, canvas: HTMLCanvasElement): void {
+  renderer.setScene(NOTHING);
+  renderer.setPlace(undefined);
+  renderer.setBackdrop(undefined);
+  // The context the renderer made: asked for again, the canvas hands back the same one.
+  canvas.getContext('webgl2')?.getExtension('WEBGL_lose_context')?.loseContext();
+}
+
 export class Arena {
   readonly renderer: CharacterRenderer;
   private parts: ReturnType<typeof mergeScenes>['parts'] = [];
@@ -178,6 +206,18 @@ export class Arena {
       this.renderer.setShadows(shadows);
     }
     this.renderer.render(camera);
+  }
+
+  /** Let go of the ring when its screen goes: the fighters, the place and the WebGL context. Nothing is drawn after. */
+  dispose(): void {
+    this.merged = undefined;
+    this.fighters = [];
+    this.effects = [];
+    this.bodyBones = [];
+    this.restPoses = [];
+    this.ground = {};
+    this.floor = undefined;
+    releaseRenderer(this.renderer, this.canvas);
   }
 
   /** Canvas pixel of a world point, for drawing over the ring. */

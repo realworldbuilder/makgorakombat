@@ -105,8 +105,9 @@ function measured(move: Move, rig: PosableRig, held: readonly Held[]): Move {
 /**
  * Measures a fighter's blows into its move table: each variation of the swing (not for a bow or a
  * gun, whose shot leaves when it leaves) and each melee ability. The weapon's range becomes the
- * shortest swing's reach to the front of a body, so the CPU walks close enough for any of them;
- * the fighter's height is `stature`.
+ * shortest swing's reach to the front of a human's body (the engine's ranges are a human's against
+ * a human, widened for bigger bodies), so the CPU walks close enough for any of them; the
+ * fighter's height is `stature`.
  */
 export function measureTable(table: MoveTable, rig: PosableRig, packed: PackedRig, scene: CharacterScene, stature: number): MoveTable {
   const held = heldMeshes(packed, scene);
@@ -115,7 +116,7 @@ export function measureTable(table: MoveTable, rig: PosableRig, packed: PackedRi
     const swing = measured(table.moves.swing, rig, held);
     table.moves = { ...table.moves, swing };
     const reaches = swing.variations.flatMap((v) => (v.strike ? [v.strike.reach] : []));
-    if (reaches.length > 0) table.weapon = { ...table.weapon, range: Math.min(...reaches) + BODY / 2 };
+    if (reaches.length > 0) table.weapon = { ...table.weapon, range: Math.min(...reaches) + BODY - table.body };
   }
   const abilities = table.kit.abilities.map((a) => (a.kind === 'melee' ? { ...a, move: measured(a.move, rig, held) } : a)) as MoveTable['kit']['abilities'];
   table.kit = { ...table.kit, abilities };

@@ -1,7 +1,7 @@
 import type { ClassEntry, Race } from '@mogshot/character/appearance';
 import type { Slot } from '@mogshot/character/equipment';
 import type { Champion } from './fighters';
-import type { Tile } from './roster';
+import { CREATE_TILE, type Tile } from './roster';
 
 /*
  * The champions the player has made on CREATE YOUR CHAMPION, kept in this browser: a list under
@@ -14,6 +14,8 @@ export interface SavedChampion {
   /** Stable for the life of the champion, so an edit replaces it and a delete finds it. */
   id: string;
   name: string;
+  /** A second name after the first, as a built-in champion has; the player's own have none. */
+  surname?: string;
   raceId: number;
   sex: number;
   classId: number | undefined;
@@ -25,6 +27,76 @@ export interface SavedChampion {
 }
 
 export const SAVED_STORAGE = 'makgora.champions';
+const BUILTIN = 'builtin:';
+
+/**
+ * The champions that come with the game, shown after the legends and ahead of the player's own:
+ * made as the player's are, but never kept in storage, edited or deleted. Cassidy Darkstar is
+ * Chris's night elf druid, in the crimson silk robe, dark leather shoulders and the Staff
+ * of Jordan's purple crystals (docs/cassidy.json draws the same look through the command line).
+ * The ids are the same on the classic beta and on Forever; an item the open folder lacks is
+ * left off, as it is for the player's own.
+ */
+export const BUILTIN_CHAMPIONS: readonly SavedChampion[] = [
+  {
+    id: `${BUILTIN}cassidy`,
+    name: 'Cassidy',
+    surname: 'Darkstar',
+    raceId: 4,
+    sex: 0,
+    classId: 11,
+    choices: [
+      [40, 699], // Skin Color 5, the grey-lavender of her portrait
+      [41, 721], // Face 3, the hard brow
+      [42, 739], // Hair Style: Long
+      [43, 753], // Hair Color 5, white
+      [738, 8083], // Eyebrows: Long
+      [9490, 78910], // Facial Hair: Bearded
+    ],
+    gear: [
+      ['chest', 7063], // Crimson Silk Robe
+      ['shoulder', 11884], // Moonlit Amice, the white mantle she wears in the footage
+      ['mainHand', 12182], // Staff of Jordan, as the game's own NPCs carry it
+    ],
+    armour: 'Chronicle',
+  },
+  // Rambleon is William's night elf hunter in his final form at the end of the classic beta
+  // (22 Oct 2026), from his MOG2 code: the Molten Core epics as their classic ids, since the
+  // beta's hotfixed copies have no look in the files, and Rhok'delar from Lord Kazzak. His beta
+  // legs and gloves (270031, 273824) drew as nothing, so he wears the Beastmaster's there.
+  {
+    id: `${BUILTIN}rambleon`,
+    name: 'Rambleon',
+    raceId: 4,
+    sex: 0,
+    classId: 3,
+    choices: [
+      [40, 700],
+      [41, 720],
+      [42, 739],
+      [43, 754],
+      [738, 8089],
+      [9490, 78911],
+    ],
+    gear: [
+      ['head', 16846], // Giantstalker's Helmet
+      ['shoulder', 273804], // Executioner Mantle
+      ['back', 17102],
+      ['chest', 5814], // Snapbrook Armor
+      ['shirt', 148], // Rugged Trapper's Shirt
+      ['wrist', 3202],
+      ['hands', 22015], // Beastmaster's Gloves
+      ['waist', 9827],
+      ['legs', 22017], // Beastmaster's Pants
+      ['feet', 10402],
+      ['mainHand', 18713], // Rhok'delar, Longbow of the Ancient Keepers
+    ],
+  },
+];
+
+/** Whether an entry is one of the game's own, which the creator shows but does not change. */
+export const isBuiltin = (id: string): boolean => id.startsWith(BUILTIN);
+
 /** As many letters as the game allows in a name. */
 export const NAME_LENGTH = 12;
 
@@ -54,6 +126,7 @@ export function parseSaved(value: unknown): SavedChampion | undefined {
   return {
     id: entry.id,
     name: cleanName(entry.name) || 'Champion',
+    ...(typeof entry.surname === 'string' && cleanName(entry.surname) !== '' && { surname: cleanName(entry.surname) }),
     raceId: entry.raceId,
     sex: entry.sex,
     classId: whole(entry.classId) ? entry.classId : undefined,
@@ -70,7 +143,8 @@ export function loadSaved(store: Store | undefined = browserStore()): SavedChamp
     if (!raw) return [];
     const list: unknown = JSON.parse(raw);
     if (!Array.isArray(list)) return [];
-    return list.flatMap((entry) => parseSaved(entry) ?? []);
+    // A built-in champion under the key (by a hand edit) would stand twice in the row.
+    return list.flatMap((entry) => parseSaved(entry) ?? []).filter((entry) => !isBuiltin(entry.id));
   } catch {
     return [];
   }
@@ -80,7 +154,7 @@ export function loadSaved(store: Store | undefined = browserStore()): SavedChamp
 export function storeSaved(list: readonly SavedChampion[], store: Store | undefined = browserStore()): boolean {
   try {
     if (!store) return false;
-    store.setItem(SAVED_STORAGE, JSON.stringify(list));
+    store.setItem(SAVED_STORAGE, JSON.stringify(list.filter((entry) => !isBuiltin(entry.id))));
     return true;
   } catch {
     return false;
@@ -89,6 +163,7 @@ export function storeSaved(list: readonly SavedChampion[], store: Store | undefi
 
 /** The list with `champion` in it: in its old place when it was there, at the end when it is new. */
 export function withSaved(list: readonly SavedChampion[], champion: SavedChampion): SavedChampion[] {
+  if (isBuiltin(champion.id)) return [...list];
   const at = list.findIndex((entry) => entry.id === champion.id);
   if (at < 0) return [...list, champion];
   return list.map((entry, i) => (i === at ? champion : entry));
@@ -107,6 +182,9 @@ export function cleanName(text: string): string {
   const letters = [...text.normalize('NFC')].filter((char) => /\p{L}/u.test(char)).slice(0, NAME_LENGTH).join('');
   return letters.charAt(0).toUpperCase() + letters.slice(1).toLowerCase();
 }
+
+/** The name a champion goes by: the first name, and the second where it has one. */
+export const fullName = (saved: SavedChampion): string => (saved.surname ? `${saved.name} ${saved.surname}` : saved.name);
 
 /** The name a new champion of a race starts with: the race's own ("Night Elf" is Nightelf). */
 export const defaultName = (race: Race): string => cleanName(race.name);
@@ -134,7 +212,7 @@ export function savedChampion(saved: SavedChampion, race: Race, classes: readonl
   const className = classes.find((c) => c.id === saved.classId)?.name.toUpperCase() ?? '';
   return {
     key: madeKey(saved.raceId, saved.sex, saved.classId, saved.choices, saved.gear),
-    name: saved.name.toUpperCase(),
+    name: fullName(saved).toUpperCase(),
     title: `${race.name.toUpperCase()} ${className}`.trim(),
     raceId: saved.raceId,
     sex: saved.sex,
@@ -150,4 +228,12 @@ export function savedTiles(list: readonly SavedChampion[], races: readonly Race[
     const race = races.find((r) => r.id === saved.raceId);
     return race ? [{ kind: 'saved', id: `saved:${saved.id}`, race, saved }] : [];
   });
+}
+
+/**
+ * The legends' row on CHOOSE YOUR CHAMPION: the legends, the champions built into the game, the
+ * question mark that opens the creator, and the player's own, newest first.
+ */
+export function championRow(legends: readonly Tile[], saved: readonly SavedChampion[], races: readonly Race[]): Tile[] {
+  return [...legends, ...savedTiles(BUILTIN_CHAMPIONS, races), CREATE_TILE, ...savedTiles([...saved].reverse(), races)];
 }

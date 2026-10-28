@@ -2,30 +2,32 @@ import { useEffect } from 'preact/hooks';
 import { type InputAction, KEY_LABELS, KEYS, keyLayout, LAYOUT_WORDS } from '../engine/input';
 
 /*
- * The guide: how to play, and CREATE YOUR CHAMPION before the folder is open (the creator
- * draws from the game's own files, so it waits for them).
+ * The guide: how to play, and CREATE YOUR CHAMPION and PLAY ONLINE before the folder is open
+ * (the creator and an online fight draw from the game's own files, so they wait for them).
  */
 
-export type GuidePage = 'play' | 'create';
+export type GuidePage = 'play' | 'create' | 'online';
 
 interface GuideProps {
   page: GuidePage;
   onPage: (page: GuidePage) => void;
   onClose: () => void;
-  /** Opens the folder picker, from the CREATE YOUR CHAMPION page; a key press counts as the click the browser wants. */
+  /** Opens the folder picker, from the CREATE YOUR CHAMPION and PLAY ONLINE pages; a key press counts as the click the browser wants. */
   onFolder?: () => void;
+  /** The folder is open already (the title come back to from the roster): `onFolder` goes straight to the roster. */
+  opened?: boolean;
 }
 
 /** Every key bound to an action, as the action bar labels them: "J", ", or NUM 0". */
 const keys = (player: 0 | 1, action: InputAction) => KEYS[player][action].map((code) => KEY_LABELS[code] ?? code).join(' or ');
 
-export function Guide({ page, onPage, onClose, onFolder }: GuideProps) {
+export function Guide({ page, onPage, onClose, onFolder, opened }: GuideProps) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.code === 'Escape') {
         event.stopPropagation();
         onClose();
-      } else if (page === 'create' && onFolder && ['Digit1', 'Numpad1', 'Enter', 'NumpadEnter'].includes(event.code)) {
+      } else if (page !== 'play' && onFolder && ['Digit1', 'Numpad1', 'Enter', 'NumpadEnter'].includes(event.code)) {
         event.stopPropagation();
         event.preventDefault();
         onFolder();
@@ -41,6 +43,7 @@ export function Guide({ page, onPage, onClose, onFolder }: GuideProps) {
         <nav class="tabs">
           <button class={page === 'play' ? 'here' : ''} onClick={() => onPage('play')}>HOW TO PLAY</button>
           <button class={page === 'create' ? 'here' : ''} onClick={() => onPage('create')}>CREATE YOUR CHAMPION</button>
+          <button class={page === 'online' ? 'here' : ''} onClick={() => onPage('online')}>PLAY ONLINE</button>
           <button class="close" onClick={onClose} aria-label="Close">✕</button>
         </nav>
         {page === 'play' ? (
@@ -51,14 +54,18 @@ export function Guide({ page, onPage, onClose, onFolder }: GuideProps) {
                 here in the browser and never leave your computer; the first open takes a moment, later ones are instant.
               </li>
               <li>
-                <b>CHOOSE YOUR CHAMPION.</b> The legends, and after them the question mark: <b>CREATE YOUR CHAMPION</b> makes one of your
-                own, who joins the row. Rest on a tile and your champion appears on your side. Lock in and they roar.
+                <b>CHOOSE YOUR CHAMPION.</b> The legends, Cassidy Darkstar, and after them the question mark: <b>CREATE YOUR CHAMPION</b> makes
+                one of your own, who joins the row. Rest on a tile and your champion appears on your side. Lock in, or press <b>Enter World</b> at
+                their feet, and they roar.
               </li>
               <li>
-                <b>Pick the ground</b> from the game's loading screens, then fight: best of three, sixty seconds a round.
+                <b>Pick the ground</b>: a real place in the world, raised from your own files around the fighters (Gurubashi Arena, the
+                Crossroads, Goldshire, Darnassus, Thunder Bluff, and on a classic world the Valley of Heroes). An install without those maps
+                fights in front of its loading screens. Then fight: best of three, sixty seconds a round.
               </li>
               <li>
-                Take their health to nothing and they are dazed: <b>FINISH THE MAK'GORA!</b> A heavy blow then is <b>DISHONOR!</b>; a round
+                Take their health to nothing and they are dazed: <b>FINISH THE MAK'GORA!</b> Your class's fatality keys (shown on your
+                side), or any ability that lands, is <b>DISHONOR!</b>; a swing, or the clock running out, is a mere <b>K.O.</b> A round
                 won untouched is <b>HONOR RESTORED</b>.
               </li>
             </ol>
@@ -82,15 +89,18 @@ export function Guide({ page, onPage, onClose, onFolder }: GuideProps) {
             <p class="dim small">
               <b>C</b> on the roster switches the keys ({LAYOUT_WORDS[keyLayout()]} now): player 1 on the game's own keys, the arrows to move and jump
               and 1 2 3 4 for the attack and the action bar, with player 2 on WASD and J K L U · <b>Tab</b> switches player 2 between the keyboard, a gamepad
-              and the computer · <b>Enter</b> rematch · <b>Esc</b> back · <b>M</b> mute · <b>F3</b> frame times
+              and the computer · <b>O</b> there plays online · <b>E</b> there switches to the folder's other game · <b>Enter</b> rematch · <b>Esc</b> back
+              · <b>P</b> music on or off, anywhere · <b>V</b> voice on Discord with your opponent, in an online match · <b>M</b> mute, in a fight or SETTINGS · <b>F3</b> frame times · the version you are
+              playing is in the roster's bottom-left corner
             </p>
           </div>
         ) : (
           <div class="body create-first">
-            <p class="big">Drop your World of Warcraft folder first.</p>
+            <p class="big">{opened ? 'Your World of Warcraft folder is open.' : 'Drop your World of Warcraft folder first.'}</p>
+            {page === 'online' && <p class="dim">Each player's champions and ground are drawn from their own folder; then give a name, and you find each other under WHO'S HERE: one challenges, the other accepts.</p>}
             {onFolder && (
               <button type="button" class="button" onClick={onFolder}>
-                CHOOSE THE FOLDER · 1
+                {opened ? 'ENTER THE RING · 1' : 'CHOOSE THE FOLDER · 1'}
               </button>
             )}
           </div>

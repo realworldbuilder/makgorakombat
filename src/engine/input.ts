@@ -2,7 +2,8 @@ import { cpuInputs } from './cpu';
 import { type Inputs, type Match, noInputs } from './engine';
 
 export type InputAction = 'left' | 'right' | 'jump' | 'attack' | 'ability1' | 'ability2' | 'ability3';
-export type InputSource = 'keyboard' | 'gamepad' | 'cpu';
+/** 'remote' is the other player of an online match: their inputs come over the wire, through the lockstep, not from here. */
+export type InputSource = 'keyboard' | 'gamepad' | 'cpu' | 'remote';
 
 export type KeyMap = Record<InputAction, readonly string[]>;
 
@@ -132,7 +133,7 @@ export function actionLabel(player: 0 | 1, source: InputSource, action: InputAct
   return source === 'gamepad' ? GAMEPAD_LABELS[action] : keyLabel(player, action);
 }
 
-/** Standard-mapping gamepad buttons per action: abilities on A B X, auto-attack on the right trigger, jump on Y, the bumpers or up. */
+/** Standard-mapping gamepad buttons per action: abilities on A B X, auto-attack on the triggers, jump on Y, the bumpers or up. `src/game/pads.ts` turns them into the player's keys. */
 export const GAMEPAD_BUTTONS: Record<InputAction, readonly number[]> = {
   left: [14],
   right: [15],
@@ -163,7 +164,7 @@ function heldNone(): Held {
 }
 
 /**
- * Turns the keyboard and gamepads into per-tick inputs for two players. Attach it to the stage
+ * Turns the keyboard into per-tick inputs for two players (a gamepad arrives as its player's keys, from `src/game/pads.ts`). Attach it to the stage
  * element (give it `tabIndex=0` and focus it) and call `read()` once per engine tick: jump and
  * the abilities are true only on the tick after the button went down; attack is held, and a tap
  * shorter than a tick still shows as one tick held. A player whose source is 'cpu' gets
@@ -173,7 +174,6 @@ export class InputReader {
   private readonly down = new Set<string>();
   private readonly previous: [Held, Held] = [heldNone(), heldNone()];
   private readonly sources: [InputSource, InputSource] = ['keyboard', 'keyboard'];
-  private readonly gamepadIndex: [number | undefined, number | undefined] = [undefined, undefined];
   private target: Target | undefined;
   /** Keys that went down since the last read, so a tap shorter than a tick still counts. */
   private readonly tapped = new Set<string>();
@@ -207,9 +207,8 @@ export class InputReader {
     this.down.clear();
   }
 
-  setSource(player: 0 | 1, source: InputSource, gamepadIndex?: number): void {
+  setSource(player: 0 | 1, source: InputSource): void {
     this.sources[player] = source;
-    this.gamepadIndex[player] = gamepadIndex;
     this.previous[player] = heldNone();
   }
 
@@ -248,18 +247,17 @@ export class InputReader {
     if (source === 'cpu') {
       return match ? cpuInputs(match, player) : noInputs();
     }
-    const held = source === 'gamepad' ? this.gamepadHeld(player) : this.keyboardHeld(player);
+    if (source === 'remote') return noInputs();
+    const held = this.keyboardHeld(player);
     const previous = this.previous[player];
     const edges = heldNone();
     for (const action of ACTIONS) {
       edges[action] = EDGE.includes(action) ? held[action] && !previous[action] : held[action];
     }
     // A key pressed and released between two reads is an edge too: it was never seen held.
-    if (source !== 'gamepad') {
-      const map = KEYS[player];
-      for (const action of [...EDGE, 'attack'] as InputAction[]) {
-        if (!edges[action] && map[action].some((code) => this.tapped.has(code))) edges[action] = true;
-      }
+    const map = KEYS[player];
+    for (const action of [...EDGE, 'attack'] as InputAction[]) {
+      if (!edges[action] && map[action].some((code) => this.tapped.has(code))) edges[action] = true;
     }
     this.previous[player] = held;
     const out = noInputs();
@@ -278,30 +276,6 @@ export class InputReader {
     const held = heldNone();
     for (const action of ACTIONS) held[action] = map[action].some((code) => this.down.has(code));
     return held;
-  }
-
-  private gamepadHeld(player: 0 | 1): Held {
-    const held = heldNone();
-    const pad = this.gamepad(player);
-    if (!pad) return held;
-    for (const action of ACTIONS) {
-      held[action] = GAMEPAD_BUTTONS[action].some((b) => pad.buttons[b]?.pressed === true);
-    }
-    const stick = pad.axes[0] ?? 0;
-    if (stick < -0.5) held.left = true;
-    if (stick > 0.5) held.right = true;
-    return held;
-  }
-
-  private gamepad(player: 0 | 1): Gamepad | undefined {
-    if (typeof navigator === 'undefined' || typeof navigator.getGamepads !== 'function') return undefined;
-    const pads = navigator.getGamepads();
-    const wanted = this.gamepadIndex[player];
-    if (wanted !== undefined) return pads[wanted] ?? undefined;
-    // No index given: the first pad goes to the first player using one, the second to the other.
-    const connected = Array.from(pads).filter((p): p is Gamepad => p !== null && p !== undefined);
-    const nth = this.sources[0] === 'gamepad' && this.sources[1] === 'gamepad' ? player : 0;
-    return connected[nth];
   }
 }
 

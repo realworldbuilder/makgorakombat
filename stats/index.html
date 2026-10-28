@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Site numbers · Mak'gora Kombat</title>
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="theme-color" content="#121110" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b0708'/%3E%3Ctext x='16' y='24' text-anchor='middle' font-family='Impact,sans-serif' font-size='22' font-weight='900' fill='%23c8121c'%3EK%3C/text%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="./stats.css" />
+  </head>
+  <body>
+    <main class="viz-root">
+      <header class="top">
+        <div>
+          <h1>Site numbers</h1>
+          <p class="sub">Who comes to <a href="../welcome/">Mak'gora Kombat</a> and what they do there, counted on the game's own relay.</p>
+        </div>
+        <div class="live" data-live><span class="dot" aria-hidden="true"></span><span data-live-text>…</span></div>
+      </header>
+
+      <div class="filters" role="group" aria-label="Time range">
+        <button type="button" data-span="day">24 hours</button>
+        <button type="button" data-span="week" aria-pressed="true">7 days</button>
+        <button type="button" data-span="month">30 days</button>
+        <button type="button" data-span="all">All (90 days)</button>
+        <span class="spacer"></span>
+        <label class="me"><input type="checkbox" data-notrack /> Don't count this browser</label>
+      </div>
+
+      <p class="error" data-error hidden></p>
+
+      <section class="tiles" data-tiles></section>
+
+      <section class="card wide">
+        <h2 data-series-title>Visitors per day</h2>
+        <div class="chart" data-series></div>
+      </section>
+
+      <section class="card wide">
+        <h2>How far they get</h2>
+        <p class="note">Different visitors who reached each step in the range.</p>
+        <div data-funnel></div>
+      </section>
+
+      <section class="grid">
+        <div class="card"><h2>Where they came from</h2><div data-list="referrers"></div></div>
+        <div class="card"><h2>Countries</h2><div data-list="countries"></div></div>
+        <div class="card"><h2>Browsers</h2><p class="note">The game is made for Chrome.</p><div data-list="browsers"></div></div>
+        <div class="card"><h2>Systems</h2><div data-list="systems"></div></div>
+        <div class="card"><h2>Devices</h2><div data-list="devices"></div></div>
+        <div class="card"><h2>Pages</h2><div data-list="pages"></div></div>
+        <div class="card"><h2>Editions opened</h2><div data-list="editions"></div></div>
+        <div class="card"><h2>Fights by mode</h2><div data-list="modes" data-by="n"></div></div>
+        <div class="card"><h2>Champions played</h2><div data-list="champions" data-by="n"></div></div>
+        <div class="card"><h2>Errors on the page</h2><p class="note">Loose errors, three per page load at most.</p><div data-list="errors" data-by="n"></div></div>
+      </section>
+
+      <section class="card wide">
+        <h2>Online play</h2>
+        <p class="note" data-lobby-note>From the lobby's report.</p>
+        <div class="tiles small" data-lobby></div>
+      </section>
+
+      <footer class="foot" data-foot></footer>
+    </main>
+    <div class="tip" data-tip role="status" hidden></div>
+    <script type="module" src="./stats.ts"></script>
+  </body>
+</html>

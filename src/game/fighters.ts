@@ -1,7 +1,7 @@
 import type { ClassEntry } from '@mogshot/character/appearance';
 import type { ItemSetInfo, ItemSummary, Slot } from '@mogshot/character/equipment';
 import { posableRig, type PosableRig } from '@mogshot/model/posable';
-import type { FighterResult, FightSoundSet } from '@mogshot/worker/api';
+import type { FighterResult, FightSoundSet, ItemSearchResult } from '@mogshot/worker/api';
 import type { DataClient } from '@mogshot/worker/client';
 import { ALL_MOVE_NAMES, type MoveTable, resolveMoves } from '../engine/moves';
 import { type FighterFx, loadFighterFx } from './fx';
@@ -41,14 +41,15 @@ export interface BuiltFighter {
   fx: () => Promise<FighterFx>;
 }
 
-const KEEP = 8;
+/** How many built fighters are kept. */
+export const KEEP = 8;
 
 export class Fighters {
   private readonly built = new Map<string, Promise<BuiltFighter>>();
   private readonly sets = new Map<number, Promise<ItemSetInfo[]>>();
   private readonly found = new Map<string, Promise<boolean>>();
 
-  constructor(private readonly client: DataClient, private readonly classes: readonly ClassEntry[]) {}
+  constructor(readonly client: DataClient, private readonly classes: readonly ClassEntry[]) {}
 
   /** The champion a tile stands for with the player's sex and class choices applied. */
   async champion(tile: Tile, sex: number, classId: number | undefined): Promise<Champion | undefined> {
@@ -130,6 +131,24 @@ export class Fighters {
   /** An outfit drawn at random from the items of at least `minQuality` (4 is epic), for the creator. */
   randomOutfit(minQuality: number): Promise<[Slot, ItemSummary][]> {
     return this.client.randomOutfit(minQuality);
+  }
+
+  /** The items that go in a slot whose name has every word of the query (or whose id it is), the first sixty of them by name. */
+  searchItems(slot: Slot, query: string): Promise<ItemSearchResult> {
+    return this.client.searchItems(slot, query);
+  }
+
+  /** The items of gear known only by id, for their names and icons; one this folder lacks is left out. */
+  async itemsOf(gear: readonly [Slot, number][]): Promise<[Slot, ItemSummary][]> {
+    const found = await Promise.all(
+      gear.map(([slot, id]) =>
+        this.client.searchItems(slot, String(id)).then(
+          (result) => result.items.find((item) => item.id === id),
+          () => undefined,
+        ),
+      ),
+    );
+    return gear.flatMap(([slot], i) => (found[i] ? [[slot, found[i]] as [Slot, ItemSummary]] : []));
   }
 
   /** The class's best set, with weapons to match, as item ids by slot. */
