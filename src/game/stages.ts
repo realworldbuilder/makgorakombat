@@ -132,6 +132,8 @@ export interface Ground {
   place?: PlaceScene;
   screen?: LoadingScreen;
   image?: Image;
+  /** A stage's own picture (public/stages), behind a watched fight on a stage this install cannot raise. */
+  picture?: Image;
 }
 
 /** Radians anticlockwise from north, as the worker takes them. */

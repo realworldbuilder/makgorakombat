@@ -665,6 +665,30 @@ export function Game() {
           stages={[...loaded.stages, BAY_STAGE]}
           screens={loaded.screens}
           assets={{ client: client.current!, races: loaded.races, portraits: loaded.portraits }}
+          // Their pick on this install's roster, with none of the watcher's own champions in it: theirs are not here either.
+          select={(roster, bay) => (
+            <Select
+              key={`watch ${watching.code}`}
+              edition={loaded.edition}
+              art={loaded.art}
+              others={[]}
+              onEdition={() => undefined}
+              races={loaded.races}
+              classes={loaded.classes}
+              records={[]}
+              legends={loaded.legends}
+              portraits={loaded.portraits}
+              fighters={loaded.fighters}
+              saved={[]}
+              onSaved={() => undefined}
+              p2="keyboard"
+              onP2={() => undefined}
+              onReady={() => undefined}
+              onBack={stopWatching}
+              bay={bay}
+              watch={roster}
+            />
+          )}
           onBack={stopWatching}
         />
       );
