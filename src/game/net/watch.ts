@@ -88,6 +88,8 @@ export class Spectator {
   private desync: { tick: number; local: number; remote: number } | undefined;
   private readonly buffer: number;
   private readonly rules: () => RulesName;
+  /** The match's input delay, from the hello or the rematch: the ticks before it the players pressed nothing. */
+  private delay = INPUT_DELAY;
   private readonly listeners = new Set<() => void>();
 
   constructor(options: Options = {}) {
@@ -109,11 +111,11 @@ export class Spectator {
         break;
       case 'hello':
         this.hello = message;
-        this.begin(message.game, message.seed);
+        this.begin(message.game, message.seed, message.delay ?? INPUT_DELAY);
         break;
       case 'rematch':
         if (!this.hello || message.game === this.game) return;
-        this.begin(message.game, message.seed);
+        this.begin(message.game, message.seed, message.delay ?? this.delay);
         break;
       case 'back':
         this.hello = undefined;
@@ -188,13 +190,13 @@ export class Spectator {
   }
 
   private has(t: number): boolean {
-    return t < INPUT_DELAY || (this.inputs[0].has(t) && this.inputs[1].has(t));
+    return t < this.delay || (this.inputs[0].has(t) && this.inputs[1].has(t));
   }
 
   /** One tick, as the players' lockstep plays it, hashed where theirs is. */
   private step(match: Match): void {
     const t = this.next;
-    const bits = (seat: 0 | 1) => (t < INPUT_DELAY ? 0 : this.inputs[seat].get(t)!);
+    const bits = (seat: 0 | 1) => (t < this.delay ? 0 : this.inputs[seat].get(t)!);
     tick(match, [unpackInputs(bits(0)), unpackInputs(bits(1))]);
     this.inputs[0].delete(t);
     this.inputs[1].delete(t);
@@ -215,10 +217,11 @@ export class Spectator {
   }
 
   /** A new match on the hello's tables, as the guest starts one: its names, the seed and the match number given. */
-  private begin(game: number, seed: number): void {
+  private begin(game: number, seed: number, delay: number): void {
     const hello = this.hello!;
     this.game = game;
     this.seed = seed;
+    this.delay = delay;
     const names: [string, string] = [hello.fighters[0].name, hello.fighters[1].name];
     const rules = isRulesName(hello.rules) ? hello.rules : this.rules();
     this.match = newMatch(hello.tables, seed, names, rules);
