@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { type Inputs, type Match, newMatch, noInputs, tick } from '../../src/engine/engine';
 import { TICK_MS } from '../../src/engine/stage';
-import { type Channel, decodeFrame, encodeFrame, HASH_EVERY, INPUT_DELAY, Lockstep, packInputs, stateText, unpackInputs, WAIT_SHOWN_MS } from '../../src/game/net/lockstep';
+import { type Channel, decodeFrame, delayFor, encodeFrame, HASH_EVERY, INPUT_DELAY, Lockstep, MAX_DELAY, MIN_DELAY, packInputs, paceFor, stateText, UNMEASURED_DELAY, unpackInputs, WAIT_SHOWN_MS } from '../../src/game/net/lockstep';
 import { fakeTable, FULL_SET, MAGE, WARRIOR } from '../engine/fake';
 
 /**
@@ -88,22 +88,38 @@ interface Side {
   owed: number;
   /** The hash of the state after each tick, by tick. */
   states: string[];
+  /** When it ran its last tick, on the wire's clock. */
+  done?: number;
 }
 
 /**
  * Plays both sides frame by frame, sixty frames a second as the page does, until each has run
  * `ticks` ticks. The guest's page starts `lag` ms after the host's.
  */
-function play(wire: Wire, ticks: number, options: { lag?: number; seed?: number; meddle?: (sides: [Side, Side], frame: number) => void } = {}): [Side, Side] {
+function play(
+  wire: Wire,
+  ticks: number,
+  options: {
+    lag?: number;
+    seed?: number;
+    meddle?: (sides: [Side, Side], frame: number) => void;
+    /** The match's input delay; INPUT_DELAY by default. */
+    delay?: number;
+    /** Each side eases off when ahead, as Fight.tsx does. */
+    pace?: boolean;
+    /** How fast each side's clock runs: below 1 a machine that falls behind (a screen that drops frames). */
+    rates?: [number, number];
+  } = {},
+): [Side, Side] {
   const seed = options.seed ?? 99;
-  const side = (who: 0 | 1): Side => ({ match: freshMatch(seed), lockstep: new Lockstep(wire.end(who), who, { now: () => wire.now }), owed: 0, states: [] });
+  const side = (who: 0 | 1): Side => ({ match: freshMatch(seed), lockstep: new Lockstep(wire.end(who), who, { now: () => wire.now, delay: options.delay }), owed: 0, states: [] });
   const sides: [Side, Side] = [side(0), side(1)];
   const lag = options.lag ?? 0;
   for (let frame = 0; frame < 60 * 600; frame++) {
     wire.advance(TICK_MS);
     sides.forEach((side, who) => {
       if (who === 1 && wire.now < lag) return;
-      side.owed += TICK_MS;
+      side.owed += TICK_MS * (options.rates?.[who] ?? 1) * (options.pace ? paceFor(side.lockstep.ahead()) : 1);
       let steps = 0;
       // As Fight.tsx does: up to four ticks a frame, and a held fight does not run up a debt.
       while (side.owed >= TICK_MS && steps < 4 && side.lockstep.next < ticks) {
@@ -114,6 +130,7 @@ function play(wire: Wire, ticks: number, options: { lag?: number; seed?: number;
         side.owed -= TICK_MS;
         steps++;
         side.states.push(stateText(side.match));
+        if (side.lockstep.next === ticks) side.done = wire.now;
       }
     });
     options.meddle?.(sides, frame);
@@ -123,12 +140,12 @@ function play(wire: Wire, ticks: number, options: { lag?: number; seed?: number;
   return sides;
 }
 
-/** The same match on one machine, with each player's inputs played INPUT_DELAY ticks after they were scripted. */
-function reference(ticks: number, seed = 99): string[] {
+/** The same match on one machine, with each player's inputs played `delay` ticks after they were scripted. */
+function reference(ticks: number, seed = 99, delay = INPUT_DELAY): string[] {
   const match = freshMatch(seed);
   const out: string[] = [];
   for (let t = 0; t < ticks; t++) {
-    const at = t - INPUT_DELAY;
+    const at = t - delay;
     tick(match, at < 0 ? [noInputs(), noInputs()] : [script(0, t), script(1, t)]);
     out.push(stateText(match));
   }
@@ -243,5 +260,77 @@ describe('lockstep', () => {
     wire.close();
     expect(a.status().closed).toBe(true);
     expect(a.step(ma, () => noInputs())).toBe(false);
+  });
+});
+
+describe('the delay and the pace', () => {
+  it('sets the delay from the slow end of the round trips, within its bounds', () => {
+    expect(delayFor([])).toBe(UNMEASURED_DELAY);
+    expect(delayFor([80, 90])).toBe(UNMEASURED_DELAY);
+    // Two pages on one machine through the relay: 74 ms in the middle, 91 ms for one in ten.
+    expect(delayFor([70, 72, 74, 74, 75, 76, 80, 84, 88, 91])).toBe(4);
+    // Two pages far apart, about 110 ms each way: 9 ticks, 150 ms.
+    expect(delayFor([215, 220, 222, 225, 228, 230, 235, 240, 250, 260])).toBe(9);
+    // One slow trip in ten does not set it; two in ten do.
+    expect(delayFor([60, 60, 60, 60, 60, 60, 60, 60, 60, 400])).toBe(3);
+    expect(delayFor([20, 20, 20])).toBe(MIN_DELAY);
+    expect(delayFor([2000, 2000, 2000])).toBe(MAX_DELAY);
+  });
+
+  it('eases the clock of the side ahead by a little, and never the side behind', () => {
+    expect(paceFor(-5)).toBe(1);
+    expect(paceFor(0)).toBe(1);
+    expect(paceFor(1)).toBe(1);
+    expect(paceFor(2)).toBeCloseTo(0.98);
+    expect(paceFor(4)).toBeCloseTo(0.94);
+    expect(paceFor(50)).toBeCloseTo(0.9);
+  });
+
+  it("puts each side's clock after the hash, where the relay's reading of a frame stops", () => {
+    const plain = { game: 2, ack: 30, first: 31, inputs: [1, 8, 0], hash: { tick: 59, value: 0xabcd } };
+    const clocked = { ...plain, clock: { next: 27, lead: -3 } };
+    const bytes = encodeFrame(clocked);
+    expect(decodeFrame(bytes)).toEqual(clocked);
+    // The frame up to the hash is byte for byte the frame without the clock, so a relay from before it reads the same.
+    const before = encodeFrame(plain);
+    expect(Array.from(bytes.subarray(0, before.length))).toEqual(Array.from(before));
+    expect(decodeFrame(before)).toEqual(plain);
+    expect(decodeFrame(encodeFrame({ ...plain, hash: undefined, clock: { next: 5, lead: 200 } }))!.clock).toEqual({ next: 5, lead: 127 });
+  });
+
+  it('two players about 110 ms apart: the old four ticks run the fight at about 60% speed, the measured delay at full speed', () => {
+    // 100 to 125 ms each way, as between Hexiconia and SillySloth on 28 October.
+    const way = (draw: () => number) => 100 + draw() * 25;
+    const speed = (sides: [Side, Side], ticks: number) => (ticks * TICK_MS) / Math.max(sides[0].done!, sides[1].done!);
+
+    const fixed = play(new Wire(way), 1800);
+    expect(fixed[0].states).toEqual(fixed[1].states);
+    expect(speed(fixed, 1800)).toBeLessThan(0.7);
+    expect(fixed[0].lockstep.held).toBeGreaterThan(400);
+
+    // What the host's echoes would have measured on that wire.
+    let seed = 7;
+    const draw = () => (seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296;
+    const delay = delayFor(Array.from({ length: 30 }, () => way(draw) + way(draw)));
+    expect(delay).toBeGreaterThanOrEqual(8);
+    expect(delay).toBeLessThanOrEqual(10);
+    const measured = play(new Wire(way), 1800, { delay, pace: true });
+    expect(measured[0].states).toEqual(measured[1].states);
+    expect(measured[0].states).toEqual(reference(1800, 99, delay));
+    expect(speed(measured, 1800)).toBeGreaterThan(0.96);
+    // Held only while the first frames cross, not through the fight.
+    expect(measured[0].lockstep.held + measured[1].lockstep.held).toBeLessThan(40);
+  });
+
+  it('a machine that falls behind: the other eases off to meet it instead of running into stall after stall', () => {
+    const wire = () => new Wire(() => 30);
+    // The guest's clock runs 4% slow, as a screen that drops a frame in twenty-five.
+    const stalls = play(wire(), 3000, { rates: [1, 0.96] });
+    const paced = play(wire(), 3000, { rates: [1, 0.96], pace: true });
+    expect(paced[0].states).toEqual(paced[1].states);
+    expect(paced[0].states).toEqual(reference(3000));
+    // Without the pace the host keeps hitting the wall; with it, it hardly ever does.
+    expect(stalls[0].lockstep.held).toBeGreaterThan(50);
+    expect(paced[0].lockstep.held).toBeLessThan(stalls[0].lockstep.held / 4);
   });
 });

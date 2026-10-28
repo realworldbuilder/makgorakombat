@@ -21,7 +21,8 @@ import { between, easeFor } from './smooth';
 import { measureTable } from './strike';
 import type { Ground } from './stages';
 import type { Hello } from './net/handshake';
-import { Lockstep, WAIT_SHOWN_MS } from './net/lockstep';
+import { delayFor, INPUT_DELAY, Lockstep, paceFor, WAIT_SHOWN_MS } from './net/lockstep';
+import type { NetReport } from './net/handshake';
 import type { Link, Wire } from './net/relay';
 import type { Spectator } from './net/watch';
 
@@ -65,6 +66,17 @@ type NetState = 'waiting' | 'desync' | undefined;
 const NOTES_MS = 7000;
 
 const MAX_STEPS = 4;
+/** Online, this page tells the room how the wire and the screen are holding up this often during a match, for the night's log. */
+const NET_REPORT_MS = 10_000;
+/** Frame times kept for that report: a match of ten minutes at sixty frames a second. */
+const KEEP_FRAMES = 36_000;
+
+/** The value below which a share of the sorted numbers fall; undefined for none. */
+function quantile(values: readonly number[], share: number): number | undefined {
+  if (values.length === 0) return undefined;
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * share))];
+}
 
 /** How hard the camera shakes for each kind of landed blow, in pan units (a fraction of half the view's height). */
 const SHAKE: Record<Spark['kind'], number> = { hit: 0.025, crit: 0.06, spell: 0.03, block: 0.012, parry: 0.015, dot: 0 };
@@ -223,7 +235,42 @@ export function Fight({ fighters, stage, p2, onBack, net, watch }: FightProps) {
     const rules: RulesName = hello && isRulesName(hello.rules) ? hello.rules : chosenRules();
     match.current = watch?.spectator.match ?? newMatch(tables, seed, names, rules);
     let game = net?.hello.game ?? 0;
-    let lockstep = net ? new Lockstep(net.link.channel(), net.me, { game }) : undefined;
+    let delay = net?.hello.delay ?? INPUT_DELAY;
+    let lockstep = net ? new Lockstep(net.link.channel(), net.me, { game, delay }) : undefined;
+    // Online, how the match is going on the wire and on this screen, for the room's log: frame times, time given back easing off.
+    const frameTimes: number[] = [];
+    let eased = 0;
+    let startedAt = performance.now();
+    let reportedAt = startedAt;
+    let endSaid = false;
+    const netReport = (): NetReport | undefined => {
+      if (!net || !lockstep) return undefined;
+      const echoes = net.link.echoes;
+      const rtt = quantile(echoes, 0.5);
+      const rttSlow = quantile(echoes, 0.9);
+      const frameMid = quantile(frameTimes, 0.5);
+      const frameSlow = quantile(frameTimes, 0.9);
+      const fps = (ms: number | undefined) => (ms && ms > 0 ? Math.round(10_000 / ms) / 10 : 0);
+      return {
+        t: 'net',
+        game,
+        delay,
+        rtt: rtt ?? null,
+        rttSlow: rttSlow ?? null,
+        fps: fps(frameMid),
+        fpsSlow: fps(frameSlow),
+        ticks: lockstep.next,
+        held: lockstep.held,
+        heldMs: Math.round(lockstep.heldMs),
+        eased: Math.round(eased),
+        wall: Math.round(performance.now() - startedAt),
+      };
+    };
+    const sayNet = () => {
+      const report = netReport();
+      if (report) net!.link.send(report);
+      reportedAt = performance.now();
+    };
     let shown: NetState;
     const mixer = new Mixer();
     void mixer.load(0, fighters[0].sounds);
@@ -288,8 +335,17 @@ export function Fight({ fighters, stage, p2, onBack, net, watch }: FightProps) {
       const elapsed = Math.min(now - last, 250);
       // Held by a script, or standing still while a report is written; never online, where holding here would stall the other player.
       const frozen = (held || isReporting()) && !net;
-      owed = frozen ? 0 : owed + elapsed;
+      // Online, a side that has run ahead of the other eases its clock a little, so the two meet again without a stall.
+      const pace = lockstep ? paceFor(lockstep.ahead()) : 1;
+      owed = frozen ? 0 : owed + elapsed * pace;
       last = now;
+      if (lockstep) {
+        eased += elapsed * (1 - pace);
+        if (frameTimes.length < KEEP_FRAMES) frameTimes.push(elapsed);
+        const ended = current.phase === 'matchEnd' && !endSaid;
+        if (ended) endSaid = true;
+        if (ended || now - reportedAt >= NET_REPORT_MS) sayNet();
+      }
       let steps = 0;
       const t0 = performance.now();
       if (watch) {
@@ -413,23 +469,31 @@ export function Fight({ fighters, stage, p2, onBack, net, watch }: FightProps) {
           // The host calls the rematch; the guest starts it when told.
           game++;
           const next = (seed + game) >>> 0;
-          net.link.send({ t: 'rematch', game, seed: next });
-          restart(game, next);
+          // The wire measured again for the next match.
+          const length = delayFor(net.link.echoes);
+          net.link.send({ t: 'rematch', game, seed: next, delay: length });
+          restart(game, next, length);
         }
       }
     };
     /** A new match on the same tables, and a new lockstep for it: the last match's frames still on the wire are of another game. */
-    const restart = (number: number, next: number) => {
+    const restart = (number: number, next: number, length: number) => {
+      sayNet();
       lockstep?.dispose();
       game = number;
       seed = next;
-      lockstep = new Lockstep(net!.link.channel(), net!.me, { game });
+      delay = length;
+      frameTimes.length = 0;
+      eased = 0;
+      startedAt = reportedAt = performance.now();
+      endSaid = false;
+      lockstep = new Lockstep(net!.link.channel(), net!.me, { game, delay });
       match.current = newMatch(tables, seed, names, rules);
       shown = undefined;
       setNetState(undefined);
     };
     const offLink = net?.link.listen((message) => {
-      if (message.t === 'rematch' && !net.host && message.game !== game) restart(message.game, message.seed);
+      if (message.t === 'rematch' && !net.host && message.game !== game) restart(message.game, message.seed, message.delay ?? delay);
     });
     window.addEventListener('keydown', onKey);
     return () => {
@@ -437,6 +501,8 @@ export function Fight({ fighters, stage, p2, onBack, net, watch }: FightProps) {
       cancelAnimationFrame(frame);
       mixer.dispose();
       input.detach();
+      // The last word on the match, if it is left before its end.
+      if (!endSaid) sayNet();
       lockstep?.dispose();
       offLink?.();
       window.removeEventListener('keydown', onKey);
