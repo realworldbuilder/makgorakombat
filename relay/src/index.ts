@@ -78,7 +78,7 @@ const other = (role: Role): Role => (role === 'host' ? 'guest' : 'host');
 /** Pages allowed to use the relay: the game's own, those named in ORIGINS, and any served from this machine while it is worked on. */
 export function allowedOrigin(origin: string | null, extra = ''): boolean {
   if (origin === null) return true;
-  if (origin === 'https://realworldbuilder.github.io' || origin === 'https://makgora.clawdioslave.com') return true;
+  if (origin === 'https://realworldbuilder.github.io') return true;
   if (extra.split(',').some((allowed) => allowed.trim() !== '' && allowed.trim().replace(/\/$/, '') === origin)) return true;
   return /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
 }

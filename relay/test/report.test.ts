@@ -298,9 +298,9 @@ describe('the night\'s report', () => {
   it('answers GET /lobby/report with the board\'s conventions, tonight by default', async () => {
     const main = env.LOBBY.getByName('lobby');
     await main.fight(fight(Date.now() - 1000, 'finished'));
-    const response = await SELF.fetch('https://relay.test/lobby/report', { headers: { Origin: 'https://makgora.clawdioslave.com' } });
+    const response = await SELF.fetch('https://relay.test/lobby/report', { headers: { Origin: 'https://realworldbuilder.github.io' } });
     expect(response.status).toBe(200);
-    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://makgora.clawdioslave.com');
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://realworldbuilder.github.io');
     expect(response.headers.get('Cache-Control')).toBe('no-store');
     const report = await response.json<NightReport>();
     expect(report.span).toBe('night');

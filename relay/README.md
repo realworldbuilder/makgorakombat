@@ -179,7 +179,7 @@ By hand instead: `wrangler secret put DISCORD_TOKEN`, and
   dropped still reads as in under `seats`; the watchers go on getting the other's frames, and the
   returning page's when it is back.
 
-Pages on `https://realworldbuilder.github.io`, `https://makgora.clawdioslave.com` and `http://localhost:*` (or `127.0.0.1`) may use
+Pages on `https://realworldbuilder.github.io` and `http://localhost:*` (or `127.0.0.1`) may use
 it, and those listed in the `ORIGINS` variable (comma separated, given at deploy as
 `--var ORIGINS:https://a,https://b`); other sites are refused. Node and other clients that send no
 `Origin` are let in.
