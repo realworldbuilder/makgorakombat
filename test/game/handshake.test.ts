@@ -104,5 +104,7 @@ describe('the handshake', () => {
     expect(decode('pong')).toBeUndefined();
     expect(decode('{"no":1}')).toBeUndefined();
     expect(decode(encode({ t: 'rematch', game: 2, seed: 5 }))).toEqual({ t: 'rematch', game: 2, seed: 5 });
+    expect(decode(encode({ t: 'rematch', game: 3, seed: 5, delay: 9 }))).toEqual({ t: 'rematch', game: 3, seed: 5, delay: 9 });
+    expect(decode(encode({ t: 'echo', at: 1234.5, back: true }))).toEqual({ t: 'echo', at: 1234.5, back: true });
   });
 });

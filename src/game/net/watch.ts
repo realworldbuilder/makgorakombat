@@ -1,12 +1,13 @@
 import { type Match, newMatch, tick } from '../../engine/engine';
 import { isRulesName, type RulesName } from '../../engine/rules';
-import { decode, type Hello, type Message } from './handshake';
+import { decode, type Hello, type Message, type RosterMessage } from './handshake';
 import { decodeFrame, HASH_EVERY, INPUT_DELAY, rollHash, stateText, unpackInputs } from './lockstep';
 import { relayUrl } from './relay';
 
 /*
- * Watching somebody else's fight. The room sends a watcher the host's hello, every rematch, and
- * both players' frames with a byte in front saying whose (relay/src/index.ts); the engine is pure
+ * Watching somebody else's fight. The room sends a watcher both players' cursors while they pick
+ * their champions, the host's hello, every rematch, and both players' frames with a byte in front
+ * saying whose (relay/src/index.ts); the engine is pure
  * and seeded, so a third machine that plays the hello's tables and seed on both players' inputs,
  * tick by tick, sees the fight they see. The watcher only ever runs behind: it starts once it has
  * half a second of both players' inputs in hand, plays sixty ticks a second, and holds when a
@@ -29,12 +30,31 @@ export const CATCH_UP = 90;
 const MOST_PER_FRAME = 600;
 /** A ping this often keeps the socket to the room open. */
 const PING_MS = 5000;
+/** One line of chat a watcher every this long, as the relay takes them (relay/src/chat.ts). */
+export const CHAT_GAP_MS = 1500;
+/** The most characters in a line of chat. */
+export const CHAT_MAX = 140;
+
+/** A line of the watchers' chat, as the room sends it. */
+export interface ChatLine {
+  name: string;
+  text: string;
+  /** When it was said, by the relay's clock. */
+  at: number;
+}
 
 /** The room's word on which players are in. */
 export interface Seats {
   t: 'seats';
   host: boolean;
   guest: boolean;
+}
+
+/** A player's cursor on CHOOSE YOUR CHAMPION, as the room passes it on: whose, and their roster message. */
+export interface Pick {
+  t: 'pick';
+  by: 'host' | 'guest';
+  roster: RosterMessage;
 }
 
 export type WatchStatus = 'between' | 'buffering' | 'playing' | 'desync';
@@ -55,6 +75,8 @@ export class Spectator {
   game = 0;
   seed = 0;
   seats = { host: false, guest: false };
+  /** Each player's cursor while they pick their champions, host first; kept through the hello, so the pick stays up while the fight is made. */
+  picks: [RosterMessage | undefined, RosterMessage | undefined] = [undefined, undefined];
   /** The next tick to play. */
   next = 0;
   /** Both players' inputs by tick, until played. */
@@ -66,6 +88,8 @@ export class Spectator {
   private desync: { tick: number; local: number; remote: number } | undefined;
   private readonly buffer: number;
   private readonly rules: () => RulesName;
+  /** The match's input delay, from the hello or the rematch: the ticks before it the players pressed nothing. */
+  private delay = INPUT_DELAY;
   private readonly listeners = new Set<() => void>();
 
   constructor(options: Options = {}) {
@@ -73,22 +97,29 @@ export class Spectator {
     this.rules = options.rules ?? (() => 'warcraft');
   }
 
-  /** A message from the room: the hello, a rematch, back to the roster, or who is in. */
-  take(message: Message | Seats): void {
+  /** A message from the room: the hello, a rematch, back to the roster, who is in, or a player's cursor. */
+  take(message: Message | Seats | Pick): void {
     switch (message.t) {
       case 'seats':
         this.seats = { host: message.host, guest: message.guest };
+        // One who left takes their cursor with them.
+        this.picks = [message.host ? this.picks[0] : undefined, message.guest ? this.picks[1] : undefined];
+        break;
+      case 'pick':
+        if (message.roster?.t !== 'roster') return;
+        this.picks = message.by === 'host' ? [message.roster, this.picks[1]] : [this.picks[0], message.roster];
         break;
       case 'hello':
         this.hello = message;
-        this.begin(message.game, message.seed);
+        this.begin(message.game, message.seed, message.delay ?? INPUT_DELAY);
         break;
       case 'rematch':
         if (!this.hello || message.game === this.game) return;
-        this.begin(message.game, message.seed);
+        this.begin(message.game, message.seed, message.delay ?? this.delay);
         break;
       case 'back':
         this.hello = undefined;
+        this.picks = [undefined, undefined];
         this.match = undefined;
         this.inputs = [new Map(), new Map()];
         break;
@@ -159,13 +190,13 @@ export class Spectator {
   }
 
   private has(t: number): boolean {
-    return t < INPUT_DELAY || (this.inputs[0].has(t) && this.inputs[1].has(t));
+    return t < this.delay || (this.inputs[0].has(t) && this.inputs[1].has(t));
   }
 
   /** One tick, as the players' lockstep plays it, hashed where theirs is. */
   private step(match: Match): void {
     const t = this.next;
-    const bits = (seat: 0 | 1) => (t < INPUT_DELAY ? 0 : this.inputs[seat].get(t)!);
+    const bits = (seat: 0 | 1) => (t < this.delay ? 0 : this.inputs[seat].get(t)!);
     tick(match, [unpackInputs(bits(0)), unpackInputs(bits(1))]);
     this.inputs[0].delete(t);
     this.inputs[1].delete(t);
@@ -186,10 +217,11 @@ export class Spectator {
   }
 
   /** A new match on the hello's tables, as the guest starts one: its names, the seed and the match number given. */
-  private begin(game: number, seed: number): void {
+  private begin(game: number, seed: number, delay: number): void {
     const hello = this.hello!;
     this.game = game;
     this.seed = seed;
+    this.delay = delay;
     const names: [string, string] = [hello.fighters[0].name, hello.fighters[1].name];
     const rules = isRulesName(hello.rules) ? hello.rules : this.rules();
     this.match = newMatch(hello.tables, seed, names, rules);
@@ -203,21 +235,31 @@ export class Spectator {
   }
 }
 
-/** The socket to a room as a watcher, feeding a Spectator; it sends nothing but the keep-alive. */
+/**
+ * The socket to a room as a watcher, feeding a Spectator. Besides the keep-alive it sends only the
+ * watchers' chat, under `name`, which the room passes to the other watchers and never to the players.
+ */
 export class Watching {
   closed = false;
   private readonly ws: WebSocket;
   private readonly timer: ReturnType<typeof setInterval>;
   private readonly closers = new Set<() => void>();
+  private readonly chatters = new Set<(line: ChatLine) => void>();
 
-  constructor(readonly code: string, readonly spectator: Spectator, base = relayUrl()) {
-    this.ws = new WebSocket(`${base.replace(/^http/, 'ws')}/rooms/${code}/ws?role=watch`);
+  constructor(readonly code: string, readonly spectator: Spectator, base = relayUrl(), name?: string) {
+    this.ws = new WebSocket(`${base.replace(/^http/, 'ws')}/rooms/${code}/ws?role=watch${name ? `&name=${encodeURIComponent(name)}` : ''}`);
     this.ws.binaryType = 'arraybuffer';
     this.ws.addEventListener('message', (event) => {
       const data = event.data as string | ArrayBuffer;
       if (typeof data !== 'string') return spectator.frame(new Uint8Array(data));
       if (data === 'pong') return;
       if (data.startsWith('{"t":"seats"')) return spectator.take(JSON.parse(data) as Seats);
+      if (data.startsWith('{"t":"pick"')) return spectator.take(JSON.parse(data) as Pick);
+      if (data.startsWith('{"t":"chat"')) {
+        const { name: who, text, at } = JSON.parse(data) as ChatLine;
+        for (const listener of [...this.chatters]) listener({ name: who, text, at });
+        return;
+      }
       const message = decode(data);
       if (message) spectator.take(message);
     });
@@ -231,6 +273,18 @@ export class Watching {
   onClose(listener: () => void): () => void {
     this.closers.add(listener);
     return () => this.closers.delete(listener);
+  }
+
+  /** Every line of chat from now on, the room's last few first as it sends them on arrival. */
+  onChat(listener: (line: ChatLine) => void): () => void {
+    this.chatters.add(listener);
+    return () => this.chatters.delete(listener);
+  }
+
+  /** A line of chat to the other watchers; it comes back like theirs once the room has taken it. */
+  say(text: string): void {
+    const line = text.trim().slice(0, CHAT_MAX);
+    if (line !== '' && this.ws.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ t: 'chat', text: line }));
   }
 
   close(): void {

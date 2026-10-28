@@ -342,3 +342,22 @@ describe('the watcher\'s pace', () => {
     expect(spectator.status()).toBe('desync');
   });
 });
+
+describe('the pick, watched', () => {
+  it('keeps each player\'s cursor as the room passes it on, through the hello, and lets it go back at the roster or when they leave', () => {
+    const spectator = new Spectator();
+    const roster = (tile: string) => ({ t: 'roster', tile, sex: 0, classId: undefined, locked: false, champion: undefined }) as const;
+    spectator.take({ t: 'seats', host: true, guest: true });
+    spectator.take({ t: 'pick', by: 'guest', roster: roster('legend:jaina') });
+    spectator.take({ t: 'pick', by: 'host', roster: roster('legend:thrall') });
+    expect(spectator.picks.map((pick) => pick?.tile)).toEqual(['legend:thrall', 'legend:jaina']);
+    spectator.take(decode(encode(helloOf(5))) as Hello);
+    expect(spectator.picks.map((pick) => pick?.tile)).toEqual(['legend:thrall', 'legend:jaina']);
+    spectator.take({ t: 'back' });
+    expect(spectator.picks).toEqual([undefined, undefined]);
+    spectator.take({ t: 'pick', by: 'host', roster: roster('legend:tyrande') });
+    spectator.take({ t: 'pick', by: 'guest', roster: roster('legend:jaina') });
+    spectator.take({ t: 'seats', host: true, guest: false });
+    expect(spectator.picks.map((pick) => pick?.tile)).toEqual(['legend:tyrande', undefined]);
+  });
+});

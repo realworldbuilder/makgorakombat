@@ -201,9 +201,9 @@ describe('board', () => {
     await fight(3, 7);
     await fight(3, 8);
     for (let k = 4; k <= 22; k++) await fight(1, k);
-    const response = await SELF.fetch('https://relay.test/lobby/board?span=all&id=player-0004', { headers: { Origin: 'https://makgora.clawdioslave.com' } });
+    const response = await SELF.fetch('https://relay.test/lobby/board?span=all&id=player-0004', { headers: { Origin: 'https://realworldbuilder.github.io' } });
     expect(response.status).toBe(200);
-    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://makgora.clawdioslave.com');
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://realworldbuilder.github.io');
     const board = await response.json<Standings>();
     expect(board.span).toBe('all');
     expect(board.rows.length).toBe(20);

@@ -169,8 +169,9 @@ export class Arena {
     const size = `${this.canvas.width}x${this.canvas.height}`;
     if (size !== this.backdropSize && !this.ground.place) {
       this.backdropSize = size;
-      const { screen, image } = this.ground;
-      const spec = screen && image ? ({ kind: 'screen', fileId: 0, blur: 0.15, vignette: 0.45 } as const) : ({ kind: 'colour', colour: '#0b0708', vignette: 0.6 } as const);
+      const { screen } = this.ground;
+      const image = screen ? this.ground.image : this.ground.picture;
+      const spec = image ? ({ kind: 'screen', fileId: 0, blur: 0.15, vignette: 0.45 } as const) : ({ kind: 'colour', colour: '#0b0708', vignette: 0.6 } as const);
       this.renderer.setBackdrop(composeBackdrop(spec, this.canvas.width, this.canvas.height, image, screen && !screen.wide ? CLASSIC_SCREEN_ASPECT : undefined));
     }
     const now = performance.now();

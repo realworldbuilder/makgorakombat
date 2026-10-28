@@ -25,6 +25,26 @@ export type Ending =
   /** The room closed without a match ever starting in it. */
   | 'never';
 
+/**
+ * How the wire and one page's screen held up through a match, as the page told its room (the
+ * game's NetReport): the round trips to the other page in ms (middle, and slower than nine in
+ * ten), the frames a second it drew (middle, and the slow tenth), the ticks it played, the frames
+ * and the time the fight stood still waiting for the other's inputs, the time its clock gave back
+ * easing off while ahead, and the time since the match began. A fight that stood a tenth of its
+ * time or more was laggy.
+ */
+export interface NetStats {
+  rtt: number | null;
+  rttSlow: number | null;
+  fps: number;
+  fpsSlow: number;
+  ticks: number;
+  held: number;
+  heldMs: number;
+  eased: number;
+  wall: number;
+}
+
 /** One match, as a room tells the lobby when it ends. */
 export interface Fight {
   /** The room's code. */
@@ -54,6 +74,12 @@ export interface Fight {
   reconnects: number;
   /** Seconds each player (host, guest) waited in the queue before the lobby matched them; null for one who did not queue. Only on a room's first record. */
   waits?: (number | null)[];
+  /** The match's input delay in ticks, from the host's hello or rematch; absent from pages before it was measured (4). */
+  delay?: number;
+  /** Each page's last word on the wire and its screen, from pages that tell it. */
+  net?: { host?: NetStats; guest?: NetStats };
+  /** The Cloudflare edge each player last came into the room by: an airport code such as ATL or FRA. */
+  colos?: { host?: string; guest?: string };
 }
 
 export type ReportSpan = 'night' | 'day' | 'week' | 'all';
@@ -90,6 +116,11 @@ export interface NightReport {
   busiest: Busiest | null;
   /** Matches started by hour of the day in New York, 0 to 23. */
   hours: number[];
+  /**
+   * The wire, over the matches a page told it for: how many, the middle round trip between the two
+   * pages, and how many were laggy (a side stood waiting a tenth of its time or more).
+   */
+  wire: { told: number; rtt: number | null; laggy: number };
   /** Every record, oldest first, for night and day only. */
   fights?: Fight[];
 }
@@ -128,6 +159,9 @@ export function median(values: number[]): number | null {
   return sorted.length % 2 === 1 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
 }
 
+/** A page that stood waiting for the other's inputs a tenth of the match or more. */
+export const laggy = (side: NetStats): boolean => side.wall > 0 && side.heldMs >= side.wall / 10;
+
 /** Adds the records up for a span; `seen` is the ids that came to the lobby in it. Pure, for the tests. */
 export function summarize(span: ReportSpan, fights: Fight[], seen: Iterable<string>, now: number, from: number): NightReport {
   const players = new Set(seen);
@@ -150,7 +184,9 @@ export function summarize(span: ReportSpan, fights: Fight[], seen: Iterable<stri
     wait: { n: 0, median: null, worst: null },
     busiest: null,
     hours,
+    wire: { told: 0, rtt: null, laggy: 0 },
   };
+  const rtts: number[] = [];
   for (const fight of fights) {
     for (const who of [fight.host, fight.guest]) if (who) players.add(who.id);
     for (const wait of fight.waits ?? []) if (typeof wait === 'number') waits.push(wait);
@@ -164,11 +200,18 @@ export function summarize(span: ReportSpan, fights: Fight[], seen: Iterable<stri
     else if (fight.ended === 'desync') report.desyncs++;
     else if (fight.ended === 'left') report.left++;
     else if (fight.ended === 'dropped') report.drops++;
+    const told = [fight.net?.host, fight.net?.guest].filter((side): side is NetStats => side !== undefined);
+    if (told.length > 0) {
+      report.wire.told++;
+      for (const side of told) if (side.rtt !== null) rtts.push(side.rtt);
+      if (told.some(laggy)) report.wire.laggy++;
+    }
     const { label, hour } = hourOf(fight.start);
     hours[hour]!++;
     byHour.set(label, (byHour.get(label) ?? 0) + 1);
   }
   report.players = players.size;
+  report.wire.rtt = median(rtts);
   report.wait = { n: waits.length, median: median(waits), worst: waits.length > 0 ? Math.max(...waits) : null };
   // Ties go to the earlier hour: the labels sort as the times do.
   for (const [hour, n] of [...byHour].sort(([a], [b]) => (a < b ? -1 : 1))) {
