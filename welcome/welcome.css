@@ -1103,3 +1103,13 @@ h2 {
     transform: none;
   }
 }
+
+/* Under the fan game cards: the other rights holder, and how to reach us. */
+
+.fan-note {
+  max-width: 784px;
+  margin-top: 32px;
+  color: var(--muted);
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}

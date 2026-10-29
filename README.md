@@ -171,4 +171,11 @@ Each ability's look is read from the game too. The worker's `spellVisuals` reque
 
 ## A fan game
 
-World of Warcraft and its art are Blizzard Entertainment's, and are only ever read from your own copy of the game. Mortal Kombat is NetherRealm's and Warner Bros.'; this borrows the shape of its fights and nothing of its assets. Not affiliated with either.
+Mak'gora Kombat is an unofficial fan game, free, and not made, endorsed or supported by Blizzard Entertainment. World of Warcraft, Warcraft, and their characters, places, art, sounds and music are Blizzard's. The same words are on the title screen, the front door and the welcome page's [fan game section](https://realworldbuilder.github.io/makgorakombat/welcome/#fan-game); keep the three true when what the site carries changes.
+
+- **Our code** is the fight engine, the renderer and the screens, written from scratch; the rules are modelled on how the game fights. The repository holds no World of Warcraft files.
+- **Your install** is read in the browser, read-only, when you drop the folder: models, textures, animations, gear, maps, sounds and music. Nothing from it is uploaded, copied to a server or changed.
+- **The site carries** our code, our logo and icons, the fan-made LifeCraft font, and a few screenshots and one video recorded from the game (`public/legends`, `public/stages`, `public/title`, `public/welcome`, `public/demo`) to show what it looks like. No game files.
+- **We stay away from** money (no price, ads or purchases), Blizzard's logos (even those in the install), Blizzard's accounts and servers (no login, nothing talks to Battle.net), and the running game (the Mogshot addon only uses the addon interface to show a code).
+
+Mortal Kombat is NetherRealm's and Warner Bros.'; this borrows the shape of its fights and none of its art, sound, characters or code. Not affiliated with either. A rights holder who wants something changed or taken down can open an issue, and we act on it.
