@@ -1,6 +1,6 @@
 /**
  * `?demo` on the address: the attract loop. Once a folder is open the game plays itself, CPU
- * against CPU, round and round: both players pick on CHOOSE YOUR CHAMPION, the VS screen picks a
+ * against CPU, round and round: both players pick on CHOOSE YOUR LEGEND, the VS screen picks a
  * stage, the two fight to the finish and the fatality, and it starts again on the roster. Nothing
  * is pressed. The /demo/ page's reel is recorded from it, so people can watch the game before they
  * have a folder to open; anyone with one can leave it running on a screen.

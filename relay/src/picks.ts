@@ -1,5 +1,5 @@
 /*
- * The players' cursors on CHOOSE YOUR CHAMPION, for the watchers, so they see the pick as the
+ * The players' cursors on CHOOSE YOUR LEGEND, for the watchers, so they see the pick as the
  * players do: each player's {t:'roster'} goes to the watchers as it was sent, inside one that says
  * whose it is ({t:'pick', by, roster}), and the last of each is kept for a watcher who comes in
  * while they pick. The host's hello (or either going back to the roster, or leaving) lets them go:

@@ -1,8 +1,9 @@
 /** Every on-screen string of the fight in one place. */
 export const BRAND = {
-  title: "MAK'GORA KOMBAT",
-  tagline: 'BLOOD. HONOR. FATALITY.',
-  choose: 'CHOOSE YOUR CHAMPION',
+  title: "MAK'GORA",
+  subtitle: 'DUEL TO THE DEATH',
+  tagline: 'BLOOD. HONOR. EXECUTION.',
+  choose: 'CHOOSE YOUR LEGEND',
   round: (n: number): string => `ROUND ${n}`,
   fight: 'FIGHT!',
   finish: "FINISH THE MAK'GORA!",

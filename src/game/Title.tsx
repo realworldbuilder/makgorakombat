@@ -65,7 +65,7 @@ export function Logo({ small }: { small?: boolean }) {
   return (
     <div class={`logo ${small ? 'small' : ''}`}>
       <span class="makgora">MAK'GORA</span>
-      <span class="kombat">KOMBAT</span>
+      <span class="subtitle">{BRAND.subtitle}</span>
     </div>
   );
 }
@@ -210,7 +210,7 @@ export function Title({ phase, dragging, onPick, onChoose, onCreate, onOnline, o
                 tip: [
                   { left: 'Enter the Ring', kind: 'name', hue: 'legendary' },
                   { left: 'Unique' },
-                  { left: `Use: Back to CHOOSE YOUR CHAMPION. ${open.name} is open already, so nothing is read again.`, hue: 'green' },
+                  { left: `Use: Back to CHOOSE YOUR LEGEND. ${open.name} is open already, so nothing is read again.`, hue: 'green' },
                   { left: '"Your game files never leave your computer."', hue: 'gold' },
                 ],
               } : {
@@ -290,7 +290,7 @@ export function Title({ phase, dragging, onPick, onChoose, onCreate, onOnline, o
           </section>
           {open ? (
             <p class="hint opened">
-              <b>{open.name}</b> is open. Press 1 or Enter for CHOOSE YOUR CHAMPION.{' '}
+              <b>{open.name}</b> is open. Press 1 or Enter for CHOOSE YOUR LEGEND.{' '}
               <button type="button" class="link" onClick={open.onChange}>
                 change folder
               </button>

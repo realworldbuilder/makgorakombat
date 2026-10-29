@@ -27,7 +27,7 @@ import type { Link } from './net/relay';
 const RESOURCE_WORDS: Record<ResourceKind, string> = { rage: 'Rage: builds in combat', energy: '+100 Energy', mana: '+100 Mana', focus: '+100 Focus', runic: 'Runic Power: builds in combat', fury: 'Fury: builds in combat' };
 
 /*
- * CHOOSE YOUR CHAMPION. Every race on a grid of the game's own portraits, the player's own
+ * CHOOSE YOUR LEGEND. Every race on a grid of the game's own portraits, the player's own
  * characters in a row above, the legends in a row above those, both players' cursors on it
  * at once, each champion drawn full size on its player's side as soon as the cursor rests
  * on it. After the last legend come the champions built into the game (Cassidy Darkstar), then

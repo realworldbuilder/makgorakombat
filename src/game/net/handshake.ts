@@ -60,7 +60,7 @@ export interface Hello {
   tables: [MoveTable, MoveTable];
 }
 
-/** Where a player's cursor rests on CHOOSE YOUR CHAMPION, sent each time it changes. */
+/** Where a player's cursor rests on CHOOSE YOUR LEGEND, sent each time it changes. */
 export interface RosterMessage {
   t: 'roster';
   /** The tile's id ('legend:thrall', 'race:2' ...); one this machine lacks, such as the other's own champion, shows no cursor. */
@@ -86,7 +86,7 @@ export interface Rematch {
   delay?: number;
 }
 
-/** Back to CHOOSE YOUR CHAMPION, from the VS screen or the fight. */
+/** Back to CHOOSE YOUR LEGEND, from the VS screen or the fight. */
 export interface Back {
   t: 'back';
 }

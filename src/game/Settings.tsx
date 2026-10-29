@@ -17,7 +17,7 @@ const RULES_STORAGE = 'makgora.rules';
  * rule sets would halve the chance of a fair match. Set to undefined to give the choice back.
  */
 const ONE_RULESET: RulesName | undefined = 'warcraft';
-/** KOMBAT until the player chooses otherwise, where there is a choice. */
+/** ARENA (`kombat`) until the player chooses otherwise, where there is a choice. */
 let rules: RulesName = 'kombat';
 try {
   const saved = typeof localStorage !== 'undefined' ? localStorage.getItem(RULES_STORAGE) : null;
@@ -276,12 +276,12 @@ export function Settings({ onClose }: SettingsProps) {
               <span>swing timers, the hit table, the global cooldown, as the game plays</span>
             </button>
             <button type="button" class={ruleset === 'kombat' ? 'here' : ''} role="radio" aria-checked={ruleset === 'kombat'} onClick={() => pick('kombat')}>
-              <b>Kombat</b>
+              <b>Arena</b>
               <span>attacks on the press, combos, block, no dice</span>
             </button>
           </div>
           <p class="dim small">
-            Under Kombat three presses in rhythm are a string, holding back blocks, a double tap forward or back dashes, and attack in the air is a jumping attack. The next fight takes the change.
+            Under Arena three presses in rhythm are a string, holding back blocks, a double tap forward or back dashes, and attack in the air is a jumping attack. The next fight takes the change.
           </p>
           </>
           )}

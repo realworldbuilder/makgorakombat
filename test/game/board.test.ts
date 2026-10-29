@@ -53,11 +53,11 @@ function fakePage(title: string) {
 
 describe('the call to fight', () => {
   it('flashes FIGHT! in the title until the page has the focus, then puts the title back', () => {
-    const page = fakePage("MAK'GORA KOMBAT");
+    const page = fakePage("MAK'GORA");
     flashTitle(page);
     expect(page.title).toBe(FIGHT_TITLE);
     page.tick();
-    expect(page.title).toBe("MAK'GORA KOMBAT");
+    expect(page.title).toBe("MAK'GORA");
     page.tick();
     expect(page.title).toBe(FIGHT_TITLE);
     // A second call while it flashes starts nothing new.
@@ -65,11 +65,11 @@ describe('the call to fight', () => {
     expect(page.ticking()).toBe(1);
     page.focus = true;
     page.tick();
-    expect(page.title).toBe("MAK'GORA KOMBAT");
+    expect(page.title).toBe("MAK'GORA");
     expect(page.ticking()).toBe(0);
     // Looked at already: no flash.
     flashTitle(page);
-    expect(page.title).toBe("MAK'GORA KOMBAT");
+    expect(page.title).toBe("MAK'GORA");
   });
 
   it('keeps the round gong once a fighter\'s sounds are decoded', async () => {

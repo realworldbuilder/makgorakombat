@@ -23,7 +23,7 @@ import { WatchChat } from './WatchChat';
  * built from the host's hello with this install's own files, as the guest builds them, and the
  * ground found in this install's own list; the fight screen then draws the match the spectator
  * plays (net/watch.ts), with no keys of its own. Between fights the two players' pick is on
- * CHOOSE YOUR CHAMPION as they see it, both cursors moving as they move theirs (Select's watch),
+ * CHOOSE YOUR LEGEND as they see it, both cursors moving as they move theirs (Select's watch),
  * until the next hello's fight is ready. Escape goes back to the lobby whenever.
  *
  * A stage this install cannot raise (one its folder lacks, or one that would not rise) is never
@@ -39,7 +39,7 @@ interface WatchProps {
   stages: Stage[];
   screens: LoadingScreen[];
   assets: UiAssets;
-  /** CHOOSE YOUR CHAMPION as the watcher sees the two pick, from the game's own (Game.tsx); `bay` when they pick in Booby Bay. */
+  /** CHOOSE YOUR LEGEND as the watcher sees the two pick, from the game's own (Game.tsx); `bay` when they pick in Booby Bay. */
   select: (roster: WatchRoster, bay: boolean) => ComponentChildren;
   onBack: () => void;
 }

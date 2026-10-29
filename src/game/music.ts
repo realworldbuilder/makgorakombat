@@ -4,7 +4,7 @@ import type { Stage } from './stages';
 
 /*
  * The music: the game's own tracks, read from the open folder by file id like everything else.
- * CHOOSE YOUR CHAMPION has the open game's login theme (edition.ts); the VS screen plays the music of the stage
+ * CHOOSE YOUR LEGEND has the open game's login theme (edition.ts); the VS screen plays the music of the stage
  * under the cursor, as the game plays it in that zone; the fight keeps that music on underneath,
  * lower, and lower still while a fatality plays.
  *

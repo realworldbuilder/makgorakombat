@@ -97,10 +97,10 @@ code {
     0 6px 18px rgba(0, 0, 0, 0.8);
 }
 
-.logo .kombat {
+.logo .subtitle {
   font-family: var(--heavy);
-  font-size: 5.2rem;
-  letter-spacing: 0.02em;
+  font-size: 2.6rem;
+  letter-spacing: 0.06em;
   color: var(--blood);
   text-shadow:
     0 0 2px #000,
@@ -112,8 +112,8 @@ code {
   font-size: 1.85rem;
 }
 
-.logo.small .kombat {
-  font-size: 1.9rem;
+.logo.small .subtitle {
+  font-size: 0.95rem;
 }
 
 /* ---- the title ------------------------------------------------------------------------- */
@@ -540,7 +540,7 @@ code {
   max-width: 560px;
 }
 
-/* ---- choose your champion ------------------------------------------------------------- */
+/* ---- choose your legend ------------------------------------------------------------- */
 
 .select {
   padding: 10px 16px 8px;
@@ -2723,7 +2723,7 @@ code {
   font-size: 0.85rem;
 }
 
-/* On CHOOSE YOUR CHAMPION the corner is player 1's plate: the chat sits under the grid instead, above the footer. */
+/* On CHOOSE YOUR LEGEND the corner is player 1's plate: the chat sits under the grid instead, above the footer. */
 .watch-chat.on-pick {
   left: 50%;
   bottom: 58px;
