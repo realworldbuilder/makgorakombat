@@ -226,7 +226,7 @@ export function roundName(round: number, rounds: number): string {
 /** The bracket as plain text, to paste where the players talk. */
 export function cupText(cup: Cup): string {
   const name = (side: number | null, round: number) => (side === null ? (round === 0 ? 'bye' : '?') : cup.entrants[side]!.name);
-  const lines = ["MAK'GORA KOMBAT TOURNAMENT", cup.firstTo > 1 ? `first to ${cup.firstTo} match wins` : 'one match a pairing', ''];
+  const lines = ["MAK'GORA TOURNAMENT", cup.firstTo > 1 ? `first to ${cup.firstTo} match wins` : 'one match a pairing', ''];
   cup.rounds.forEach((round, r) => {
     lines.push(roundName(r, cup.rounds.length));
     for (const bout of round) {

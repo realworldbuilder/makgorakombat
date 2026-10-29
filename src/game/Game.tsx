@@ -37,7 +37,7 @@ import { Versus } from './Versus';
 import { Watch } from './Watch';
 
 /*
- * The screens: the title with the folder drop, CHOOSE YOUR CHAMPION, the VS screen with the
+ * The screens: the title with the folder drop, CHOOSE YOUR LEGEND, the VS screen with the
  * stage pick (online, the NEXT STAGE card with the stage the host drew), and the fight.
  * Everything the game knows about the open folder is loaded once here and handed down, with the
  * edition (edition.ts): which of the folder's games is open.
@@ -270,7 +270,7 @@ export function Game() {
     };
   }, [openKey]);
 
-  // The open game's login theme under CHOOSE YOUR CHAMPION, and on the title come back to with the folder open;
+  // The open game's login theme under CHOOSE YOUR LEGEND, and on the title come back to with the folder open;
   // the VS screen and the fight play their stage's own.
   useEffect(() => {
     if (!loaded || openKey === undefined) return;
@@ -617,7 +617,7 @@ export function Game() {
     const names = screen.kind === 'select' ? undefined : screen.fighters.map((f) => `${f.champion.name} (${f.champion.title})`).join(' vs ') + `, player 2: ${p2}`;
     const ground = screen.kind === 'fight' ? screen.stage : undefined;
     const stage = ground && (ground.stage ? `${ground.stage.name}, ${ground.stage.where}` : ground.screen ? `loading screen ${ground.screen.fileId}` : 'none');
-    const screenName = { select: 'Choose your champion', versus: 'VS screen', next: 'Next stage card', fight: 'The fight' }[screen.kind];
+    const screenName = { select: 'Choose your legend', versus: 'VS screen', next: 'Next stage card', fight: 'The fight' }[screen.kind];
     setWhere({ screen: screenName, edition, fighters: names, stage });
   }, [phase.kind, loaded, loadError, atTitle, screen, p2]);
 

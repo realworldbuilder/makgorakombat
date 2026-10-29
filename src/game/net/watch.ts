@@ -50,7 +50,7 @@ export interface Seats {
   guest: boolean;
 }
 
-/** A player's cursor on CHOOSE YOUR CHAMPION, as the room passes it on: whose, and their roster message. */
+/** A player's cursor on CHOOSE YOUR LEGEND, as the room passes it on: whose, and their roster message. */
 export interface Pick {
   t: 'pick';
   by: 'host' | 'guest';

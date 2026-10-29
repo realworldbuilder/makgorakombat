@@ -96,7 +96,7 @@ export function callToFight(words: string): void {
   flashTitle(page);
   if (!away || !notifyOn()) return;
   try {
-    const shown = new Notification("MAK'GORA KOMBAT", { body: words, tag: 'makgora-call' });
+    const shown = new Notification("MAK'GORA", { body: words, tag: 'makgora-call' });
     shown.onclick = () => {
       window.focus();
       shown.close();

@@ -29,7 +29,7 @@ interface WatchChatProps {
   onOpen: (open: boolean) => void;
   /** The field, for the screen around it to focus. */
   field: RefObject<HTMLInputElement | null>;
-  /** Over CHOOSE YOUR CHAMPION, where the corner is player 1's: under the grid instead. */
+  /** Over CHOOSE YOUR LEGEND, where the corner is player 1's: under the grid instead. */
   onPick?: boolean;
 }
 

@@ -4,7 +4,7 @@ import type { Edition } from './edition';
 
 /*
  * The edition's art, read from the open install: one of its loading screens drawn full screen
- * behind CHOOSE YOUR CHAMPION, left out when the install has none of the files the edition names.
+ * behind CHOOSE YOUR LEGEND, left out when the install has none of the files the edition names.
  */
 
 export interface EditionArt {

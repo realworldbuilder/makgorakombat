@@ -33,7 +33,7 @@ export interface HitTable {
 }
 
 export interface Rules {
-  /** For the HUD: WARCRAFT, KOMBAT. */
+  /** For the HUD: WARCRAFT, ARENA. */
   word: string;
   /** Ground speed per frame: forwards, and backing away. */
   walk: number;
@@ -115,7 +115,8 @@ export const RULES: Record<RulesName, Rules> = {
     airAttack: undefined,
   },
   kombat: {
-    word: 'KOMBAT',
+    // Shown as ARENA; the key stays `kombat` so saved settings and online matches with older pages still agree.
+    word: 'ARENA',
     walk: 0.1,
     back: 0.07,
     swingTimer: false,

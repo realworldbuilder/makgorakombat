@@ -4,7 +4,7 @@ import type { Link } from './net/relay';
 import { useModalKeys } from './ui/modal';
 
 /*
- * The players' chat: the two in an online match talk to each other on CHOOSE YOUR CHAMPION, the VS
+ * The players' chat: the two in an online match talk to each other on CHOOSE YOUR LEGEND, the VS
  * screen, the next-stage card and the match-end screen. T (or a click on the line) opens a field,
  * Enter says it and Escape lets it go; while it is open it has the keyboard (modal.ts, typing), so
  * no letter moves a fighter or picks a champion. In a fight the lines still come up but nothing
@@ -35,7 +35,7 @@ interface PlayerChatProps {
   them?: string;
   /** Whether a line may be typed now: not while a round is being fought. Asked as the screens change. */
   canType: () => boolean;
-  /** Over CHOOSE YOUR CHAMPION, where the corner is player 1's plate: under the grid instead. */
+  /** Over CHOOSE YOUR LEGEND, where the corner is player 1's plate: under the grid instead. */
   onPick?: boolean;
 }
 
