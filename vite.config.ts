@@ -57,9 +57,9 @@ export default defineConfig({
   plugins: [preact()],
   worker: { format: 'es' },
   // The pages: the front door at the site's own address (the game playing itself, demo/), the game at
-  // /play/, the welcome page at /welcome/, the site's numbers at /stats/, and /demo/, where the front
-  // door was first, sending its links on to it.
-  build: { rollupOptions: { input: { main: 'index.html', play: 'play/index.html', welcome: 'welcome/index.html', demo: 'demo/index.html', stats: 'stats/index.html' } } },
+  // /play/, the welcome page at /welcome/, the site's numbers at /stats/, the class guides at
+  // /guides/<class>/, and /demo/, where the front door was first, sending its links on to it.
+  build: { rollupOptions: { input: { main: 'index.html', play: 'play/index.html', welcome: 'welcome/index.html', demo: 'demo/index.html', stats: 'stats/index.html', warrior: 'guides/warrior/index.html', hunter: 'guides/hunter/index.html', guidePlay: 'guides/play/index.html' } } },
   // Only the game's own page is scanned: the submodule's pages pull in things the game does not use.
   optimizeDeps: { entries: ['play/index.html'] },
   resolve: { alias: { '@mogshot': mogshot } },
