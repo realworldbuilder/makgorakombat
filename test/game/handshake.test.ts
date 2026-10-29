@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { newMatch, tick } from '../../src/engine/engine';
 import type { Champion } from '../../src/game/fighters';
-import { championOf, decode, encode, type Hello, localize, meet, mismatch, plainSpec, sameStage, specOf, stageKeyOf } from '../../src/game/net/handshake';
+import { championOf, cleanSay, decode, encode, type Hello, localize, meet, mismatch, plainSpec, SAY_MAX, sameStage, specOf, stageKeyOf } from '../../src/game/net/handshake';
 import { stateText } from '../../src/game/net/lockstep';
 import { VERSION } from '../../src/game/net/version';
 import { fakeTable, FULL_SET, HUNTER, PALADIN } from '../engine/fake';
@@ -106,5 +106,18 @@ describe('the handshake', () => {
     expect(decode(encode({ t: 'rematch', game: 2, seed: 5 }))).toEqual({ t: 'rematch', game: 2, seed: 5 });
     expect(decode(encode({ t: 'rematch', game: 3, seed: 5, delay: 9 }))).toEqual({ t: 'rematch', game: 3, seed: 5, delay: 9 });
     expect(decode(encode({ t: 'echo', at: 1234.5, back: true }))).toEqual({ t: 'echo', at: 1234.5, back: true });
+  });
+});
+
+describe("the players' chat", () => {
+  it('cleans a line: no control characters or runs of spaces, cut to size, nothing when empty', () => {
+    expect(cleanSay('  gg   wp\u0007 ')).toBe('gg wp');
+    expect(cleanSay('x'.repeat(SAY_MAX + 20))).toHaveLength(SAY_MAX);
+    expect(cleanSay('   ')).toBeUndefined();
+    expect(cleanSay(42)).toBeUndefined();
+  });
+
+  it('goes over the wire as a word like any other', () => {
+    expect(decode(encode({ t: 'say', text: 'rematch?' }))).toEqual({ t: 'say', text: 'rematch?' });
   });
 });

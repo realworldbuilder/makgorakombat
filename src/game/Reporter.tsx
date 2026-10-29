@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { Match } from '../engine/engine';
 import { TICK_MS } from '../engine/stage';
+import { feedbackOf, MAX_FEEDBACK, sendFeedback } from './feedback';
+import { savedName } from './net/lobby';
 import {
   currentWhere,
   issueBody,
@@ -16,7 +18,9 @@ import {
 
 /*
  * The Issue Reporter: the little bug tab pinned to the top of the screen, as the WoW Forever beta
- * pins its own, and F6 from anywhere. REPORT A BUG or SUGGESTION, a few words and a description;
+ * pins its own, and F6 from anywhere. FEEDBACK is a few words and stars sent straight to us
+ * through the relay (feedback.ts), no account needed, the same box the match-end screen offers.
+ * REPORT A BUG or SUGGESTION, a few words and a description;
  * where the player is (screen, fighters, stage, the round, the build, the browser, the last
  * console errors) is attached for them. SEND opens GitHub's new-issue page filled in; COPY is for
  * a player without a GitHub account to paste it to us instead.
@@ -50,15 +54,21 @@ function capture(): Context {
   };
 }
 
+type Tab = ReportKind | 'feedback';
+
 export function Reporter() {
   const [open, setOpen] = useState(false);
-  const [kind, setKind] = useState<ReportKind>('bug');
+  const [tab, setTab] = useState<Tab>('feedback');
+  const kind: ReportKind = tab === 'feedback' ? 'bug' : tab;
+  const [rating, setRating] = useState<number>();
+  const [said, setSaid] = useState<'sending' | 'thanks' | 'failed'>();
   const [title, setTitle] = useState('');
   const [text, setText] = useState('');
   const [context, setContext] = useState<Context>();
-  const [done, setDone] = useState<'sent' | 'copied' | 'blocked'>();
+  const [done, setDone] = useState<'sent' | 'copied' | 'blocked' | 'feedback'>();
   const [link, setLink] = useState('');
   const titleInput = useRef<HTMLInputElement>(null);
+  const wordInput = useRef<HTMLTextAreaElement>(null);
 
   const report = (): Report => ({ kind, title, text, ...(context ?? capture()) });
 
@@ -73,16 +83,33 @@ export function Reporter() {
     if (done) {
       setTitle('');
       setText('');
+      setRating(undefined);
       setDone(undefined);
     }
   };
+  // FEEDBACK: straight to the relay with what is on screen; the window says whether it got there.
+  const sendWord = () => {
+    const where = (context ?? capture()).where;
+    const fighters = where.fighters?.split(' vs ').map((f) => f.replace(/ \(.*$/, '').replace(/, player 2.*$/, ''));
+    const message = feedbackOf(text, rating, {
+      mode: 'menu',
+      fighters: fighters?.length === 2 ? [fighters[0]!, fighters[1]!] : ['', ''],
+      stage: where.stage,
+      game: where.edition,
+    }, { name: savedName() });
+    if (!message) return;
+    setSaid('sending');
+    setDone('feedback');
+    void sendFeedback(message).then((ok) => setSaid(ok ? 'thanks' : 'failed'));
+  };
   const send = () => {
+    if (tab === 'feedback') return sendWord();
     const url = issueUrl(report());
     setLink(url);
     // Without 'noopener', which would hand back nothing and hide a blocked tab; the opener is let go instead.
-    const tab = window.open(url, '_blank');
-    if (tab) tab.opener = null;
-    setDone(tab ? 'sent' : 'blocked');
+    const opened = window.open(url, '_blank');
+    if (opened) opened.opener = null;
+    setDone(opened ? 'sent' : 'blocked');
   };
   const copy = () => {
     const r = report();
@@ -91,8 +118,8 @@ export function Reporter() {
 
   useEffect(() => {
     setReporting(open);
-    if (open) titleInput.current?.focus();
-  }, [open]);
+    if (open) (tab === 'feedback' ? wordInput : titleInput).current?.focus();
+  }, [open, tab]);
 
   // Listened for first, from the page's start: while the window is open no key reaches the game or
   // its menus, so typing a report does not throw a punch or close the roster. The keys still type.
@@ -120,16 +147,18 @@ export function Reporter() {
     return () => window.removeEventListener('keydown', onKey, true);
   }, []);
 
-  const bug = kind === 'bug';
+  const bug = tab === 'bug';
+  const word = tab === 'feedback';
   const lines = context ? attached(context) : [];
 
   return (
     <>
-      <button class="reporter-tab" type="button" onClick={show} aria-label={`Report an issue (${KEY})`}>
+      <button class="reporter-tab bug-tab" type="button" onClick={show} aria-label={`Feedback and bugs (${KEY})`}>
         <BugGlyph />
+        <span class="reporter-word">FEEDBACK</span>
         <span class="wow-tooltip reporter-tip">
-          <span class="line tt-name">Report an Issue</span>
-          <span class="line h-gold">A bug, or something we could make better</span>
+          <span class="line tt-name">Feedback &amp; Bugs</span>
+          <span class="line h-gold">Tell us what you think, report a bug, or suggest an idea</span>
           <span class="line h-grey">{KEY}</span>
         </span>
       </button>
@@ -137,13 +166,16 @@ export function Reporter() {
         <div class="guide-backdrop reporter-backdrop" onClick={hide}>
           <div class="guide reporter" onClick={(event) => event.stopPropagation()} role="dialog" aria-label="Report an issue">
             <nav class="tabs">
-              <button type="button" class={bug ? 'here' : ''} onClick={() => setKind('bug')}>REPORT A BUG</button>
-              <button type="button" class={bug ? '' : 'here'} onClick={() => setKind('idea')}>SUGGESTION</button>
+              <button type="button" class={word ? 'here' : ''} onClick={() => setTab('feedback')}>FEEDBACK</button>
+              <button type="button" class={bug ? 'here' : ''} onClick={() => setTab('bug')}>REPORT A BUG</button>
+              <button type="button" class={tab === 'idea' ? 'here' : ''} onClick={() => setTab('idea')}>SUGGESTION</button>
               <button class="close" onClick={hide} aria-label="Close" type="button">✕</button>
             </nav>
             {done ? (
               <div class="body done">
-                <h3>Thank you!</h3>
+                <h3>{done === 'feedback' && said === 'sending' ? 'Sending…' : done === 'feedback' && said === 'failed' ? 'It did not get through' : 'Thank you!'}</h3>
+                {done === 'feedback' && said === 'thanks' && <p>We have it. Every word is read.</p>}
+                {done === 'feedback' && said === 'failed' && <p>The game could not reach us just now. Try again in a moment, or use REPORT A BUG, which goes through GitHub.</p>}
                 {done === 'sent' && <p>GitHub opened in a new tab with your {bug ? 'report' : 'idea'} filled in. Press <b>Submit new issue</b> there and it reaches us.</p>}
                 {done === 'blocked' && (
                   <p>
@@ -155,6 +187,50 @@ export function Reporter() {
                   <button type="button" class="button" onClick={hide}>BACK TO THE GAME</button>
                 </div>
               </div>
+            ) : word ? (
+              <form
+                class="body"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  send();
+                }}
+              >
+                <p class="dim small">What do you think of the game? A fight, a champion, the feel of it, anything. It comes straight to us; no account needed.</p>
+                <span class="stars reporter-stars" role="radiogroup" aria-label="Rating, if you like">
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <button
+                      type="button"
+                      key={n}
+                      class={rating !== undefined && n <= rating ? 'on' : ''}
+                      role="radio"
+                      aria-checked={rating === n}
+                      aria-label={`${n} of 5`}
+                      onClick={() => setRating(rating === n ? undefined : n)}
+                    >
+                      ★
+                    </button>
+                  ))}
+                </span>
+                <textarea
+                  ref={wordInput}
+                  rows={6}
+                  maxLength={MAX_FEEDBACK}
+                  placeholder="Tell us anything."
+                  value={text}
+                  onInput={(event) => setText(event.currentTarget.value)}
+                />
+                <div class="count dim small">
+                  {text.length} / {MAX_FEEDBACK}
+                </div>
+                <div class="actions">
+                  <button type="submit" class="button primary" disabled={!text.trim()}>
+                    SEND
+                  </button>
+                </div>
+                <p class="dim small hint">
+                  <b>Ctrl+Enter</b> sends · <b>Esc</b> closes
+                </p>
+              </form>
             ) : (
               <form
                 class="body"

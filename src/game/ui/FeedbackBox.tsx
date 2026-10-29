@@ -94,7 +94,7 @@ export function FeedbackBox({ ended, fight }: FeedbackBoxProps) {
     if (said) return <div class="feedback-line said">{said === 'sending' ? 'SENDING…' : said === 'thanks' ? 'THANKS' : 'COULD NOT SEND YOUR FEEDBACK'}</div>;
     return (
       <button type="button" class="feedback-line" tabIndex={-1} onMouseDown={(event) => event.preventDefault()} onClick={() => setOpen(true)}>
-        SEND FEEDBACK · <b>F</b>
+        ★ SEND FEEDBACK · <b>F</b>
       </button>
     );
   }

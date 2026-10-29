@@ -14,7 +14,8 @@ export const MAX_FEEDBACK = 1000;
 /** How long a message is given to reach the relay before it is taken for lost. */
 export const SEND_MS = 8000;
 
-export type FeedbackMode = 'cpu' | 'local' | 'online';
+/** How the fight was played, or `menu` for a word from the bug tab (Reporter.tsx), sent from any screen. */
+export type FeedbackMode = 'cpu' | 'local' | 'online' | 'menu';
 
 /** The fight a message follows, as the screens know it. */
 export interface FeedbackFight {

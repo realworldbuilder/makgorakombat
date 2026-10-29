@@ -36,7 +36,8 @@ export const KEEP_FEEDBACK = 10_000;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-export const MODES = ['cpu', 'local', 'online'] as const;
+/** How it was played, or `menu` for a word sent from the bug tab on any screen, which may follow no fight. */
+export const MODES = ['cpu', 'local', 'online', 'menu'] as const;
 export type Mode = (typeof MODES)[number];
 
 /** A message as it is kept and read back. */
@@ -83,16 +84,18 @@ export function readFeedback(body: string): Incoming | { refused: string; status
   const text = typeof value.text === 'string' ? value.text.trim() : '';
   if (text === '') return { refused: 'Nothing written.', status: 400 };
   if (text.length > MAX_FEEDBACK) return { refused: `At most ${MAX_FEEDBACK} characters.`, status: 413 };
-  if (!MODES.includes(value.mode as Mode)) return { refused: 'mode is cpu, local or online.', status: 400 };
+  if (!MODES.includes(value.mode as Mode)) return { refused: 'mode is cpu, local, online or menu.', status: 400 };
   const fighters = value.fighters;
-  if (!Array.isArray(fighters) || fighters.length !== 2) return { refused: 'fighters is the two champions.', status: 400 };
-  const names = fighters.map((f) => clip(f, 60));
-  if (!names[0] || !names[1]) return { refused: 'fighters is the two champions.', status: 400 };
+  const menu = value.mode === 'menu';
+  if (!menu && (!Array.isArray(fighters) || fighters.length !== 2)) return { refused: 'fighters is the two champions.', status: 400 };
+  // From the menu the champions are whatever was on screen, or none ('' is kept).
+  const names = Array.isArray(fighters) && fighters.length === 2 ? fighters.map((f) => clip(f, 60)) : [];
+  if (!menu && (!names[0] || !names[1])) return { refused: 'fighters is the two champions.', status: 400 };
   const rating = value.rating;
   if (rating !== undefined && rating !== null && !(Number.isInteger(rating) && (rating as number) >= 1 && (rating as number) <= 5)) {
     return { refused: 'rating is 1 to 5.', status: 400 };
   }
-  const message: Incoming = { text, mode: value.mode as Mode, fighters: [names[0], names[1]] };
+  const message: Incoming = { text, mode: value.mode as Mode, fighters: [names[0] ?? '', names[1] ?? ''] };
   if (typeof rating === 'number') message.rating = rating;
   const stage = clip(value.stage, 80);
   if (stage) message.stage = stage;
@@ -121,7 +124,7 @@ export function asText(messages: readonly Feedback[]): string {
   const sides = (m: Feedback, n: 0 | 1) => `${m.fighters[n]}${m.winner === n ? ' (won)' : ''}${m.me === n ? ' [sender]' : ''}`;
   return messages
     .map((m) => {
-      const about = [m.mode, `${sides(m, 0)} vs ${sides(m, 1)}`, m.stage, m.rating ? `${'*'.repeat(m.rating)}${'.'.repeat(5 - m.rating)}` : undefined, m.name ? `from ${m.name}` : undefined, m.game, m.build && `build ${m.build}`];
+      const about = [m.mode, m.fighters[0] || m.fighters[1] ? `${sides(m, 0)} vs ${sides(m, 1)}` : undefined, m.stage, m.rating ? `${'*'.repeat(m.rating)}${'.'.repeat(5 - m.rating)}` : undefined, m.name ? `from ${m.name}` : undefined, m.game, m.build && `build ${m.build}`];
       return `#${m.id} ${new Date(m.t).toISOString()} · ${about.filter(Boolean).join(' · ')}\n${m.text}\n`;
     })
     .join('\n');

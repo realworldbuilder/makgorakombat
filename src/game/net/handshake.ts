@@ -158,7 +158,23 @@ export interface NetReport {
   wall: number;
 }
 
-export type Message = Meet | Hello | RosterMessage | StageMessage | Rematch | Back | Peer | Result | VoiceMessage | Echo | NetReport;
+/** A line of chat from the other player (PlayerChat.tsx); the relay passes it on like any word, and the fight never reads it. */
+export interface Say {
+  t: 'say';
+  text: string;
+}
+
+/** The most characters in a line of the players' chat. */
+export const SAY_MAX = 140;
+
+/** A line as it may be shown: no control characters, no runs of spaces, cut to SAY_MAX; undefined when nothing is left. */
+export function cleanSay(text: unknown): string | undefined {
+  if (typeof text !== 'string') return undefined;
+  const clean = text.replace(/[\p{Cc}\p{Cf}]/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, SAY_MAX).trim();
+  return clean === '' ? undefined : clean;
+}
+
+export type Message = Meet | Hello | RosterMessage | StageMessage | Rematch | Back | Peer | Result | VoiceMessage | Echo | NetReport | Say;
 
 export function specOf(champion: Champion): FighterSpec {
   const spec: FighterSpec = {
