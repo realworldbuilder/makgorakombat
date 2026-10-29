@@ -65,7 +65,7 @@ export function Logo({ small }: { small?: boolean }) {
   return (
     <div class={`logo ${small ? 'small' : ''}`}>
       <span class="makgora">MAK'GORA</span>
-      <span class="kombat">KOMBAT</span>
+      <span class="subtitle">{BRAND.subtitle}</span>
     </div>
   );
 }
@@ -210,7 +210,7 @@ export function Title({ phase, dragging, onPick, onChoose, onCreate, onOnline, o
                 tip: [
                   { left: 'Enter the Ring', kind: 'name', hue: 'legendary' },
                   { left: 'Unique' },
-                  { left: `Use: Back to CHOOSE YOUR CHAMPION. ${open.name} is open already, so nothing is read again.`, hue: 'green' },
+                  { left: `Use: Back to CHOOSE YOUR LEGEND. ${open.name} is open already, so nothing is read again.`, hue: 'green' },
                   { left: '"Your game files never leave your computer."', hue: 'gold' },
                 ],
               } : {
@@ -290,7 +290,7 @@ export function Title({ phase, dragging, onPick, onChoose, onCreate, onOnline, o
           </section>
           {open ? (
             <p class="hint opened">
-              <b>{open.name}</b> is open. Press 1 or Enter for CHOOSE YOUR CHAMPION.{' '}
+              <b>{open.name}</b> is open. Press 1 or Enter for CHOOSE YOUR LEGEND.{' '}
               <button type="button" class="link" onClick={open.onChange}>
                 change folder
               </button>
@@ -298,7 +298,10 @@ export function Title({ phase, dragging, onPick, onChoose, onCreate, onOnline, o
           ) : (
             <p class="hint">
               <b>Drop your World of Warcraft folder</b> anywhere on this page, or press 1 to choose it. It is in <code>Applications</code> on a
-              Mac. Your game files are read here in the browser and never leave your computer.
+              Mac. Your game files are read here in the browser and never leave your computer.{' '}
+              <a class="link" href={import.meta.env.BASE_URL}>
+                Watch a fight first
+              </a>
             </p>
           )}
           {!open && (
@@ -316,8 +319,10 @@ export function Title({ phase, dragging, onPick, onChoose, onCreate, onOnline, o
         </>
       )}
       <p class="dim small credits">
-        A fan game. World of Warcraft is Blizzard Entertainment's; the fighters are drawn from your own copy of it with the{' '}
-        <a href="https://realworldbuilder.github.io/mogshot/">Mogshot</a> engine.
+        <b>An unofficial fan game</b>, free, and not made, endorsed or supported by Blizzard Entertainment. World of Warcraft and
+        everything you see of it are Blizzard's: the fighters, stages and sounds are read from your own copy with the{' '}
+        <a href="https://realworldbuilder.github.io/mogshot/">Mogshot</a> engine, and this site carries none of its files.{' '}
+        <a href={`${import.meta.env.BASE_URL}welcome/#fan-game`}>What our code does</a>
       </p>
       {guide && !note && <Guide page={guide} onPage={setGuide} onClose={() => setGuide(undefined)} onFolder={open ? open.onEnter : choose} opened={open !== undefined} />}
       {note && (

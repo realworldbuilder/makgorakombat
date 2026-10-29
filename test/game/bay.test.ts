@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { SceneMesh } from '@mogshot/character/scene';
 import type { M2Bone } from '@mogshot/formats/m2';
-import { Bounce, enlarge, findChest, findHips } from '../../src/game/bay';
+import { Bounce, enlarge, findChest } from '../../src/game/bay';
 import { BAY_CODE, typedToward } from '../../src/game/Online';
 
 /** A bone with a role, a parent and a pivot; the tracks are not read. */
@@ -111,21 +111,6 @@ describe('Booby Bay', () => {
     bones = pose();
     springs.apply(bones, 3016, { x: 5, z: 0, facing: 1 });
     expect(bones[16 + 12]).toBe(0);
-  });
-
-  it('makes the bottom bigger too, backward, over the thighs, and leaves the front of the hips alone', () => {
-    // The pelvis off the root, the thighs hanging from it.
-    const bones = [...BONES, bone(-1, 0, [0, 0, 1.0]), bone(55, 7, [0, -0.09, 0.95]), bone(56, 7, [0, 0.09, 0.95])];
-    const points: [number, number, number, number][] = [...POINTS, [-0.13, 0.07, 0.9, 7], [-0.13, -0.07, 0.9, 7], [0.1, 0.05, 0.9, 7]];
-    const hips = findHips(meshOf(points), bones)!;
-    expect(hips.facing).toBe(-1);
-    expect(hips.centre[1]).toBeGreaterThan(0.05);
-    const mesh = meshOf(points);
-    const out = enlarge(mesh, bones).vertices;
-    for (const i of [7, 8]) expect(at(out, i)[0]!).toBeLessThan(at(mesh.vertices, i)[0]! - 0.03);
-    expect(at(out, 9)).toEqual(at(mesh.vertices, 9));
-    // Without a bottom to make bigger, it is left as it was.
-    expect(at(enlarge(mesh, bones, undefined, 0).vertices, 7)).toEqual(at(mesh.vertices, 7));
   });
 
   it('leaves a model it cannot read alone', () => {

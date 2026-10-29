@@ -231,7 +231,7 @@ export function savedTiles(list: readonly SavedChampion[], races: readonly Race[
 }
 
 /**
- * The legends' row on CHOOSE YOUR CHAMPION: the legends, the champions built into the game, the
+ * The legends' row on CHOOSE YOUR LEGEND: the legends, the champions built into the game, the
  * question mark that opens the creator, and the player's own, newest first.
  */
 export function championRow(legends: readonly Tile[], saved: readonly SavedChampion[], races: readonly Race[]): Tile[] {

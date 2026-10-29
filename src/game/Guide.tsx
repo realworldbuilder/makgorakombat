@@ -54,7 +54,7 @@ export function Guide({ page, onPage, onClose, onFolder, opened }: GuideProps) {
                 here in the browser and never leave your computer; the first open takes a moment, later ones are instant.
               </li>
               <li>
-                <b>CHOOSE YOUR CHAMPION.</b> The legends, Cassidy Darkstar, and after them the question mark: <b>CREATE YOUR CHAMPION</b> makes
+                <b>CHOOSE YOUR LEGEND.</b> The legends, Cassidy Darkstar, and after them the question mark: <b>CREATE YOUR CHAMPION</b> makes
                 one of your own, who joins the row. Rest on a tile and your champion appears on your side. Lock in, or press <b>Enter World</b> at
                 their feet, and they roar.
               </li>
@@ -64,7 +64,7 @@ export function Guide({ page, onPage, onClose, onFolder, opened }: GuideProps) {
                 fights in front of its loading screens. Then fight: best of three, sixty seconds a round.
               </li>
               <li>
-                Take their health to nothing and they are dazed: <b>FINISH THE MAK'GORA!</b> Your class's fatality keys (shown on your
+                Take their health to nothing and they are dazed: <b>FINISH THE MAK'GORA!</b> Your class's execution keys (shown on your
                 side), or any ability that lands, is <b>DISHONOR!</b>; a swing, or the clock running out, is a mere <b>K.O.</b> A round
                 won untouched is <b>HONOR RESTORED</b>.
               </li>

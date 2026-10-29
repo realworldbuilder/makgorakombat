@@ -5,7 +5,7 @@ import type { Cue } from './music';
  * by side (retail in _retail_, WoW Forever in _forever_, the classic clients in _classic_*_),
  * each its own product in .build.info, and each draws the ring differently: its own races,
  * classes and legends' looks, its own world for the stages, and its own login screen. The
- * edition is that login screen's dress for CHOOSE YOUR CHAMPION: a loading screen of its own
+ * edition is that login screen's dress for CHOOSE YOUR LEGEND: a loading screen of its own
  * behind the champions, its title music and its colours, under the edition's name and a glyph
  * of our own drawing. The game's official logos are left out on purpose. Everything is read from
  * the install by file id, the first id it has winning, so a build that moves a file only falls

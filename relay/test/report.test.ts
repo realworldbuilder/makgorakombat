@@ -131,7 +131,7 @@ describe('the night\'s report', () => {
 
   it('answers nothing much for nothing', () => {
     const report = summarize('week', [], [], 1_000, 0);
-    expect(report).toMatchObject({ players: 0, started: 0, wait: { n: 0, median: null, worst: null }, busiest: null });
+    expect(report).toMatchObject({ players: 0, started: 0, wait: { n: 0, median: null, worst: null }, busiest: null, wire: { told: 0, rtt: null, laggy: 0 } });
     expect(median([3, 1, 2])).toBe(2);
     expect(median([4, 1])).toBe(2.5);
   });
@@ -225,6 +225,33 @@ describe('the night\'s report', () => {
     for (const c of [chris, will, host, guest]) c.ws.close(1000, 'bye');
   });
 
+  it("keeps each page's word on the wire with its match and the hello's delay, and passes the word to nobody", async () => {
+    const { stub, enter } = lobby();
+    const { chris, will, host, guest } = await queued(enter, stub);
+    host.ws.send(JSON.stringify({ ...JSON.parse(hello(1)), delay: 9 }));
+    await guest.next('hello');
+    const word = (fps: number, heldMs: number) => ({ t: 'net', game: 1, delay: 9, rtt: 231, rttSlow: 262, fps, fpsSlow: fps - 8, ticks: 7285, held: 3, heldMs, eased: 140, wall: 121_600 });
+    // An echo between the pages still goes through; the words on the wire do not.
+    host.ws.send(JSON.stringify({ t: 'echo', at: 12.5 }));
+    await guest.next('echo');
+    send(host, word(60, 50));
+    send(guest, word(58, 20_000));
+    // A word on another match is late, and kept nowhere.
+    send(guest, { ...word(1, 1), game: 7 });
+    send(host, { t: 'result', game: 1, winner: 'guest', rounds: 3, ticks: 7285 });
+    send(guest, { t: 'result', game: 1, winner: 'guest', rounds: 3, ticks: 7285 });
+    const [first] = await records(stub, 1);
+    expect(first).toMatchObject({ ended: 'finished', delay: 9 });
+    expect(first!.net).toEqual({
+      host: { rtt: 231, rttSlow: 262, fps: 60, fpsSlow: 52, ticks: 7285, held: 3, heldMs: 50, eased: 140, wall: 121_600 },
+      guest: { rtt: 231, rttSlow: 262, fps: 58, fpsSlow: 50, ticks: 7285, held: 3, heldMs: 20_000, eased: 140, wall: 121_600 },
+    });
+    for (const c of [host, guest]) expect(c.got.filter((m) => typeof m === 'string' && m.includes('"net"'))).toEqual([]);
+    // The guest stood waiting a sixth of the match: laggy.
+    expect((await stub.report('night')).wire).toEqual({ told: 1, rtt: 231, laggy: 1 });
+    for (const c of [chris, will, host, guest]) c.ws.close(1000, 'bye');
+  });
+
   it('counts a reconnect, then logs the match as dropped when the player does not come back in time', async () => {
     const { stub, enter } = lobby();
     const { chris, will, host, guest, code } = await queued(enter, stub);
@@ -271,9 +298,9 @@ describe('the night\'s report', () => {
   it('answers GET /lobby/report with the board\'s conventions, tonight by default', async () => {
     const main = env.LOBBY.getByName('lobby');
     await main.fight(fight(Date.now() - 1000, 'finished'));
-    const response = await SELF.fetch('https://relay.test/lobby/report', { headers: { Origin: 'https://makgora.clawdioslave.com' } });
+    const response = await SELF.fetch('https://relay.test/lobby/report', { headers: { Origin: 'https://realworldbuilder.github.io' } });
     expect(response.status).toBe(200);
-    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://makgora.clawdioslave.com');
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://realworldbuilder.github.io');
     expect(response.headers.get('Cache-Control')).toBe('no-store');
     const report = await response.json<NightReport>();
     expect(report.span).toBe('night');

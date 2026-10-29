@@ -54,11 +54,13 @@ export interface Hello {
   stage: StageKey;
   /** The host drew the stage at random (stages.ts drawGround): both show the NEXT STAGE card, not the VS screen. */
   drawn?: boolean;
+  /** Ticks every press waits before it is played, on both machines: lockstep.ts delayFor from the measured wire. INPUT_DELAY when absent. */
+  delay?: number;
   fighters: [FighterSpec, FighterSpec];
   tables: [MoveTable, MoveTable];
 }
 
-/** Where a player's cursor rests on CHOOSE YOUR CHAMPION, sent each time it changes. */
+/** Where a player's cursor rests on CHOOSE YOUR LEGEND, sent each time it changes. */
 export interface RosterMessage {
   t: 'roster';
   /** The tile's id ('legend:thrall', 'race:2' ...); one this machine lacks, such as the other's own champion, shows no cursor. */
@@ -80,9 +82,11 @@ export interface Rematch {
   t: 'rematch';
   game: number;
   seed: number;
+  /** The delay for this match, measured again; the last match's when absent. */
+  delay?: number;
 }
 
-/** Back to CHOOSE YOUR CHAMPION, from the VS screen or the fight. */
+/** Back to CHOOSE YOUR LEGEND, from the VS screen or the fight. */
 export interface Back {
   t: 'back';
 }
@@ -117,7 +121,60 @@ export interface VoiceMessage {
   by: 'host' | 'guest';
 }
 
-export type Message = Meet | Hello | RosterMessage | StageMessage | Rematch | Back | Peer | Result | VoiceMessage;
+/**
+ * A page timing the wire to the other page: sent once a second while both are in the room, and
+ * sent straight back with `back` set. `at` is on the sender's own clock, which only the sender
+ * reads. The Link answers and times these itself; the screens never see them.
+ */
+export interface Echo {
+  t: 'echo';
+  at: number;
+  back?: true;
+}
+
+/**
+ * How the wire and this machine held up through a match, for the night's log (relay fights.ts):
+ * sent by each page now and then during a fight and when it ends or is left. The room keeps the
+ * latest from each side with the match's record and passes it to nobody.
+ */
+export interface NetReport {
+  t: 'net';
+  game: number;
+  /** The match's input delay, in ticks. */
+  delay: number;
+  /** Round trips to the other page, in ms: the middle one and the one slower than nine in ten; null before any came back. */
+  rtt: number | null;
+  rttSlow: number | null;
+  /** Frames a second this page drew: the middle second, and the one slower than nine in ten. */
+  fps: number;
+  fpsSlow: number;
+  /** Ticks played, frames the fight stood still waiting for the other's inputs, and the time it stood. */
+  ticks: number;
+  held: number;
+  heldMs: number;
+  /** Milliseconds the clock gave back easing off while ahead of the other. */
+  eased: number;
+  /** Milliseconds from the start of the match to this report. */
+  wall: number;
+}
+
+/** A line of chat from the other player (PlayerChat.tsx); the relay passes it on like any word, and the fight never reads it. */
+export interface Say {
+  t: 'say';
+  text: string;
+}
+
+/** The most characters in a line of the players' chat. */
+export const SAY_MAX = 140;
+
+/** A line as it may be shown: no control characters, no runs of spaces, cut to SAY_MAX; undefined when nothing is left. */
+export function cleanSay(text: unknown): string | undefined {
+  if (typeof text !== 'string') return undefined;
+  const clean = text.replace(/[\p{Cc}\p{Cf}]/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, SAY_MAX).trim();
+  return clean === '' ? undefined : clean;
+}
+
+export type Message = Meet | Hello | RosterMessage | StageMessage | Rematch | Back | Peer | Result | VoiceMessage | Echo | NetReport | Say;
 
 export function specOf(champion: Champion): FighterSpec {
   const spec: FighterSpec = {

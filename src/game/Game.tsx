@@ -22,7 +22,9 @@ import { loadSaved, type SavedChampion, storeSaved } from './saved';
 import { type OnlinePick, Select, type Source } from './Select';
 import { championOf, decode, encode, type Hello, localize, mismatch, resultOf, sameStage, type StageKey, stageKeyOf } from './net/handshake';
 import { Lobby, type LobbyFight, saveName, savedName } from './net/lobby';
+import { delayFor } from './net/lockstep';
 import type { Link } from './net/relay';
+import { PlayerChat } from './PlayerChat';
 import { VERSION } from './net/version';
 import { Challenge, enterRoom, Matching, Online, type Session, useLobby } from './Online';
 import { Title } from './Title';
@@ -35,7 +37,7 @@ import { Versus } from './Versus';
 import { Watch } from './Watch';
 
 /*
- * The screens: the title with the folder drop, CHOOSE YOUR CHAMPION, the VS screen with the
+ * The screens: the title with the folder drop, CHOOSE YOUR LEGEND, the VS screen with the
  * stage pick (online, the NEXT STAGE card with the stage the host drew), and the fight.
  * Everything the game knows about the open folder is loaded once here and handed down, with the
  * edition (edition.ts): which of the folder's games is open.
@@ -268,7 +270,7 @@ export function Game() {
     };
   }, [openKey]);
 
-  // The open game's login theme under CHOOSE YOUR CHAMPION, and on the title come back to with the folder open;
+  // The open game's login theme under CHOOSE YOUR LEGEND, and on the title come back to with the folder open;
   // the VS screen and the fight play their stage's own.
   useEffect(() => {
     if (!loaded || openKey === undefined) return;
@@ -500,6 +502,8 @@ export function Game() {
     game: 1,
     stage,
     ...(drawn ? { drawn } : {}),
+    // As long as the wire between the two pages needs, measured by their echoes while they chose.
+    delay: delayFor(online?.link.echoes ?? []),
     fighters: pick.specs,
     tables: [tableOf(fighters[0]), tableOf(fighters[1])],
   });
@@ -613,7 +617,7 @@ export function Game() {
     const names = screen.kind === 'select' ? undefined : screen.fighters.map((f) => `${f.champion.name} (${f.champion.title})`).join(' vs ') + `, player 2: ${p2}`;
     const ground = screen.kind === 'fight' ? screen.stage : undefined;
     const stage = ground && (ground.stage ? `${ground.stage.name}, ${ground.stage.where}` : ground.screen ? `loading screen ${ground.screen.fileId}` : 'none');
-    const screenName = { select: 'Choose your champion', versus: 'VS screen', next: 'Next stage card', fight: 'The fight' }[screen.kind];
+    const screenName = { select: 'Choose your legend', versus: 'VS screen', next: 'Next stage card', fight: 'The fight' }[screen.kind];
     setWhere({ screen: screenName, edition, fighters: names, stage });
   }, [phase.kind, loaded, loadError, atTitle, screen, p2]);
 
@@ -662,6 +666,30 @@ export function Game() {
           stages={[...loaded.stages, BAY_STAGE]}
           screens={loaded.screens}
           assets={{ client: client.current!, races: loaded.races, portraits: loaded.portraits }}
+          // Their pick on this install's roster, with none of the watcher's own champions in it: theirs are not here either.
+          select={(roster, bay) => (
+            <Select
+              key={`watch ${watching.code}`}
+              edition={loaded.edition}
+              art={loaded.art}
+              others={[]}
+              onEdition={() => undefined}
+              races={loaded.races}
+              classes={loaded.classes}
+              records={[]}
+              legends={loaded.legends}
+              portraits={loaded.portraits}
+              fighters={loaded.fighters}
+              saved={[]}
+              onSaved={() => undefined}
+              p2="keyboard"
+              onP2={() => undefined}
+              onReady={() => undefined}
+              onBack={stopWatching}
+              bay={bay}
+              watch={roster}
+            />
+          )}
           onBack={stopWatching}
         />
       );
@@ -740,6 +768,11 @@ export function Game() {
               assets={{ client: client.current!, races: loaded.races, portraits: loaded.portraits }}
               me={screen.net?.me}
               next={screen.net !== undefined && lobby !== undefined}
+              feedback={{
+                mode: screen.net ? 'online' : p2 === 'cpu' ? 'cpu' : 'local',
+                stage: screen.stage.stage?.name ?? (screen.stage.screen ? 'a loading screen' : undefined),
+                game: `${loaded.edition.game} ${loaded.edition.version}`,
+              }}
             />
           </>
         );
@@ -751,6 +784,15 @@ export function Game() {
       {view}
       <MusicTab />
       {online && <VoiceTab key={online.code} link={online.link} them={online.them} />}
+      {online && (
+        <PlayerChat
+          key={online.code}
+          link={online.link}
+          them={online.them}
+          canType={() => screenRef.current.kind !== 'fight' || matchOver()}
+          onPick={screen.kind === 'select'}
+        />
+      )}
       {showOnline && (
         <Online
           lobby={lobby}

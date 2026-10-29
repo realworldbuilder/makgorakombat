@@ -50,17 +50,18 @@ process.env.VITE_NET_VERSION ??= (() => {
 })();
 
 export default defineConfig({
-  // Served from https://realworldbuilder.github.io/makgorakombat/; VITE_BASE=/ for a site of its own
-  // (a custom domain on GitHub Pages, or pnpm run deploy:site, https://makgora.clawdioslave.com/).
+  // Served from https://realworldbuilder.github.io/makgorakombat/; VITE_BASE=/ for a custom domain
+  // on GitHub Pages, which the Deploy workflow passes when SITE_DOMAIN is set.
   // An empty VITE_BASE, as the Deploy workflow passes without a domain, is the default.
   base: process.env.VITE_BASE || '/makgorakombat/',
   plugins: [preact()],
   worker: { format: 'es' },
-  // The pages: the game, the welcome page in front of it at /welcome/, the site's numbers at /stats/,
-  // and the class guides at /guides/<class>/.
-  build: { rollupOptions: { input: { main: 'index.html', welcome: 'welcome/index.html', stats: 'stats/index.html', warrior: 'guides/warrior/index.html', hunter: 'guides/hunter/index.html', play: 'guides/play/index.html' } } },
+  // The pages: the front door at the site's own address (the game playing itself, demo/), the game at
+  // /play/, the welcome page at /welcome/, the site's numbers at /stats/, the class guides at
+  // /guides/<class>/, and /demo/, where the front door was first, sending its links on to it.
+  build: { rollupOptions: { input: { main: 'index.html', play: 'play/index.html', welcome: 'welcome/index.html', demo: 'demo/index.html', stats: 'stats/index.html', warrior: 'guides/warrior/index.html', hunter: 'guides/hunter/index.html', guidePlay: 'guides/play/index.html' } } },
   // Only the game's own page is scanned: the submodule's pages pull in things the game does not use.
-  optimizeDeps: { entries: ['index.html'] },
+  optimizeDeps: { entries: ['play/index.html'] },
   resolve: { alias: { '@mogshot': mogshot } },
   // Other checkouts of this repository under .worktrees must not reload the page: Vite watches the whole root.
   server: { fs: { allow: ['.', mogshot] }, watch: { ignored: ['**/.worktrees/**'] } },

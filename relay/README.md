@@ -82,6 +82,16 @@ and tells each of them its code and whether they host. Nobody reads a code out.
   `drops`; `never` the rooms with none. The queue waits are in seconds; `busiest` is the hour in
   New York with the most matches started and `hours` those started by hour of the day there.
   `fights`, every record oldest first, comes with `night` and `day` only.
+- Each page also tells its room how the match is going on the wire, every ten seconds and at the
+  end: `{"t":"net","game","delay","rtt","rttSlow","fps","fpsSlow","ticks","held","heldMs","eased","wall"}`
+  (round trips to the other page in ms, the middle and the one slower than nine in ten; frames a
+  second, the middle and the slow tenth; ticks played; frames and ms the fight stood waiting for
+  the other's inputs; ms its clock gave back easing off; ms since the match began). The room keeps
+  the latest from each side, passes it to nobody, and puts it in the match's record as
+  `net:{host,guest}`, with the hello's `delay` and `colos:{host,guest}`, the Cloudflare edge each
+  player came in by (an airport code). The report's `wire:{told,rtt,laggy}` counts the matches with
+  a word on the wire, their middle round trip, and those where a side stood waiting a tenth of the
+  match or more.
 
 ## Voice on Discord
 
@@ -133,6 +143,42 @@ By hand instead: `wrangler secret put DISCORD_TOKEN`, and
   referrers, countries, browsers, systems, devices, pages, editions, fight modes, champions and
   errors. `week` is the default. The game's `/stats/` page, linked from the welcome page, shows it.
 
+## Feedback
+
+What players say at the end of a fight. The match-end screen offers SEND FEEDBACK (F, or a click):
+a few lines, a rating out of five if they like, SEND or CANCEL. It is never offered mid-fight, and
+while the box is open it has the keyboard, so typing moves no fighter and starts no rematch; Escape
+closes it. Online each player sends their own, and the lockstep and the other's rematch go on as if
+the box were not there.
+
+- The game (`src/game/feedback.ts`) sends `POST /feedback` once, a plain-text body
+  `{"text","rating"?,"mode","fighters","stage"?,"winner"?,"me"?,"game"?,"build"?,"name"?}`: at most
+  1000 characters of text, `mode` cpu, local or online, the two champions, the ground, the side
+  that won and the side the sender played (0 or 1), the game and the build, and the name the player
+  gave the lobby if they gave one. Nothing else about the player. The relay answers 204, or 400,
+  413 (too long, or a request past 4 KB) or 429, and the game says THANKS or that it could not send.
+- One Durable Object, `FeedbackStore` (`src/feedback.ts`), keeps it in SQLite for a year, 10,000
+  messages at most. An address may send 5 in ten minutes, counted in memory and never written down;
+  everyone together 500 a day.
+- Reading it back takes a token, kept as the Worker secret `FEEDBACK_TOKEN`. Once, on the account
+  the relay runs on:
+
+  ```
+  cd relay
+  openssl rand -hex 24              # a token; keep it somewhere safe
+  pnpm exec wrangler secret put FEEDBACK_TOKEN
+  ```
+
+  Then, newest first, as text or as JSON:
+
+  ```
+  curl -s -H "Authorization: Bearer $FEEDBACK_TOKEN" "https://makgora-relay.clawdgross.workers.dev/feedback?format=text"
+  curl -s -H "Authorization: Bearer $FEEDBACK_TOKEN" "https://makgora-relay.clawdgross.workers.dev/feedback?limit=500" | jq
+  ```
+
+  `limit` is 1 to 1000 (100 by default); `before=<id>` gives the page older than that message.
+  Without the secret set, `GET /feedback` answers 404 and nobody can read it; players can still send.
+
 ## The room
 
 - `POST /rooms` makes a room and answers `{"code":"HXBXDC"}`.
@@ -159,17 +205,22 @@ By hand instead: `wrangler secret put DISCORD_TOKEN`, and
   a room made by code the `me` each page gives. It is not passed on.
 - Every other message goes to the other player unchanged.
 - `GET /rooms/:code/ws?role=watch` comes in to watch, up to 50 at once (the 51st is 409). A
-  watcher sends nothing: whatever it says is dropped. It is sent `{"t":"seats","host","guest"}`
-  on arriving and whenever a player comes or goes; the host's `hello` and `rematch` and either
-  player's `back` as they were sent; and every frame of the fight from either player with one
+  watcher says nothing to the players (only chat, below, to the other watchers). It is sent `{"t":"seats","host","guest"}`
+  on arriving and whenever a player comes or goes; each player's `roster` while they pick, as
+  `{"t":"pick","by":"host"|"guest","roster"}` (and the last of each on arriving, until the hello);
+  the host's `hello` and `rematch` and either player's `back` as they were sent; and every frame of the fight from either player with one
   byte in front, 0 for the host's and 1 for the guest's. The players stop sending an input once
   the other has it, so the room keeps the current game's inputs, and a watcher who comes in
   mid-fight is sent the hello, the last rematch and those inputs (as frames, 255 at most each)
-  before anything live. The players hear nothing of the watchers. A seat kept for a player who
+  before anything live. The players hear nothing of the watchers.
+- A watcher may chat: `?name=` on its socket is the name its lines go under (one the lobby would
+  take, else `Watcher`), and `{"t":"chat","text"}` is sent to every watcher of the room as
+  `{"t":"chat","name","text","at"}`, never to the players. One line a watcher every 1.5 seconds,
+  140 characters at most; a watcher coming in is sent the last 20 lines of the last five minutes. A seat kept for a player who
   dropped still reads as in under `seats`; the watchers go on getting the other's frames, and the
   returning page's when it is back.
 
-Pages on `https://realworldbuilder.github.io`, `https://makgora.clawdioslave.com` and `http://localhost:*` (or `127.0.0.1`) may use
+Pages on `https://realworldbuilder.github.io` and `http://localhost:*` (or `127.0.0.1`) may use
 it, and those listed in the `ORIGINS` variable (comma separated, given at deploy as
 `--var ORIGINS:https://a,https://b`); other sites are refused. Node and other clients that send no
 `Origin` are let in.

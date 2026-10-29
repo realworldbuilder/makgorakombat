@@ -14,6 +14,7 @@ import { usePadMode, usePadUse } from './pads';
 import { Preview } from './Preview';
 import { championTiles, classesOf, CREATE_TILE, cycleClass, factionOf, gridMove, randomTile, rosterTiles, sexFor, type Tile } from './roster';
 import { Create } from './Create';
+import { DEMO, DEMO_PICK_MS } from './demo';
 import { championRow, fullName, isBuiltin, madeKey, type SavedChampion, savedTiles, withoutSaved, withSaved } from './saved';
 import { LogoArt, Presence } from './Title';
 import { kitSpec, type ResourceKind } from '../engine/abilities';
@@ -26,7 +27,7 @@ import type { Link } from './net/relay';
 const RESOURCE_WORDS: Record<ResourceKind, string> = { rage: 'Rage: builds in combat', energy: '+100 Energy', mana: '+100 Mana', focus: '+100 Focus', runic: 'Runic Power: builds in combat', fury: 'Fury: builds in combat' };
 
 /*
- * CHOOSE YOUR CHAMPION. Every race on a grid of the game's own portraits, the player's own
+ * CHOOSE YOUR LEGEND. Every race on a grid of the game's own portraits, the player's own
  * characters in a row above, the legends in a row above those, both players' cursors on it
  * at once, each champion drawn full size on its player's side as soon as the cursor rests
  * on it. After the last legend come the champions built into the game (Cassidy Darkstar), then
@@ -42,6 +43,14 @@ export interface OnlineRoster {
   me: 0 | 1;
   link: Link;
   code: string;
+}
+
+/** WATCH (Watch.tsx): somebody else's pick, both cursors as the room passes them on, host first, and nothing steered from here. */
+export interface WatchRoster {
+  picks: [RosterMessage | undefined, RosterMessage | undefined];
+  names: [string, string];
+  /** What the two are doing, for the footer. */
+  status: string;
 }
 
 /** What an online roster hands on with the two fighters: the specs as their owners sent them, for the host's hello, and how this install drew the other's. */
@@ -81,6 +90,8 @@ interface SelectProps {
   onOnline?: () => void;
   /** BOOBY BAY (bay.ts): the queue's secret corner, where the roster is its two warrior women alone. */
   bay?: boolean;
+  /** Watching two others pick: no keys, no clicks, no Enter World; Watch.tsx has the Escape. */
+  watch?: WatchRoster;
 }
 
 interface Cursor {
@@ -130,7 +141,7 @@ const freshPlayer = (sex: number): Player => ({
 /** The legends' portraits are rendered once through the Mogshot command line and shipped with the game, as the browser has no portrait atlas for NPCs. */
 const legendPortrait = (slug: string) => `${import.meta.env.BASE_URL}legends/${slug}.png`;
 
-export function Select({ edition, art, others, onEdition, races, classes, records, legends, portraits, fighters, saved, onSaved, startOnCreate, p2, onP2, onReady, onBack, online, paused, onOnline, bay = false }: SelectProps) {
+export function Select({ edition, art, others, onEdition, races, classes, records, legends, portraits, fighters, saved, onSaved, startOnCreate, p2, onP2, onReady, onBack, online, paused, onOnline, bay = false, watch }: SelectProps) {
   const roster = useMemo(() => rosterTiles(races), [races]);
   usePadMode('roster');
   const padUse = usePadUse();
@@ -172,6 +183,8 @@ export function Select({ edition, art, others, onEdition, races, classes, record
       const player = freshPlayer(sex);
       return index >= 0 ? { ...player, cursor: { zone: 'legends', index } } : player;
     };
+    // Watching, nobody's cursor is anywhere until the room says where.
+    if (watch) return [{ ...freshPlayer(0), cursor: { zone: 'legends', index: -1 } }, { ...freshPlayer(0), cursor: { zone: 'legends', index: -1 } }];
     // Booby Bay: player 1 on the human, player 2 on the night elf.
     if (bay) return [{ ...freshPlayer(BAY_SEX), cursor: { zone: 'legends', index: 0 } }, { ...freshPlayer(BAY_SEX), cursor: { zone: 'legends', index: Math.min(1, legendRow.length - 1) } }];
     const first = opening('tyrande', 1);
@@ -195,11 +208,17 @@ export function Select({ edition, art, others, onEdition, races, classes, record
   onlineRef.current = online;
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
+  const watchRef = useRef(watch);
+  watchRef.current = watch;
   /** Online, the player steered from the other machine. */
   const them = online ? (online.me === 0 ? 1 : 0) : undefined;
+  /** The players steered from elsewhere: online the other one, watching both. */
+  const steeredElsewhere = (who: number) => (watch ? true : who === them);
   // The other player's latest cursor, the spec their champion was built from, and what this install drew otherwise.
   const [remote, setRemote] = useState<RosterMessage>();
-  const remoteBuilt = useRef<string | undefined>(undefined);
+  /** Each player's latest cursor from elsewhere: online the other's, watching both as the room passes them on. */
+  const heard: [RosterMessage | undefined, RosterMessage | undefined] = watch ? watch.picks : [them === 0 ? remote : undefined, them === 1 ? remote : undefined];
+  const remoteBuilt = useRef<[string | undefined, string | undefined]>([undefined, undefined]);
   const remoteNotes = useRef<string[]>([]);
   // Each player's newest build request; older ones that finish late are dropped.
   const requests = useRef([0, 0]);
@@ -255,7 +274,7 @@ export function Select({ edition, art, others, onEdition, races, classes, record
   // A rest on a tile summons it after a moment, so sweeping across the grid does not build every race.
   useEffect(() => {
     const timers = players.map((player, who) => {
-      if (player.locked || who === them) return undefined;
+      if (player.locked || steeredElsewhere(who)) return undefined;
       // A tile with no champion (random, the creator's) clears what was there, a build in flight included.
       const want = keyOf(tileAt(player.cursor), player);
       if (want === undefined ? !player.built && !player.building : player.built?.champion.key === want) return undefined;
@@ -378,7 +397,7 @@ export function Select({ edition, art, others, onEdition, races, classes, record
   // Keys: both players on one keyboard.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (makingRef.current || pausedRef.current) return;
+      if (makingRef.current || pausedRef.current || watchRef.current) return;
       const net = onlineRef.current;
       if (event.code === 'Escape') {
         const [a, b] = playersRef.current;
@@ -452,37 +471,55 @@ export function Select({ edition, art, others, onEdition, races, classes, record
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roster, champions, legendRow, classes]);
 
-  // The computer picks for itself once the player has locked in: a sweep across the grid, then a lock.
-  useEffect(() => {
-    if (p2 !== 'cpu' || !players[0].locked || players[1].locked) return;
+  /** The computer's pick for a player: a sweep across the grid, then a lock. Returns the timer's stop. */
+  const cpuPick = (who: 0 | 1) => {
     let steps = 6 + Math.floor(draw() * 6);
     const timer = setInterval(() => {
       if (steps-- > 0) {
-        update(1, (player) => {
+        update(who, (player) => {
           const picked = randomTile(pool.tiles, draw);
           return { ...player, cursor: { zone: pool.zone, index: picked ? pool.tiles.indexOf(picked) : 0 } };
         });
         return;
       }
       clearInterval(timer);
-      update(1, (player) => {
+      update(who, (player) => {
         const tile = tileAt(player.cursor);
-        if (tile?.kind === 'legend') return summon(1, { ...player, locked: true });
+        if (tile?.kind === 'legend') return summon(who, { ...player, locked: true });
         if (tile?.kind !== 'race') return player;
         const allowed = classesOf(tile.race, classes);
         const classId = allowed.length > 0 ? allowed[Math.floor(draw() * allowed.length)]!.id : undefined;
-        return summon(1, { ...player, sex: sexFor(tile.race, draw() < 0.5 ? 0 : 1), classId, locked: true });
+        return summon(who, { ...player, sex: sexFor(tile.race, draw() < 0.5 ? 0 : 1), classId, locked: true });
       });
     }, 140);
     return () => clearInterval(timer);
+  };
+
+  // The computer picks for itself once the player has locked in.
+  useEffect(() => {
+    if (p2 !== 'cpu' || !players[0].locked || players[1].locked) return;
+    return cpuPick(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [p2, players[0].locked, players[1].locked]);
+
+  // The attract loop (demo.ts): player 1 picks for themself too, after a moment on the roster.
+  useEffect(() => {
+    if (!DEMO || online || watch || players[0].locked) return;
+    let stop = () => {};
+    const wait = setTimeout(() => (stop = cpuPick(0)), DEMO_PICK_MS);
+    return () => {
+      clearTimeout(wait);
+      stop();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [players[0].locked]);
 
   // Both locked and both built: into the ring. The other machine's player is built from the spec they sent, not from a tile here.
   useEffect(() => {
     const [a, b] = players;
     if (!(a.locked && b.locked && a.built && b.built)) return;
-    const current = (who: 0 | 1) => (who === them ? remoteBuilt.current !== undefined && remoteBuilt.current === remote?.champion?.key : players[who].built!.champion.key === keyOf(tileAt(players[who].cursor), players[who]));
+    if (watch) return;
+    const current = (who: 0 | 1) => (who === them ? remoteBuilt.current[who] !== undefined && remoteBuilt.current[who] === remote?.champion?.key : players[who].built!.champion.key === keyOf(tileAt(players[who].cursor), players[who]));
     if (!current(0) || !current(1)) return;
     const pick = (): OnlinePick | undefined => {
       if (them === undefined || !remote?.champion) return undefined;
@@ -533,9 +570,10 @@ export function Select({ edition, art, others, onEdition, races, classes, record
     return { built, notes };
   };
 
-  // The other player's cursor and champion, as their messages say.
-  useEffect(() => {
-    if (them === undefined || !remote) return;
+  // The cursor and champion of each player steered from elsewhere, as their messages say.
+  const follow = (who: 0 | 1) => {
+    const message = heard[who];
+    if (!steeredElsewhere(who) || !message) return;
     const at = (id: string | undefined): Cursor => {
       for (const row of zones) {
         const index = row.tiles.findIndex((tile) => tile.id === id);
@@ -544,32 +582,35 @@ export function Select({ edition, art, others, onEdition, races, classes, record
       // A tile this machine lacks (their own champion): no cursor here; the plate still says who.
       return { zone: 'legends', index: -1 };
     };
-    update(them, (p) => ({ ...p, cursor: at(remote.tile), sex: remote.sex, classId: remote.classId, locked: remote.locked }));
-    const spec = remote.champion;
+    update(who, (p) => ({ ...p, cursor: at(message.tile), sex: message.sex, classId: message.classId, locked: message.locked }));
+    const spec = message.champion;
     if (!spec) {
-      ++requests.current[them]!;
-      remoteBuilt.current = undefined;
-      update(them, (p) => ({ ...p, champion: undefined, built: undefined, building: false, error: undefined }));
+      ++requests.current[who]!;
+      remoteBuilt.current[who] = undefined;
+      update(who, (p) => ({ ...p, champion: undefined, built: undefined, building: false, error: undefined }));
       return;
     }
-    if (players[them].champion?.key === spec.key) return;
-    const id = ++requests.current[them]!;
-    remoteBuilt.current = undefined;
-    update(them, (p) => ({ ...p, champion: championOf(spec), building: true, error: undefined }));
+    if (players[who].champion?.key === spec.key) return;
+    const id = ++requests.current[who]!;
+    remoteBuilt.current[who] = undefined;
+    update(who, (p) => ({ ...p, champion: championOf(spec), building: true, error: undefined }));
     void buildRemote(spec)
       .then(({ built, notes }) => {
-        if (requests.current[them] !== id) return;
-        remoteBuilt.current = spec.key;
+        if (requests.current[who] !== id) return;
+        remoteBuilt.current[who] = spec.key;
         remoteNotes.current = notes;
-        update(them, (p) => ({ ...p, built, building: false }));
+        update(who, (p) => ({ ...p, built, building: false }));
         face(built);
       })
       .catch((cause: unknown) => {
-        if (requests.current[them] !== id) return;
-        update(them, (p) => ({ ...p, building: false, error: cause instanceof Error ? cause.message : String(cause) }));
+        if (requests.current[who] !== id) return;
+        update(who, (p) => ({ ...p, building: false, error: cause instanceof Error ? cause.message : String(cause) }));
       });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [remote, zones]);
+  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => follow(0), [heard[0], zones]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => follow(1), [heard[1], zones]);
 
   /**
    * The builder's problems that are files this install lacks. The rest (a texture the game data
@@ -596,6 +637,7 @@ export function Select({ edition, art, others, onEdition, races, classes, record
         key={tile.id}
         class={`tile ${tile.kind} ${factionOf(tile)} ${here[0] ? 'p1' : ''} ${here[1] ? 'p2' : ''} ${here[0] && players[0].locked ? 'locked1' : ''} ${here[1] && players[1].locked ? 'locked2' : ''}`}
         onClick={() => {
+          if (watch) return;
           const who = online?.me ?? 0;
           if (players[who].locked) return;
           update(who, (p) => ({ ...p, cursor: { zone, index } }));
@@ -725,7 +767,7 @@ export function Select({ edition, art, others, onEdition, races, classes, record
     return (
       <div class={`plate wow-tooltip ${who === 0 ? 'p1' : 'p2'} ${player.locked ? 'locked' : ''}`}>
         <div class="who">
-          {online ? `PLAYER ${who + 1} · ${who === online.me ? 'YOU' : 'OPPONENT'}` : who === 0 ? 'PLAYER 1' : p2 === 'cpu' ? 'COMPUTER' : p2 === 'gamepad' ? 'PLAYER 2 · PAD' : 'PLAYER 2'}
+          {watch ? `PLAYER ${who + 1} · ${watch.names[who]}` : online ? `PLAYER ${who + 1} · ${who === online.me ? 'YOU' : 'OPPONENT'}` : who === 0 ? 'PLAYER 1' : p2 === 'cpu' ? 'COMPUTER' : p2 === 'gamepad' ? 'PLAYER 2 · PAD' : 'PLAYER 2'}
         </div>
         {lines.map((line, i) =>
           line.kind === 'gap' ? (
@@ -749,7 +791,7 @@ export function Select({ edition, art, others, onEdition, races, classes, record
    * once player 1 is in.
    */
   const enterWorld = (who: 0 | 1) => {
-    if (online ? who !== online.me : who === 1 && p2 === 'cpu') return null;
+    if (watch || (online ? who !== online.me : who === 1 && p2 === 'cpu')) return null;
     const player = players[who];
     const other = players[who === 0 ? 1 : 0];
     const otherName = online ? 'your opponent' : who === 1 ? 'player 1' : p2 === 'cpu' ? 'the computer' : 'player 2';
@@ -782,7 +824,7 @@ export function Select({ edition, art, others, onEdition, races, classes, record
             <span class="words">{edition.name.toUpperCase()}</span>
           </div>
           <h1>{BRAND.choose}</h1>
-          {!online && <Presence online="O" />}
+          {!online && !watch && <Presence online="O" />}
         </header>
         <div class={`grid ${legendsOnly ? 'legends-only' : ''}`}>
           <div class="label">{bay ? 'BOOBY BAY' : legends.length > 0 ? 'LEGENDS' : 'YOUR CHAMPIONS'}</div>
@@ -817,7 +859,13 @@ export function Select({ edition, art, others, onEdition, races, classes, record
           {plate(1)}
         </div>
       </div>
-      {online ? (
+      {watch ? (
+        <footer class="controls">
+          <span><b>WATCHING</b> {watch.names[0]} vs {watch.names[1]}</span>
+          <span>{watch.status}</span>
+          <span><b>Enter</b> chat · <b>Esc</b> back to the lobby</span>
+        </footer>
+      ) : online ? (
         <footer class="controls">
           <span><b>ONLINE</b> room {online.code} · you are player {online.me + 1}</span>
           <span>{hint(0)}</span>
@@ -845,6 +893,7 @@ export function Select({ edition, art, others, onEdition, races, classes, record
           portraits={portraits}
           fighters={fighters}
           saved={saved}
+          records={records}
           editing={making.editing}
           onSave={keep}
           onDelete={discard}

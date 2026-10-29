@@ -97,10 +97,10 @@ code {
     0 6px 18px rgba(0, 0, 0, 0.8);
 }
 
-.logo .kombat {
+.logo .subtitle {
   font-family: var(--heavy);
-  font-size: 5.2rem;
-  letter-spacing: 0.02em;
+  font-size: 2.6rem;
+  letter-spacing: 0.06em;
   color: var(--blood);
   text-shadow:
     0 0 2px #000,
@@ -112,8 +112,8 @@ code {
   font-size: 1.85rem;
 }
 
-.logo.small .kombat {
-  font-size: 1.9rem;
+.logo.small .subtitle {
+  font-size: 0.95rem;
 }
 
 /* ---- the title ------------------------------------------------------------------------- */
@@ -276,6 +276,11 @@ code {
 
 .title .hint b {
   color: var(--text);
+}
+
+/* The demo page (/demo/), for a visitor with no folder at hand yet. */
+.title .hint a.link {
+  color: var(--gold);
 }
 
 /* The title come back to with the folder open: the way to let it go for another. */
@@ -535,7 +540,7 @@ code {
   max-width: 560px;
 }
 
-/* ---- choose your champion ------------------------------------------------------------- */
+/* ---- choose your legend ------------------------------------------------------------- */
 
 .select {
   padding: 10px 16px 8px;
@@ -1977,6 +1982,45 @@ code {
   z-index: 40;
 }
 
+/* The bug tab says FEEDBACK, so a player sees where to send a word: it grows to the left of the
+   centre, so the music and voice tabs keep their places to its right, and it is not dimmed. */
+.reporter-tab.bug-tab {
+  left: auto;
+  right: calc(50% - 19px);
+  display: flex;
+  gap: 5px;
+  width: auto;
+  padding: 0 9px 0 7px;
+  transform: none;
+  opacity: 0.9;
+}
+
+.reporter-tab.bug-tab .reporter-word {
+  font-family: var(--friz, inherit);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+}
+
+.reporter .reporter-stars {
+  display: flex;
+  gap: 2px;
+}
+
+.reporter .reporter-stars button {
+  font-size: 1.5rem;
+  line-height: 1;
+  background: none;
+  border: 0;
+  padding: 0 2px;
+  cursor: pointer;
+  color: #5a4a3a;
+}
+
+.reporter .reporter-stars button.on,
+.reporter .reporter-stars button:hover {
+  color: var(--gold);
+}
+
 /* The music tab, the same tab just right of the bug's; dimmer still while the music is off. */
 .reporter-tab.music-tab {
   left: calc(50% + 42px);
@@ -2667,6 +2711,100 @@ code {
   letter-spacing: 0;
 }
 
+/* The watchers' chat: bottom left, clear of the action bars, each line fading after a while; all up while a line is typed. */
+.watch-chat {
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  z-index: 40;
+  width: min(26rem, 34vw);
+  display: grid;
+  gap: 6px;
+  font-size: 0.85rem;
+}
+
+/* On CHOOSE YOUR LEGEND the corner is player 1's plate: the chat sits under the grid instead, above the footer. */
+.watch-chat.on-pick {
+  left: 50%;
+  bottom: 58px;
+  transform: translateX(-50%);
+  justify-items: center;
+}
+
+.watch-chat.on-pick li {
+  justify-self: center;
+}
+
+.watch-chat ul {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.watch-chat li {
+  justify-self: start;
+  max-width: 100%;
+  padding: 3px 9px;
+  background: rgba(10, 6, 7, 0.62);
+  border-radius: 5px;
+  color: var(--text);
+  overflow-wrap: anywhere;
+  text-shadow: 0 1px 2px #000;
+  animation: chat-line 20s linear forwards;
+}
+
+.watch-chat li b {
+  color: var(--gold);
+  font-weight: 700;
+}
+
+.watch-chat.open li {
+  animation: none;
+}
+
+.watch-chat input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px 10px;
+  background: rgba(10, 6, 7, 0.9);
+  border: 1px solid var(--gold-dark);
+  border-radius: 5px;
+  color: var(--text);
+  font: inherit;
+  outline: none;
+}
+
+/* Shut, the field is still there to be focused at once by Enter, only out of sight. */
+.watch-chat input.shut {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.watch-chat .hint {
+  margin: 0;
+  color: var(--dim);
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  opacity: 0.6;
+}
+
+@keyframes chat-line {
+  0%,
+  85% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
 /* Over the fight: the wait for the other player's inputs, a desync, and the notes on how this install draws the fight. */
 .fight .net-banner {
   position: absolute;
@@ -3067,4 +3205,66 @@ code {
   right: 50%;
   transform: translate(50%, 150px);
   font-size: 1.2rem;
+}
+
+/* Bringing a character in from the game: how it went, and where a code comes from. */
+.creator .import-note {
+  margin: 6px 4px 0;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.creator .import-note p {
+  margin: 2px 0;
+}
+
+.creator .import-note .ok {
+  color: #1eff00;
+}
+
+.creator .import-note .bad {
+  color: #ff6b6b;
+}
+
+.creator .import-note a {
+  color: var(--gold);
+}
+
+.creator .row.code input {
+  font-family: ui-monospace, Menlo, monospace;
+  font-weight: 400;
+  letter-spacing: 0;
+  font-size: 0.8rem;
+}
+
+/* The players' chat (PlayerChat.tsx): the watchers' corner and lines, with a button that says how to talk. */
+.player-chat .chat-open {
+  justify-self: start;
+  padding: 5px 11px;
+  font: inherit;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  color: var(--gold);
+  background: rgba(10, 6, 7, 0.78);
+  border: 1px solid var(--gold-dark);
+  border-radius: 5px;
+  cursor: pointer;
+  text-shadow: 0 1px 2px #000;
+}
+
+.player-chat.on-pick .chat-open {
+  justify-self: center;
+}
+
+.player-chat .chat-open:hover {
+  color: #fff3c4;
+  border-color: var(--gold);
+}
+
+.player-chat .chat-open b {
+  color: var(--text);
+}
+
+.player-chat li.mine b {
+  color: #9fd0ff;
 }
