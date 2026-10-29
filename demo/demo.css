@@ -1,0 +1,272 @@
+/*
+ * The demo page: the reel full screen, and the logo, a tag and the way in over its foot, so the
+ * game's own health bars along the top stay clear.
+ * The welcome page's type, colours and buttons (welcome.css), so the two read as one site.
+ * On a phone held upright the reel sits whole at the top and the words go under it.
+ */
+
+:root {
+  --bg: #000000;
+  --text: #ffffff;
+  --muted: #c9c5bb;
+  --blood: #c8121c;
+  --blood-hover: #de1f2a;
+  --gold: #ffd100;
+  --ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --gutter: 16px;
+  --font: 'Geist', ui-sans-serif, system-ui, sans-serif;
+  --mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  color-scheme: dark;
+}
+
+@media (min-width: 640px) {
+  :root {
+    --gutter: 24px;
+  }
+}
+
+@media (min-width: 1024px) {
+  :root {
+    --gutter: 32px;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 1rem;
+  line-height: 1.5rem;
+  -webkit-font-smoothing: antialiased;
+  -webkit-text-size-adjust: 100%;
+  overflow-x: hidden;
+}
+
+.stage {
+  position: relative;
+  min-height: 100%;
+  min-height: 100dvh;
+  overflow: hidden;
+}
+
+.reel {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: var(--bg);
+}
+
+/* The foot and the left darken under the words, so they read over any stage. */
+.stage::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(to top, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0.6) 30%, rgba(0, 0, 0, 0) 60%),
+    linear-gradient(to right, rgba(0, 0, 0, 0.5) 0%, rgba(0, 0, 0, 0) 50%);
+}
+
+.brand {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin-bottom: 16px;
+}
+
+.logo img {
+  display: block;
+  width: 112px;
+  height: auto;
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 4px 12px;
+  border-radius: 9999px;
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  line-height: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: var(--blood);
+}
+
+.pitch {
+  position: absolute;
+  z-index: 1;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 0 var(--gutter) max(var(--gutter), env(safe-area-inset-bottom));
+  max-width: 640px;
+}
+
+@media (min-width: 1024px) {
+  .pitch {
+    padding-bottom: 48px;
+  }
+}
+
+h1 {
+  margin: 0;
+  font-size: 2.25rem;
+  line-height: 2.5rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+@media (min-width: 1024px) {
+  h1 {
+    font-size: 3rem;
+    line-height: 1;
+  }
+}
+
+.sub {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 1rem;
+  line-height: 1.5rem;
+  text-wrap: pretty;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  background: var(--blood);
+  color: var(--text);
+  font-size: 1rem;
+  line-height: 1.5rem;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background-color 300ms var(--ease), transform 300ms var(--ease);
+}
+
+.btn:hover {
+  background: var(--blood-hover);
+  transform: translateY(-2px);
+}
+
+.btn:active {
+  transform: scale(0.98);
+}
+
+.btn svg {
+  width: 16px;
+  height: 16px;
+  transition: transform 300ms var(--ease);
+}
+
+.btn:hover svg {
+  transform: translateX(4px);
+}
+
+.btn-ghost {
+  background: rgba(0, 0, 0, 0.5);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.24);
+}
+
+.btn-ghost:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.btn:focus-visible,
+.logo:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 3px;
+}
+
+.hint {
+  margin: 16px 0 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}
+
+kbd {
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  font-family: var(--mono);
+  font-size: 0.75rem;
+}
+
+/* No keyboard to press Enter on. */
+@media (hover: none) {
+  .hint {
+    display: none;
+  }
+}
+
+/* A phone held upright: the reel whole along the top, and the words below it. */
+@media (max-aspect-ratio: 1/1) {
+  .stage {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .stage::after {
+    display: none;
+  }
+
+  .reel {
+    position: static;
+    margin-top: env(safe-area-inset-top);
+    height: auto;
+    aspect-ratio: 16 / 9;
+    object-fit: contain;
+  }
+
+  .pitch {
+    position: static;
+    padding-top: 24px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn,
+  .btn svg {
+    transition: none;
+  }
+}

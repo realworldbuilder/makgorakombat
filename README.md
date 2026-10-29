@@ -8,6 +8,8 @@ Play: https://realworldbuilder.github.io/makgorakombat/
 
 The welcome page, for sharing: https://realworldbuilder.github.io/makgorakombat/welcome/ (`welcome/`, built to the landing-page-design skill).
 
+The demo page, for a look before you have a folder to drop: https://realworldbuilder.github.io/makgorakombat/demo/ (`demo/`). It loops a reel of the game playing itself. That is `?demo` on the game's address (`src/game/demo.ts`): once a folder is open, both players are the computer, picking on the roster, drawing a stage and fighting to the fatality, round and round. To record a new reel, open `?demo` in Chrome with a folder, capture the screen for two laps (about three and a half minutes), cut it where the roster comes back, and encode it to `public/demo/reel.mp4` at 960x540 H.264 with no sound, about 13 MB (`ffmpeg -i in.mp4 -an -vf scale=960:540 -c:v libx264 -crf 33 -preset veryslow -pix_fmt yuv420p -movflags +faststart reel.mp4`).
+
 ## How it plays
 
 1. Drag your `World of Warcraft` folder onto the page (it is in `Applications` on a Mac). Chrome on a Mac is what it is made for. A folder that holds more than one game (retail beside WoW Forever, say) asks **which world** to fight in; **E** on the champion screen switches to the other.

@@ -14,6 +14,7 @@ import { usePadMode, usePadUse } from './pads';
 import { Preview } from './Preview';
 import { championTiles, classesOf, CREATE_TILE, cycleClass, factionOf, gridMove, randomTile, rosterTiles, sexFor, type Tile } from './roster';
 import { Create } from './Create';
+import { DEMO, DEMO_PICK_MS } from './demo';
 import { championRow, fullName, isBuiltin, madeKey, type SavedChampion, savedTiles, withoutSaved, withSaved } from './saved';
 import { LogoArt, Presence } from './Title';
 import { kitSpec, type ResourceKind } from '../engine/abilities';
@@ -470,31 +471,48 @@ export function Select({ edition, art, others, onEdition, races, classes, record
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roster, champions, legendRow, classes]);
 
-  // The computer picks for itself once the player has locked in: a sweep across the grid, then a lock.
-  useEffect(() => {
-    if (p2 !== 'cpu' || !players[0].locked || players[1].locked) return;
+  /** The computer's pick for a player: a sweep across the grid, then a lock. Returns the timer's stop. */
+  const cpuPick = (who: 0 | 1) => {
     let steps = 6 + Math.floor(draw() * 6);
     const timer = setInterval(() => {
       if (steps-- > 0) {
-        update(1, (player) => {
+        update(who, (player) => {
           const picked = randomTile(pool.tiles, draw);
           return { ...player, cursor: { zone: pool.zone, index: picked ? pool.tiles.indexOf(picked) : 0 } };
         });
         return;
       }
       clearInterval(timer);
-      update(1, (player) => {
+      update(who, (player) => {
         const tile = tileAt(player.cursor);
-        if (tile?.kind === 'legend') return summon(1, { ...player, locked: true });
+        if (tile?.kind === 'legend') return summon(who, { ...player, locked: true });
         if (tile?.kind !== 'race') return player;
         const allowed = classesOf(tile.race, classes);
         const classId = allowed.length > 0 ? allowed[Math.floor(draw() * allowed.length)]!.id : undefined;
-        return summon(1, { ...player, sex: sexFor(tile.race, draw() < 0.5 ? 0 : 1), classId, locked: true });
+        return summon(who, { ...player, sex: sexFor(tile.race, draw() < 0.5 ? 0 : 1), classId, locked: true });
       });
     }, 140);
     return () => clearInterval(timer);
+  };
+
+  // The computer picks for itself once the player has locked in.
+  useEffect(() => {
+    if (p2 !== 'cpu' || !players[0].locked || players[1].locked) return;
+    return cpuPick(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [p2, players[0].locked, players[1].locked]);
+
+  // The attract loop (demo.ts): player 1 picks for themself too, after a moment on the roster.
+  useEffect(() => {
+    if (!DEMO || online || watch || players[0].locked) return;
+    let stop = () => {};
+    const wait = setTimeout(() => (stop = cpuPick(0)), DEMO_PICK_MS);
+    return () => {
+      clearTimeout(wait);
+      stop();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [players[0].locked]);
 
   // Both locked and both built: into the ring. The other machine's player is built from the spec they sent, not from a tile here.
   useEffect(() => {

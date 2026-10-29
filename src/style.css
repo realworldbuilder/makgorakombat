@@ -278,6 +278,11 @@ code {
   color: var(--text);
 }
 
+/* The demo page (/demo/), for a visitor with no folder at hand yet. */
+.title .hint a.link {
+  color: var(--gold);
+}
+
 /* The title come back to with the folder open: the way to let it go for another. */
 .title .hint.opened .link {
   padding: 0;

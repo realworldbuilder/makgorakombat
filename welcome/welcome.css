@@ -526,6 +526,23 @@ h2 {
   margin-top: 32px;
 }
 
+/* Play and, beside it, the demo page (/demo/) for a look before the folder. */
+.hero-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+}
+
+.btn-ghost {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.btn-ghost:hover {
+  background: var(--card-hover);
+}
+
 .hero-risk {
   color: var(--muted);
   font-size: 0.875rem;
