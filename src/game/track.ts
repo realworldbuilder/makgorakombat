@@ -1,4 +1,5 @@
 import { RELAY_URL } from './net/relay';
+import { DEMO } from './demo';
 
 /*
  * The site's numbers, from the page's side (relay/src/site.ts keeps and adds them up, /stats/ shows
@@ -28,6 +29,8 @@ let errorsSent = 0;
 export function counted(): boolean {
   if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
   if (/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)) return false;
+  // The attract loop (demo.ts) fights all day by itself: none of it is somebody playing.
+  if (DEMO) return false;
   const nav = navigator as Navigator & { globalPrivacyControl?: boolean };
   if (nav.doNotTrack === '1' || nav.globalPrivacyControl === true) return false;
   try {

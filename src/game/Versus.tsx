@@ -12,6 +12,7 @@ import { facingRadians, type Ground, type Stage, thumbnailUrl } from './stages';
 import { type Line, WowTooltip } from './ui/WowTooltip';
 import { sameStage, type StageKey } from './net/handshake';
 import type { Link } from './net/relay';
+import { DEMO, DEMO_STAGE_MS } from './demo';
 
 /*
  * The two champions face each other across the ring while the ground is picked: a stage in the
@@ -224,6 +225,20 @@ export function Versus({ client, fighters, stages, screens, onFight, onBack, onl
     else void imageOf(entry.screen).then((image) => onFight({ screen: entry.screen, image }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [start]);
+
+  // The attract loop (demo.ts): a stage drawn at random, a moment to see it rise, and into the ring on it.
+  useEffect(() => {
+    if (!DEMO || online || entries.length === 0) return;
+    const at = Math.floor(Math.random() * entries.length);
+    setCursor(at);
+    const wait = setTimeout(() => {
+      const entry = entries[at]!;
+      if (entry.kind === 'stage') void placeOf(entry.stage).then((place) => onFight({ stage: entry.stage, place })).catch(() => onFight({}));
+      else void imageOf(entry.screen).then((image) => onFight({ screen: entry.screen, image }));
+    }, DEMO_STAGE_MS);
+    return () => clearTimeout(wait);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const count = entries.length;

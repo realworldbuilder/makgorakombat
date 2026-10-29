@@ -25,6 +25,7 @@ import { delayFor, INPUT_DELAY, Lockstep, paceFor, WAIT_SHOWN_MS } from './net/l
 import type { NetReport } from './net/handshake';
 import type { Link, Wire } from './net/relay';
 import type { Spectator } from './net/watch';
+import { DEMO, DEMO_END_MS } from './demo';
 
 /*
  * The fight. The engine steps sixty times a second whatever the screen does; each frame the
@@ -305,6 +306,9 @@ export function Fight({ fighters, stage, p2, onBack, net, watch }: FightProps) {
     input.attach(window);
     // Online this keyboard plays as player 1 whichever side it is, and the other side comes over the wire.
     input.setSource(1, net || watch ? 'remote' : p2);
+    // The attract loop (demo.ts): the computer plays player 1 too.
+    const demo = DEMO && !net && !watch;
+    if (demo) input.setSource(0, 'cpu');
     // The buttons the HUD names for a side: a pad's when the player at those keys last played with one.
     const sourceShown = (side: 0 | 1): InputSource => {
       const source = input.source(side);
@@ -441,7 +445,7 @@ export function Fight({ fighters, stage, p2, onBack, net, watch }: FightProps) {
         ? `engine ${times.engine.toFixed(2)} ms · pose+draw ${times.pose.toFixed(2)} ms · hud ${times.draw.toFixed(2)} ms · sounds ${mixer.played}`
         : mutedRef.current ? 'MUTED · M' : undefined;
       drawHud(ctx, hud.width, hud.height, current, names, (point) => ring.project(camera, point), {
-        human: [true, net !== undefined || watch !== undefined || p2 !== 'cpu'],
+        human: [!demo, net !== undefined || watch !== undefined || p2 !== 'cpu'],
         debug: note,
         sources: [sourceShown(0), sourceShown(1)],
         keys: net || watch ? [0, 0] : undefined,
@@ -513,6 +517,20 @@ export function Fight({ fighters, stage, p2, onBack, net, watch }: FightProps) {
       if (page.mk === handle) delete page.mk;
     };
   }, [fighters, stage, p2, onBack, net, watch]);
+
+  // The attract loop (demo.ts): a while after the match ends, back to the roster for the next two.
+  useEffect(() => {
+    if (!DEMO || net || watch) return;
+    let leave: ReturnType<typeof setTimeout> | undefined;
+    const check = setInterval(() => {
+      if (leave || match.current?.phase !== 'matchEnd') return;
+      leave = setTimeout(onBack, DEMO_END_MS);
+    }, 250);
+    return () => {
+      clearInterval(check);
+      clearTimeout(leave);
+    };
+  }, [onBack, net, watch]);
 
   // The ring's context goes with the screen, so the next fight's does not push the browser past its few.
   useEffect(
