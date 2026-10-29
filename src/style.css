@@ -1982,6 +1982,45 @@ code {
   z-index: 40;
 }
 
+/* The bug tab says FEEDBACK, so a player sees where to send a word: it grows to the left of the
+   centre, so the music and voice tabs keep their places to its right, and it is not dimmed. */
+.reporter-tab.bug-tab {
+  left: auto;
+  right: calc(50% - 19px);
+  display: flex;
+  gap: 5px;
+  width: auto;
+  padding: 0 9px 0 7px;
+  transform: none;
+  opacity: 0.9;
+}
+
+.reporter-tab.bug-tab .reporter-word {
+  font-family: var(--friz, inherit);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+}
+
+.reporter .reporter-stars {
+  display: flex;
+  gap: 2px;
+}
+
+.reporter .reporter-stars button {
+  font-size: 1.5rem;
+  line-height: 1;
+  background: none;
+  border: 0;
+  padding: 0 2px;
+  cursor: pointer;
+  color: #5a4a3a;
+}
+
+.reporter .reporter-stars button.on,
+.reporter .reporter-stars button:hover {
+  color: var(--gold);
+}
+
 /* The music tab, the same tab just right of the bug's; dimmer still while the music is off. */
 .reporter-tab.music-tab {
   left: calc(50% + 42px);
@@ -3196,4 +3235,36 @@ code {
   font-weight: 400;
   letter-spacing: 0;
   font-size: 0.8rem;
+}
+
+/* The players' chat (PlayerChat.tsx): the watchers' corner and lines, with a button that says how to talk. */
+.player-chat .chat-open {
+  justify-self: start;
+  padding: 5px 11px;
+  font: inherit;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  color: var(--gold);
+  background: rgba(10, 6, 7, 0.78);
+  border: 1px solid var(--gold-dark);
+  border-radius: 5px;
+  cursor: pointer;
+  text-shadow: 0 1px 2px #000;
+}
+
+.player-chat.on-pick .chat-open {
+  justify-self: center;
+}
+
+.player-chat .chat-open:hover {
+  color: #fff3c4;
+  border-color: var(--gold);
+}
+
+.player-chat .chat-open b {
+  color: var(--text);
+}
+
+.player-chat li.mine b {
+  color: #9fd0ff;
 }

@@ -66,6 +66,9 @@ describe('a message as a page sends it', () => {
     expect(refused({ ...minimal, mode: 'ranked' })).toMatchObject({ status: 400 });
     expect(refused({ ...minimal, fighters: ['Thrall'] })).toMatchObject({ status: 400 });
     expect(refused({ ...minimal, fighters: ['Thrall', 7] })).toMatchObject({ status: 400 });
+    // From the bug tab on any screen: no fight, so the champions may be missing.
+    expect(readFeedback(JSON.stringify({ text: 'love it', mode: 'menu' }))).toEqual({ text: 'love it', mode: 'menu', fighters: ['', ''] });
+    expect(readFeedback(JSON.stringify({ text: 'hi', mode: 'menu', fighters: ['Thrall', 'Rexxar'] }))).toEqual({ text: 'hi', mode: 'menu', fighters: ['Thrall', 'Rexxar'] });
     expect(refused({ ...minimal, rating: 6 })).toMatchObject({ status: 400 });
     expect(refused({ ...minimal, rating: 2.5 })).toMatchObject({ status: 400 });
   });

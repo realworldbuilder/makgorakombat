@@ -24,6 +24,7 @@ import { championOf, decode, encode, type Hello, localize, mismatch, resultOf, s
 import { Lobby, type LobbyFight, saveName, savedName } from './net/lobby';
 import { delayFor } from './net/lockstep';
 import type { Link } from './net/relay';
+import { PlayerChat } from './PlayerChat';
 import { VERSION } from './net/version';
 import { Challenge, enterRoom, Matching, Online, type Session, useLobby } from './Online';
 import { Title } from './Title';
@@ -783,6 +784,15 @@ export function Game() {
       {view}
       <MusicTab />
       {online && <VoiceTab key={online.code} link={online.link} them={online.them} />}
+      {online && (
+        <PlayerChat
+          key={online.code}
+          link={online.link}
+          them={online.them}
+          canType={() => screenRef.current.kind !== 'fight' || matchOver()}
+          onPick={screen.kind === 'select'}
+        />
+      )}
       {showOnline && (
         <Online
           lobby={lobby}

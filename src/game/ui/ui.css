@@ -514,22 +514,25 @@
 .wowui .feedback-line {
   pointer-events: auto;
   font: inherit;
-  font-size: 0.7em;
-  letter-spacing: 0.08em;
-  color: rgba(244, 241, 230, 0.6);
-  background: none;
-  border: 0;
-  padding: 0.2em 0.6em;
+  font-size: 0.85em;
+  letter-spacing: 0.1em;
+  color: var(--gold);
+  background: linear-gradient(180deg, rgba(58, 12, 12, 0.92), rgba(26, 6, 6, 0.92));
+  border: 1px solid #8a6a2a;
+  border-radius: 0.3em;
+  padding: 0.45em 1.1em;
   cursor: pointer;
-  text-shadow: 0 1px 2px #000, 0 0 0.4em #000;
+  text-shadow: 0 1px 2px #000;
+  box-shadow: 0 0.2em 0.6em rgba(0, 0, 0, 0.7);
 }
 
 .wowui .feedback-line:hover {
-  color: var(--bone);
+  color: #fff3c4;
+  border-color: var(--gold);
 }
 
 .wowui .feedback-line b {
-  color: var(--gold-dim);
+  color: var(--bone);
 }
 
 .wowui .feedback-line.said {
