@@ -319,8 +319,10 @@ export function Title({ phase, dragging, onPick, onChoose, onCreate, onOnline, o
         </>
       )}
       <p class="dim small credits">
-        A fan game. World of Warcraft is Blizzard Entertainment's; the fighters are drawn from your own copy of it with the{' '}
-        <a href="https://realworldbuilder.github.io/mogshot/">Mogshot</a> engine.
+        <b>An unofficial fan game</b>, free, and not made, endorsed or supported by Blizzard Entertainment. World of Warcraft and
+        everything you see of it are Blizzard's: the fighters, stages and sounds are read from your own copy with the{' '}
+        <a href="https://realworldbuilder.github.io/mogshot/">Mogshot</a> engine, and this site carries none of its files.{' '}
+        <a href={`${import.meta.env.BASE_URL}welcome/#fan-game`}>What our code does</a>
       </p>
       {guide && !note && <Guide page={guide} onPage={setGuide} onClose={() => setGuide(undefined)} onFolder={open ? open.onEnter : choose} opened={open !== undefined} />}
       {note && (
