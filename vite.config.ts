@@ -56,10 +56,12 @@ export default defineConfig({
   base: process.env.VITE_BASE || '/makgorakombat/',
   plugins: [preact()],
   worker: { format: 'es' },
-  // Four pages: the game, the welcome page in front of it at /welcome/, the game playing itself at /demo/, and the site's numbers at /stats/.
-  build: { rollupOptions: { input: { main: 'index.html', welcome: 'welcome/index.html', demo: 'demo/index.html', stats: 'stats/index.html' } } },
+  // The pages: the front door at the site's own address (the game playing itself, demo/), the game at
+  // /play/, the welcome page at /welcome/, the site's numbers at /stats/, and /demo/, where the front
+  // door was first, sending its links on to it.
+  build: { rollupOptions: { input: { main: 'index.html', play: 'play/index.html', welcome: 'welcome/index.html', demo: 'demo/index.html', stats: 'stats/index.html' } } },
   // Only the game's own page is scanned: the submodule's pages pull in things the game does not use.
-  optimizeDeps: { entries: ['index.html'] },
+  optimizeDeps: { entries: ['play/index.html'] },
   resolve: { alias: { '@mogshot': mogshot } },
   // Other checkouts of this repository under .worktrees must not reload the page: Vite watches the whole root.
   server: { fs: { allow: ['.', mogshot] }, watch: { ignored: ['**/.worktrees/**'] } },

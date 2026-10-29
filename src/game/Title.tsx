@@ -299,7 +299,7 @@ export function Title({ phase, dragging, onPick, onChoose, onCreate, onOnline, o
             <p class="hint">
               <b>Drop your World of Warcraft folder</b> anywhere on this page, or press 1 to choose it. It is in <code>Applications</code> on a
               Mac. Your game files are read here in the browser and never leave your computer.{' '}
-              <a class="link" href={`${import.meta.env.BASE_URL}demo/`}>
+              <a class="link" href={import.meta.env.BASE_URL}>
                 Watch a fight first
               </a>
             </p>
