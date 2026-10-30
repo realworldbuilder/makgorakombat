@@ -111,12 +111,13 @@ export type Waits = [number | null, number | null];
 /**
  * Makes a room under a fresh code and answers it; undefined when no free code turned up. The room
  * tells `lobby` who is in it and how its matches end, `players` being who the lobby matched and
- * `waits` how long they waited for it.
+ * `waits` how long they waited for it. `region` puts the room there rather than by whoever asks
+ * for it first, the lobby for a room it makes (place.ts).
  */
-export async function openRoom(env: Env, lobby = LOBBY, players?: Pair, waits?: Waits): Promise<string | undefined> {
+export async function openRoom(env: Env, lobby = LOBBY, players?: Pair, waits?: Waits, region?: DurableObjectLocationHint): Promise<string | undefined> {
   for (let attempt = 0; attempt < 8; attempt++) {
     const code = newCode();
-    if (await env.ROOMS.getByName(code).open(code, lobby, players, waits)) return code;
+    if (await env.ROOMS.getByName(code, region ? { locationHint: region } : undefined).open(code, lobby, players, waits)) return code;
   }
   return undefined;
 }
@@ -639,11 +640,16 @@ export class Room extends DurableObject<Env> {
     if (old) await this.logged(old);
   }
 
-  /** A page's numbers on the match on now, kept for its record; a word on another match is late and dropped. */
+  /**
+   * A page's numbers on the match on now, kept for its record; a word on another match is late and
+   * dropped. They come every ten seconds through the fight, and a write the room waits on holds back
+   * everything it sends until the write is safe, the fight's frames too; numbers lost with a room
+   * that fails in that moment are not worth the stall, so this one is not waited on.
+   */
   private async noted(role: Role, game: number, stats: NetStats): Promise<void> {
     const open = await this.ctx.storage.get<Open>('match');
     if (!open || open.game !== game) return;
-    await this.ctx.storage.put('match', { ...open, net: { ...open.net, [role]: stats } });
+    await this.ctx.storage.put('match', { ...open, net: { ...open.net, [role]: stats } }, { allowUnconfirmed: true });
   }
 
   /** The match on now is over, `how`; with `game`, only if it is that match. Its record goes to the lobby. */

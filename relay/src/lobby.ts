@@ -2,6 +2,7 @@ import { DurableObject } from 'cloudflare:workers';
 import { Board, type Fighter, type Result, type Span, type Standings } from './board';
 import { type Fight, FightLog, type NightReport, type ReportSpan } from './fights';
 import { type Env, openRoom } from './index';
+import { regionFor, type Where, whereOf } from './place';
 
 /*
  * The lobby: one Durable Object for everyone, so two friends with the game open find each other
@@ -59,6 +60,8 @@ interface Seat {
   busy: boolean;
   /** When it came, to list players in the order they arrived. */
   at: number;
+  /** Roughly where they came in from, for where a room made for them should live (place.ts). */
+  where?: Where;
 }
 interface Challenge {
   from: string;
@@ -168,7 +171,8 @@ export class Lobby extends DurableObject<Env> {
     // A page in an online match that comes back between fights says so, and stays busy.
     // Arrivals in one millisecond would sort however the runtime lists their sockets: each comes after the last.
     this.lastAt = Math.max(Date.now(), this.lastAt + 1);
-    const seat: Seat = { id, name, busy: url.searchParams.get('busy') === '1', at: this.lastAt };
+    const where = whereOf(request);
+    const seat: Seat = { id, name, busy: url.searchParams.get('busy') === '1', at: this.lastAt, ...(where ? { where } : {}) };
     this.ctx.acceptWebSocket(server, [id]);
     server.serializeAttachment(seat);
     this.log.visit(id, name, seat.at);
@@ -350,7 +354,7 @@ export class Lobby extends DurableObject<Env> {
     // messages: either player may leave, take the queue back, or be matched with someone else.
     let code: string | undefined;
     try {
-      code = before[0] && before[1] ? await openRoom(this.env, this.ctx.id.name ?? LOBBY, { host: fighter(before[0]), guest: fighter(before[1]) }, waits ?? [null, null]) : undefined;
+      code = before[0] && before[1] ? await openRoom(this.env, this.ctx.id.name ?? LOBBY, { host: fighter(before[0]), guest: fighter(before[1]) }, waits ?? [null, null], regionFor(before[0].where, before[1].where)) : undefined;
     } catch {
       code = undefined;
     }
