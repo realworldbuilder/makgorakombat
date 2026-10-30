@@ -44,6 +44,8 @@ and tells each of them its code and whether they host. Nobody reads a code out.
 - A match: the lobby makes a room as `POST /rooms` would and tells both
   `{"t":"fight","code","role":"host"|"guest","with":{id,name}}`. The challenger hosts, or in a
   quick match the one who waited longer. Both are busy until their lobby sockets come back.
+  The room is placed in the Cloudflare region nearest the way between the two (`src/place.ts`,
+  from where the edge says each came in), not by the lobby, which is what would ask for it first.
 - `ping` is answered `pong`, as in a room.
 
 ## The board
