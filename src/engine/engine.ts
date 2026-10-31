@@ -1946,6 +1946,8 @@ function nextRoundOrMatch(match: Match): void {
   if (winner !== undefined && match.fighters[winner].wins >= ROUNDS_TO_WIN) {
     match.winner = winner;
     setPhase(match, 'matchEnd');
+    // The mak'gora won: the winner turns to the crowd (drawn in Fight) and dances until the rematch.
+    play(match.fighters[winner], 'win', 'dance');
     showBanner(match, BRAND.matchWin(match.names[winner]), undefined, Number.POSITIVE_INFINITY);
     return;
   }

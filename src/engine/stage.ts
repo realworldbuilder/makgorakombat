@@ -59,11 +59,19 @@ export const ROUND_END_FRAMES = 180;
 export const ROUNDS_TO_WIN = 2;
 
 /**
- * The world matrix of a fighter standing at (x, 0, z): translation × (facing < 0 ? rotation π about Z : identity).
- * Models face +X, so a fighter facing -1 is turned half way round.
+ * Which way a fighter looks, about Z: 0 along +X, π along -X, and `turn` (0 to 1) of the quarter
+ * turn from there to the camera, which looks along +Y from -Y (CAMERA's yaw), so both sides turn the short way.
  */
-export function worldMatrix(x: number, z: number, facing: number): Float32Array {
+export function yawOf(facing: number, turn = 0): number {
+  return facing >= 0 ? (-turn * Math.PI) / 2 : Math.PI + (turn * Math.PI) / 2;
+}
+
+/**
+ * The world matrix of a fighter standing at (x, 0, z): translation × a rotation about Z by `yawOf`.
+ * Models face +X, so a fighter facing -1 is turned half way round, and one with `turn` 1 faces the camera.
+ */
+export function worldMatrix(x: number, z: number, facing: number, turn = 0): Float32Array {
   const move = translation(x, 0, z);
-  if (facing >= 0) return move;
-  return multiply(new Float32Array(16), move, rotation('z', Math.PI));
+  if (facing >= 0 && turn === 0) return move;
+  return multiply(new Float32Array(16), move, rotation('z', yawOf(facing, turn)));
 }
