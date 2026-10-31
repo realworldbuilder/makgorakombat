@@ -214,25 +214,27 @@ export function FightUi({ fighters, p2, assets, me, next, feedback }: FightUiPro
         </div>
         <UnitFrame side={1} view={frame.views[1]} portrait={portraits[1]} effectIcons={spellIcons} spellIcons={spellIcons} />
       </div>
-      {frame.phase === 'matchEnd' && (
-        <div class="hint end">
-          {me === 1 ? <>the host calls the rematch</> : <><b>{onPad ? 'START' : 'ENTER'}</b> rematch</>}
-          {next && <> · <b>N</b> next opponent</>} · <b>{onPad ? 'BACK' : 'ESC'}</b> new champions
-        </div>
-      )}
-      {feedback && (
-        <div class="feedback-end">
-          <FeedbackBox
-            ended={frame.phase === 'matchEnd'}
-            fight={{
-              ...feedback,
-              fighters: [fighters[0].champion.name, fighters[1].champion.name],
-              winner: frame.views[0].wins > frame.views[1].wins ? 0 : frame.views[1].wins > frame.views[0].wins ? 1 : undefined,
-              me,
-            }}
-          />
-        </div>
-      )}
+      <div class="match-end">
+        {frame.phase === 'matchEnd' && (
+          <div class="hint end">
+            {me === 1 ? <>the host calls the rematch</> : <><b>{onPad ? 'START' : 'ENTER'}</b> rematch</>}
+            {next && <> · <b>N</b> next opponent</>} · <b>{onPad ? 'BACK' : 'ESC'}</b> new champions
+          </div>
+        )}
+        {feedback && (
+          <div class="feedback-end">
+            <FeedbackBox
+              ended={frame.phase === 'matchEnd'}
+              fight={{
+                ...feedback,
+                fighters: [fighters[0].champion.name, fighters[1].champion.name],
+                winner: frame.views[0].wins > frame.views[1].wins ? 0 : frame.views[1].wins > frame.views[0].wins ? 1 : undefined,
+                me,
+              }}
+            />
+          </div>
+        )}
+      </div>
       <div class="bottom">
         {([0, 1] as const).map((i) => (
           <div class={`bar-stack p${i + 1}`} key={i}>
