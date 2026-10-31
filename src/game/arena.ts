@@ -3,7 +3,7 @@ import { CLASSIC_SCREEN_ASPECT, composeBackdrop } from '@mogshot/render/backdrop
 import type { PosableRig } from '@mogshot/model/posable';
 import { type Camera, CharacterRenderer, type Shadow } from '@mogshot/render/renderer';
 import { mergedPose, mergeScenes } from '../engine/merge';
-import { HALF, STAGE_BOX, worldMatrix } from '../engine/stage';
+import { HALF, STAGE_BOX, worldMatrix, yawOf } from '../engine/stage';
 import type { Bounce } from './bay';
 import { CrossFade, FADE, posedFrom } from './blend';
 import type { BuiltFighter } from './fighters';
@@ -25,6 +25,8 @@ export interface Placement {
   x: number;
   z: number;
   facing: 1 | -1;
+  /** How far turned from `facing` to the camera, 0 to 1 (stage.ts yawOf): the match's winner dancing for the crowd. */
+  turn?: number;
   /** Milliseconds to cross-fade into this pose when the clip changes or starts over (blend.ts); FADE.move when not given, 0 to snap. */
   fade?: number;
 }
@@ -155,8 +157,9 @@ export class Arena {
     if (!bones || !place || !fighter) return undefined;
     const point = fighter.rig.attachment(bones, attachment);
     if (!point) return undefined;
-    const turn = place.facing < 0 ? -1 : 1;
-    return [place.x + turn * point[0], turn * point[1], place.z + this.floorAt(place.x) + point[2]] as Point;
+    const yaw = yawOf(place.facing, place.turn);
+    const [c, sn] = [Math.cos(yaw), Math.sin(yaw)];
+    return [place.x + c * point[0] - sn * point[1], sn * point[0] + c * point[1], place.z + this.floorAt(place.x) + point[2]] as Point;
   };
 
   /**
@@ -188,7 +191,7 @@ export class Arena {
       }
       return bones ? posedFrom(fighter.result.rig, bones) : pose;
     });
-    const worlds = placements.map((place) => worldMatrix(place.x, place.z + this.floorAt(place.x), place.facing));
+    const worlds = placements.map((place) => worldMatrix(place.x, place.z + this.floorAt(place.x), place.facing, place.turn));
     this.bodyBones = poses.map((pose) => pose[0]?.bones);
     this.lastPlacements = placements;
     if (this.effects.length > 0) {

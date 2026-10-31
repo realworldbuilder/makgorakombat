@@ -188,6 +188,16 @@ function poseIn(match: Match, i: 0 | 1, table: MoveTable): { sequence: number; t
   return { sequence: own.sequence, time: (Math.min(f.t, played.duration) * own.duration) / played.duration };
 }
 
+/** Frames the match's winner takes to turn from the loser to the camera, to dance for the crowd. */
+const TURN_FRAMES = 40;
+
+/** How far fighter `i` has turned to the camera (arena.ts Placement.turn): the match's winner, eased round as the match ends. */
+function turnOf(match: Match, i: 0 | 1): number | undefined {
+  if (match.phase !== 'matchEnd' || match.winner !== i) return undefined;
+  const k = Math.min(1, match.phaseT / TURN_FRAMES);
+  return k * k * (3 - 2 * k);
+}
+
 /** How high a fighter's head is, standing: the model's helm point, at its own size; a little under the top of its box without one. */
 function headHeight(fighter: BuiltFighter): number {
   const { head, bounds } = fighter.result.scene;
@@ -327,7 +337,7 @@ export function Fight({ fighters, stage, p2, onBack, net, watch }: FightProps) {
     let push = 1;
     let hitsSeen = 0;
     const placementsOf = (m: Match): Placement[] =>
-      m.fighters.map((fighter, i) => ({ ...poseIn(m, i as 0 | 1, drawn[i]!), x: fighter.x, z: fighter.z, facing: fighter.facing, fade: fadeFor(fighter.state) }));
+      m.fighters.map((fighter, i) => ({ ...poseIn(m, i as 0 | 1, drawn[i]!), x: fighter.x, z: fighter.z, facing: fighter.facing, turn: turnOf(m, i as 0 | 1), fade: fadeFor(fighter.state) }));
     const snapshotOf = (m: Match) => ({ match: m, fighters: placementsOf(m) });
     // Where the fighters were before the last step, to draw from toward where they are.
     let before: ReturnType<typeof snapshotOf> | undefined;

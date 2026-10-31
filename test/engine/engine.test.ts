@@ -3,7 +3,7 @@ import { damageRange, DOT_TICK_FRAMES, GCD_FRAMES } from '../../src/engine/abili
 import { BRAND } from '../../src/engine/brand';
 import { cpuInputs } from '../../src/engine/cpu';
 import { contactOf, type Inputs, type Match, newMatch, poseOf, tick } from '../../src/engine/engine';
-import { BODY, bodyRadius, FINISH_FRAMES, HALF, HP, INTRO_FRAMES, KO_SLOWMO, ROUND_END_FRAMES, START_X } from '../../src/engine/stage';
+import { BODY, bodyRadius, FINISH_FRAMES, HALF, HP, INTRO_FRAMES, KO_SLOWMO, ROUND_END_FRAMES, START_X, yawOf } from '../../src/engine/stage';
 import { fakeMatch, fakeTable, FULL_SET, HUNTER, inputs, MAGE, NONE, PALADIN, place, PRIEST, rig, ROGUE, run, SHAMAN, skipIntro, until, WARLOCK, WARRIOR } from './fake';
 
 /** A match in the fight phase with the fighters `gap` apart. */
@@ -937,8 +937,12 @@ describe('rounds', () => {
     expect(match.winner).toBe(0);
     expect(match.fighters[0].wins).toBe(2);
     expect(match.banner?.text).toBe(BRAND.matchWin('P1'));
+    // The winner dances, round and round, until the rematch.
+    expect(match.fighters[0].state).toBe('win');
+    expect(match.fighters[0].move).toBe('dance');
     run(match, 100);
     expect(match.phase).toBe('matchEnd');
+    expect(match.fighters[0].move).toBe('dance');
   });
 
   it('the timer gives the round to the higher hp', () => {
@@ -1082,5 +1086,19 @@ describe('the spell queue', () => {
     press(match, 0, 0);
     run(match, GCD_FRAMES);
     expect(f.cooldowns[1]).toBe(0);
+  });
+});
+
+describe('the winner turning to the camera', () => {
+  it('turns each side the short way, a quarter turn to face -Y', () => {
+    expect(yawOf(1)).toBeCloseTo(0);
+    expect(yawOf(-1)).toBeCloseTo(Math.PI);
+    // The camera looks along +Y from -Y: a model's +X turned to -Y faces it.
+    for (const facing of [1, -1]) {
+      const yaw = yawOf(facing, 1);
+      expect(Math.cos(yaw)).toBeCloseTo(0);
+      expect(Math.sin(yaw)).toBeCloseTo(-1);
+      expect(Math.abs(yaw - yawOf(facing))).toBeCloseTo(Math.PI / 2);
+    }
   });
 });

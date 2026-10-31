@@ -28,6 +28,7 @@ export function between(from: Placement, to: Placement, alpha: number): Placemen
     x: jump ? to.x : lerp(from.x, to.x, w),
     z: jump ? to.z : lerp(from.z, to.z, w),
     time: sameClip ? lerp(from.time, to.time, w) : to.time,
+    ...(to.turn !== undefined && { turn: lerp(from.turn ?? 0, to.turn, w) }),
   };
 }
 

@@ -35,7 +35,9 @@ export type MoveName =
   | 'death'
   | 'finisher'
   | 'intro'
-  | 'win';
+  | 'win'
+  /** The match won: the race's own /dance, round and round. */
+  | 'dance';
 
 /**
  * A move a fighter can be in: a core move, one of the kit's abilities (its own animation, or the one
@@ -153,12 +155,13 @@ function candidates(wielding: Wielding, shield: boolean): Record<MoveName, { nam
     finisher: { names: ['CombatExecute', 'CombatFinishingMove', 'Special2H', 'Special1H'], loop: false },
     intro: { names: ['BattleRoar', 'EmoteRoar', 'Stand'], loop: false },
     win: { names: ['EmoteCheer', 'EmoteRoar', 'BattleRoar'], loop: false },
+    dance: { names: ['EmoteDance', 'EmoteCheer', 'EmoteRoar', 'BattleRoar'], loop: true },
   };
 }
 
 export const MOVE_NAMES: readonly MoveName[] = [
   'idle', 'walk', 'back', 'jumpStart', 'jump', 'jumpEnd', 'swing', 'jab', 'dodge', 'parry', 'cast',
-  'hit', 'crit', 'knockdown', 'dazed', 'death', 'finisher', 'intro', 'win',
+  'hit', 'crit', 'knockdown', 'dazed', 'death', 'finisher', 'intro', 'win', 'dance',
 ];
 
 /** Every model animation any move or ability may use, deduped: what select passes to `client.fighter()` so the worker pre-reads them. */
@@ -172,7 +175,7 @@ export const ALL_MOVE_NAMES: readonly string[] = [
     ...ALL_PARRY,
     'CombatWound', 'StandWound', 'CombatCritical', 'Knockdown', 'Stun', 'Death',
     'CombatExecute', 'CombatFinishingMove', 'Special2H', 'Special1H',
-    'BattleRoar', 'EmoteRoar', 'EmoteCheer',
+    'BattleRoar', 'EmoteRoar', 'EmoteCheer', 'EmoteDance',
     ...ABILITY_ANIMATIONS,
     ...FATALITY_ANIMATIONS,
   ]),
