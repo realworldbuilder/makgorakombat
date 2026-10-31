@@ -487,11 +487,20 @@
   color: var(--gold);
 }
 
-.wowui .hint.end {
+/* The match's end, above the bars: the rematch hint and SEND FEEDBACK under it, one column
+   centred on the screen with a gap between them, so neither can sit on the other or on the bars. */
+.wowui .match-end {
   position: absolute;
   left: 0;
   right: 0;
-  bottom: 7.8em;
+  bottom: 6.9em;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.7em;
+}
+
+.wowui .hint.end {
   text-align: center;
   font-size: 1em;
   color: var(--gold);
@@ -503,10 +512,7 @@
 
 /* SEND FEEDBACK under the rematch hint: a quiet line, and the small box it opens growing up from it. */
 .wowui .feedback-end {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 6.3em;
+  position: relative;
   display: flex;
   justify-content: center;
 }
@@ -836,13 +842,13 @@
 /* The frames and bars step aside while the fatality plays, so the scene has the whole screen. */
 .wowui .top,
 .wowui .bottom,
-.wowui > .hint {
+.wowui .match-end {
   transition: opacity 0.35s ease;
 }
 
 .wowui.cinematic .top,
 .wowui.cinematic .bottom,
-.wowui.cinematic > .hint {
+.wowui.cinematic .match-end {
   opacity: 0;
 }
 
