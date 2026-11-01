@@ -2021,9 +2021,9 @@ code {
   color: var(--gold);
 }
 
-/* The music tab, the same tab just right of the bug's; dimmer still while the music is off. */
+/* The music tab, the same tab right of the fullscreen tab; dimmer still while the music is off. */
 .reporter-tab.music-tab {
-  left: calc(50% + 42px);
+  left: calc(50% + 84px);
 }
 
 .reporter-tab.music-tab.off {
@@ -2036,9 +2036,18 @@ code {
   opacity: 1;
 }
 
+/* The fullscreen tab, just right of the bug's, on every screen; lit while the game fills the screen. */
+.reporter-tab.fullscreen-tab {
+  left: calc(50% + 42px);
+}
+
+.reporter-tab.fullscreen-tab.on {
+  color: #fff3c4;
+}
+
 /* The voice tab, right of the music tab, in an online match only: lit while the other player is on voice and this one is not. */
 .reporter-tab.voice-tab {
-  left: calc(50% + 84px);
+  left: calc(50% + 126px);
 }
 
 .reporter-tab.voice-tab.opening {
