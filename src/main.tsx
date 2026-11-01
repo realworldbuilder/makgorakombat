@@ -1,4 +1,5 @@
 import { render } from 'preact';
+import { FullscreenTab } from './game/FullscreenTab';
 import { Game } from './game/Game';
 import { recordErrors } from './game/report';
 import { Reporter } from './game/Reporter';
@@ -20,6 +21,7 @@ restoreGameFonts();
 render(
   <>
     <Reporter />
+    <FullscreenTab />
     <Game />
   </>,
   document.querySelector('#app')!,

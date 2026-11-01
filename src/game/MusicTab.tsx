@@ -2,7 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { soundSettings, toggleMusic, watchSound } from './sound';
 
 /*
- * The music tab, beside the bug tab at the top of every screen that has music: a click, or P from
+ * The music tab, beside the fullscreen tab at the top of every screen that has music: a click, or P from
  * anywhere, turns the music off and on. Only the music: the fight's sounds and the call when a
  * match is found go on, which the mute (M) would silence too.
  */
