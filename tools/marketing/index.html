@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ability wall cards · Mak'gora</title>
+    <!--
+      Our marketing images, each on the ability wall (shared/ability-wall.ts), drawn at the size the
+      network wants so a headless screenshot is the finished file. Not part of the site: open it on the
+      dev server, /makgorakombat/tools/marketing/?f=og (or x, yt, reel), and see README.md beside it.
+    -->
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@500;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="../../shared/ability-wall.css" />
+    <link rel="stylesheet" href="./marketing.css" />
+  </head>
+  <body>
+    <main class="card">
+      <div class="ability-wall" aria-hidden="true"></div>
+      <div class="shade"></div>
+      <div class="pitch">
+        <img class="logo" src="/welcome/logo.webp" alt="Mak'gora: Duel to the Death" />
+        <p class="line">Every class. Every ability. <b>One on one.</b></p>
+        <p class="url">Free in Chrome · realworldbuilder.github.io/makgorakombat</p>
+      </div>
+    </main>
+    <script type="module" src="./marketing.ts"></script>
+  </body>
+</html>
