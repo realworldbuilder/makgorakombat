@@ -23,6 +23,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@500;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="../shared/ability-wall.css" />
     <link rel="stylesheet" href="./welcome.css" />
     <script type="application/ld+json">
       {
@@ -73,6 +74,8 @@
 
     <main id="main">
       <section class="hero" id="top" aria-labelledby="hero-title">
+        <!-- Every ability in the game, drifting behind the pitch (shared/ability-wall.ts) -->
+        <div class="hero-wall" aria-hidden="true"><div class="ability-wall drift"></div></div>
         <img class="hero-logo reveal" src="/welcome/logo.webp" alt="Mak'gora: Duel to the Death" width="640" height="320" />
         <p class="eyebrow reveal">A World of Warcraft fighting game</p>
         <h1 id="hero-title" class="hero-title reveal">Settle it one on one<br /> with your own champions</h1>
@@ -355,6 +358,7 @@
       </div>
     </footer>
 
+    <script type="module" src="../shared/ability-wall.ts"></script>
     <script type="module" src="./welcome.ts"></script>
   </body>
 </html>

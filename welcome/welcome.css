@@ -487,6 +487,38 @@ h2 {
   }
 }
 
+/* The ability wall behind the pitch, darkest where the words are and gone before the screenshot. */
+.hero {
+  position: relative;
+  isolation: isolate;
+}
+
+.hero-wall {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: -1;
+  height: min(860px, 100%);
+  overflow: hidden;
+  --wall-columns: 10;
+  --wall-dim: 0.5;
+  --wall-gap: 12px;
+  -webkit-mask-image: linear-gradient(#000 55%, transparent);
+  mask-image: linear-gradient(#000 55%, transparent);
+}
+
+.hero-wall::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse 60% 55% at 50% 42%, rgb(19 18 9 / 88%), rgb(19 18 9 / 45%));
+}
+
+@media (min-width: 1024px) {
+  .hero-wall {
+    --wall-columns: 16;
+  }
+}
+
 .hero-logo {
   width: min(320px, 80vw);
   margin-bottom: 16px;
