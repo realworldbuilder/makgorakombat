@@ -1,0 +1,51 @@
+/*
+ * The ability wall (ability-wall.ts fills it): the game's ability icons in a tilted grid, darkened so
+ * a title reads on top. Put it in a positioned box that clips (overflow: hidden); it bleeds past the
+ * box's edges so the tilt leaves no corner bare. Set these on the wall or any parent to change it:
+ *
+ *   --wall-tilt    the angle (-12deg)
+ *   --wall-dim     how much shows through (0.55)
+ *   --wall-gap     space between tiles, and --wall-radius their corners, --wall-rim their black edge
+ *   --wall-period  how long a drifting wall takes to come round (120s)
+ */
+
+.ability-wall {
+  position: absolute;
+  inset: var(--wall-bleed, -18%);
+  transform: rotate(var(--wall-tilt, -12deg));
+  opacity: var(--wall-dim, 0.55);
+  pointer-events: none;
+}
+
+.ability-wall-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--wall-columns, 9), 1fr);
+  gap: var(--wall-gap, 14px);
+}
+
+.ability-wall img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: var(--wall-radius, 9%);
+  box-shadow: 0 0 0 var(--wall-rim, 3px) #000;
+}
+
+/* Drifting: up the tilt by one period of the plane (ability-wall.ts sets --wall-shift), the gap below
+   the last row counted in, so the end is the start. --wall-period is the time for one period. */
+.ability-wall.drift .ability-wall-grid {
+  padding-bottom: var(--wall-gap, 14px);
+  animation: ability-wall-drift var(--wall-period, 120s) linear infinite;
+}
+
+@keyframes ability-wall-drift {
+  to {
+    transform: translateY(var(--wall-shift));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ability-wall.drift .ability-wall-grid {
+    animation: none;
+  }
+}
