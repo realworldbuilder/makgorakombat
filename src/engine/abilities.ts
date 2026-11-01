@@ -197,7 +197,7 @@ function classKits(twoHand: boolean): Record<number, { key: string; name: string
       abilities: [
         ability({ id: 'mindBlast', name: 'Mind Blast', short: 'MIND BLAST', kind: 'spell', cost: 25, cooldown: 4 * S, cast: 1 * S, damage: 22, anims: SPELL, holdAnims: CAST_HOLD }),
         ability({ id: 'holyNova', name: 'Holy Nova', short: 'HOLY NOVA', kind: 'spell', both: true, range: ABILITY_MELEE_RANGE, cost: 20, cooldown: 6 * S, damage: 12, heal: 8, anims: OMNI }),
-        ability({ id: 'powerWordShield', name: 'Power Word: Shield', short: 'PW: SHIELD', kind: 'self', cost: 25, cooldown: 10 * S, absorb: 25, anims: OMNI }),
+        ability({ id: 'powerWordShield', name: 'Power Word: Shield', short: 'PW: SHIELD', kind: 'self', cost: 25, cooldown: 10 * S, absorb: 20, anims: OMNI }),
       ],
     },
     6: {
@@ -285,7 +285,7 @@ export const PVP_DAMAGE: Record<string, number> = {
  * for a mage or a priest, whose strength is in their spells, as a caster's white hits are in the game.
  */
 export const WEAPON_SKILL: Record<string, number> = {
-  warrior: 1, paladin: 1, hunter: 1, rogue: 1, priest: 0.8, deathknight: 1, shaman: 0.85,
+  warrior: 1, paladin: 1, hunter: 1, rogue: 1, priest: 0.6, deathknight: 1, shaman: 0.85,
   mage: 0.6, warlock: 0.6, monk: 1, druid: 0.75, demonhunter: 1, evoker: 0.7,
 };
 

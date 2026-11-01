@@ -53,7 +53,7 @@ The kits are deliberately unalike: a warrior's slow heavy swings and Mortal Stri
 | Paladin (mana) | Crusader Strike: 15 mana, 11–14 damage, 4.5 s cooldown | Hammer of Justice: 15 mana, 3–4 damage, stuns 2 s, 20 s cooldown | Holy Light: 30 mana, 2 s cast, heals 35 |
 | Hunter (focus) | Aimed Shot: 35 focus, 1.5 s cast, 22–26 damage | Disengage: leaps back, 15 s cooldown, no global cooldown | Raptor Strike: 15 focus, 14–18 damage, 6 s cooldown |
 | Rogue (energy) | Sinister Strike: 40 energy, 8–11 damage | Kidney Shot: 25 energy, 4–6 damage, stuns 2 s, 20 s cooldown | Evasion: dodge up for 8 s, 30 s cooldown, no global cooldown |
-| Priest (mana) | Mind Blast: 25 mana, 1 s cast, 17–20 damage, 4 s cooldown | Holy Nova: 20 mana, bursts out up close on both sides, 9–11 damage, heals 8, 6 s cooldown | Power Word: Shield: 25 mana, absorbs 25, 10 s cooldown |
+| Priest (mana) | Mind Blast: 25 mana, 1 s cast, 17–20 damage, 4 s cooldown | Holy Nova: 20 mana, bursts out up close on both sides, 9–11 damage, heals 8, 6 s cooldown | Power Word: Shield: 25 mana, absorbs 20, 10 s cooldown |
 | Death Knight (runic power) | Icy Touch: 9–10 damage, slows 3 s, gives 15 runic power, 6 s cooldown | Death Strike: 13–17 damage, heals 10, gives 15 runic power, 6 s cooldown | Death Coil: 40 runic power, 14–16 damage |
 | Shaman (mana) | Lightning Bolt: 15 mana, 1.5 s cast, 19–23 damage | Earth Shock: 20 mana, 10–12 damage, interrupts, 6 s cooldown | Stormstrike: 20 mana, 15–20 damage, 8 s cooldown |
 | Mage (mana) | Frostbolt: 20 mana, 1.5 s cast, 23–27 damage, slows 4 s | Frost Nova: 20 mana, bursts out up close on both sides, 8–10 damage, stuns 1 s, 12 s cooldown | Blink: 15 mana, 3.5 yards away, 15 s cooldown |
