@@ -42,7 +42,7 @@ describe('describeAbility', () => {
       cooldown: '15 sec cooldown',
       description: 'Charges the target, dealing 4 to 5 damage and stuns the target for 1 sec and generates 20 Rage.',
     });
-    expect(describeAbility(find(priest, 'powerWordShield'), 'mana').description).toBe('Shields you, absorbing 25 damage.');
+    expect(describeAbility(find(priest, 'powerWordShield'), 'mana').description).toBe('Shields you, absorbing 20 damage.');
     expect(describeAbility(find(warrior, 'execute'), 'rage').description).toBe('Strikes the target for 23 to 31 damage. Only usable on a target below 20% health.');
   });
 

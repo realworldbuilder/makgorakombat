@@ -697,10 +697,10 @@ describe('abilities', () => {
   it('Power Word: Shield absorbs before health is touched', () => {
     const match = fighting(1.5, 1, [PRIEST, WARRIOR]);
     press(match, 0, 2);
-    expect(match.fighters[0].absorb).toBe(25);
+    expect(match.fighters[0].absorb).toBe(20);
     swing(match, 1, 'hit');
     expect(match.fighters[0].hp).toBe(HP);
-    expect(match.fighters[0].absorb).toBe(17);
+    expect(match.fighters[0].absorb).toBe(12);
     expect(texts(match, 0)).toContain('absorb:ABSORB 8');
     expect(match.fighters[0].tookDamage).toBe(false);
   });
