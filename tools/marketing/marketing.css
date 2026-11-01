@@ -1,0 +1,219 @@
+/* One card a page, at the network's own pixel size: the wall, a shade where the words go, and the pitch. */
+
+:root {
+  --bg: #131209;
+  --text: #ffffff;
+  --muted: #a8a49a;
+  --gold: #ffd100;
+  --font: 'Geist', ui-sans-serif, system-ui, sans-serif;
+  --mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --w: 1200px;
+  --h: 630px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
+}
+
+.card {
+  position: relative;
+  width: var(--w);
+  height: var(--h);
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.shade {
+  position: absolute;
+  inset: 0;
+}
+
+.pitch {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+}
+
+.pitch p {
+  margin: 0;
+}
+
+.logo {
+  display: block;
+  filter: drop-shadow(0 8px 24px #000);
+}
+
+.line {
+  white-space: nowrap;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  text-shadow: 0 2px 12px #000;
+}
+
+.line b {
+  color: var(--gold);
+}
+
+.url {
+  white-space: nowrap;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
+/* The social card: the wall bright on the right, the pitch on the dark left. */
+[data-f='og'] .card {
+  --wall-columns: 12;
+  --wall-gap: 10px;
+  --wall-dim: 0.7;
+}
+
+[data-f='og'] .shade {
+  background:
+    linear-gradient(90deg, rgb(19 18 9 / 96%) 0%, rgb(19 18 9 / 82%) 42%, rgb(19 18 9 / 10%) 75%),
+    linear-gradient(transparent 70%, rgb(19 18 9 / 70%));
+}
+
+[data-f='og'] .pitch {
+  left: 64px;
+  top: 0;
+  bottom: 0;
+  justify-content: center;
+  gap: 18px;
+}
+
+[data-f='og'] .logo {
+  width: 520px;
+  margin-left: -12px;
+}
+
+[data-f='og'] .line {
+  font-size: 40px;
+}
+
+[data-f='og'] .url {
+  font-size: 20px;
+}
+
+/* The X header: 3 to 1, the avatar over its lower left, so the pitch sits right of centre. */
+[data-f='x'] .card {
+  --w: 1500px;
+  --h: 500px;
+  --wall-columns: 16;
+  --wall-gap: 10px;
+  --wall-dim: 0.7;
+}
+
+[data-f='x'] .shade {
+  background: radial-gradient(ellipse 42% 75% at 62% 50%, rgb(19 18 9 / 94%) 35%, rgb(19 18 9 / 20%));
+}
+
+[data-f='x'] .pitch {
+  left: 62%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  align-items: center;
+  gap: 14px;
+  text-align: center;
+}
+
+[data-f='x'] .logo {
+  width: 440px;
+}
+
+[data-f='x'] .line {
+  font-size: 34px;
+}
+
+[data-f='x'] .url {
+  font-size: 18px;
+}
+
+/* The YouTube banner: the whole 2560 x 1440 shows on a TV, only the middle 1546 x 423 on every screen. */
+[data-f='yt'] .card {
+  --w: 2560px;
+  --h: 1440px;
+  --wall-columns: 20;
+  --wall-gap: 16px;
+  --wall-rim: 4px;
+  --wall-dim: 0.7;
+}
+
+[data-f='yt'] .shade {
+  background: radial-gradient(ellipse 36% 24% at 50% 50%, rgb(19 18 9 / 96%) 45%, rgb(19 18 9 / 20%));
+}
+
+[data-f='yt'] .pitch {
+  left: 50%;
+  top: 50%;
+  width: 1546px;
+  height: 423px;
+  transform: translate(-50%, -50%);
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 48px;
+}
+
+[data-f='yt'] .logo {
+  width: 620px;
+}
+
+[data-f='yt'] .line {
+  white-space: normal;
+  max-width: 560px;
+  font-size: 64px;
+  line-height: 1.1;
+}
+
+[data-f='yt'] .url {
+  display: none;
+}
+
+/* The reel: 9 to 16, the wall drifting up its tilt behind the logo. */
+[data-f='reel'] .card {
+  --w: 1080px;
+  --h: 1920px;
+  --wall-columns: 8;
+  --wall-gap: 16px;
+  --wall-rim: 4px;
+  --wall-dim: 0.75;
+  --wall-period: 90s;
+}
+
+[data-f='reel'] .shade {
+  background:
+    radial-gradient(ellipse 95% 24% at 50% 50%, rgb(19 18 9 / 97%) 55%, rgb(19 18 9 / 25%)),
+    linear-gradient(rgb(19 18 9 / 50%), transparent 25%, transparent 75%, rgb(19 18 9 / 60%));
+}
+
+[data-f='reel'] .pitch {
+  left: 0;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  align-items: center;
+  gap: 24px;
+  text-align: center;
+}
+
+[data-f='reel'] .logo {
+  width: 820px;
+}
+
+[data-f='reel'] .line {
+  font-size: 52px;
+}
+
+[data-f='reel'] .url {
+  font-size: 26px;
+}

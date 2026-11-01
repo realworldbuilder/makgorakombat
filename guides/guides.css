@@ -722,22 +722,10 @@ kbd.sm {
 
 /* ---- the combos guide (/guides/combos/) -------------------------------------------------- */
 
-/* The cover: every ability's icon in a tilted wall, darkened under the title. */
-.combos-cover .wall {
-  position: absolute;
-  inset: -18%;
-  display: grid;
-  grid-template-columns: repeat(9, 1fr);
-  gap: calc(14 * var(--u));
-  transform: rotate(-12deg);
-  opacity: 0.55;
-}
-
-.combos-cover .wall img {
-  width: 100%;
-  aspect-ratio: 1;
-  border-radius: calc(14 * var(--u));
-  box-shadow: 0 0 0 calc(3 * var(--u)) #000;
+/* The cover: every ability's icon in a tilted wall (shared/ability-wall.css), darkened under the title. */
+.combos-cover .ability-wall {
+  --wall-gap: calc(14 * var(--u));
+  --wall-rim: calc(3 * var(--u));
 }
 
 .combos-cover h1 {
