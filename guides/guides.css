@@ -719,3 +719,272 @@ kbd.sm {
 .cta-end .url.dim {
   color: var(--muted);
 }
+
+/* ---- the combos guide (/guides/combos/) -------------------------------------------------- */
+
+/* The cover: every ability's icon in a tilted wall, darkened under the title. */
+.combos-cover .wall {
+  position: absolute;
+  inset: -18%;
+  display: grid;
+  grid-template-columns: repeat(9, 1fr);
+  gap: calc(14 * var(--u));
+  transform: rotate(-12deg);
+  opacity: 0.55;
+}
+
+.combos-cover .wall img {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: calc(14 * var(--u));
+  box-shadow: 0 0 0 calc(3 * var(--u)) #000;
+}
+
+.combos-cover h1 {
+  font-size: calc(200 * var(--u));
+}
+
+/* The five rules. */
+.rules .text,
+.klass .text,
+.index .text {
+  padding-top: calc(72 * var(--u));
+}
+
+.laws {
+  display: grid;
+  gap: calc(18 * var(--u));
+  margin: 0 0 calc(28 * var(--u));
+  padding: 0;
+  list-style: none;
+  counter-reset: law;
+}
+
+.laws li {
+  position: relative;
+  padding: calc(20 * var(--u)) calc(26 * var(--u)) calc(20 * var(--u)) calc(96 * var(--u));
+  border-radius: calc(14 * var(--u));
+  background: var(--card);
+  font-size: calc(29 * var(--u));
+  line-height: 1.32;
+  counter-increment: law;
+}
+
+.laws li::before {
+  content: counter(law);
+  position: absolute;
+  left: calc(26 * var(--u));
+  top: calc(14 * var(--u));
+  color: var(--gold);
+  font-family: var(--title);
+  font-size: calc(56 * var(--u));
+}
+
+.laws b {
+  color: var(--gold);
+  font-weight: 600;
+}
+
+.rules .note b {
+  color: var(--text);
+}
+
+/* Find your class: thirteen rows, each with its slide number. */
+.roster-list {
+  display: grid;
+  gap: calc(10 * var(--u));
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.roster-list li {
+  display: grid;
+  grid-template-columns: calc(58 * var(--u)) calc(270 * var(--u)) 1fr auto;
+  align-items: center;
+  gap: calc(22 * var(--u));
+  padding: calc(7 * var(--u)) calc(20 * var(--u)) calc(7 * var(--u)) calc(7 * var(--u));
+  border-left: calc(6 * var(--u)) solid var(--c);
+  border-radius: calc(10 * var(--u));
+  background: var(--card);
+  font-size: calc(31 * var(--u));
+}
+
+.roster-list img {
+  width: calc(58 * var(--u));
+  height: calc(58 * var(--u));
+  border-radius: calc(8 * var(--u));
+}
+
+.roster-list b {
+  color: var(--c);
+  font-weight: 600;
+}
+
+.roster-list span {
+  color: var(--muted);
+}
+
+.roster-list i {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: calc(24 * var(--u));
+  font-style: normal;
+}
+
+/* A class: its colour at the top, the combo as icons and keys, the plan, the counter, the finish. */
+.klass .canvas {
+  background:
+    radial-gradient(90% 34% at 50% 0%, color-mix(in srgb, var(--c) 26%, transparent) 0%, transparent 100%),
+    radial-gradient(120% 60% at 50% 100%, #2a0d0c 0%, transparent 70%),
+    var(--bg);
+}
+
+.klass .kicker {
+  color: var(--text);
+}
+
+.klass .kicker i {
+  width: calc(18 * var(--u));
+  height: calc(18 * var(--u));
+  border-radius: 999px;
+  background: var(--c);
+  box-shadow: 0 0 calc(16 * var(--u)) var(--c);
+}
+
+.klass h2 {
+  font-size: calc(88 * var(--u));
+}
+
+.chain {
+  display: flex;
+  justify-content: space-between;
+  margin: calc(8 * var(--u)) 0 calc(40 * var(--u));
+  padding: 0;
+  list-style: none;
+}
+
+.chain li {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+  gap: calc(12 * var(--u));
+  max-width: calc(240 * var(--u));
+  text-align: center;
+}
+
+/* The arrow from one step to the next, in the gap between them. */
+.chain li + li::before {
+  content: '→';
+  position: absolute;
+  top: calc(50 * var(--u));
+  right: 100%;
+  width: 0;
+  display: flex;
+  justify-content: center;
+  color: var(--muted);
+  font-size: calc(40 * var(--u));
+}
+
+.chain img {
+  width: calc(150 * var(--u));
+  height: calc(150 * var(--u));
+  border: calc(3 * var(--u)) solid var(--c);
+  border-radius: calc(16 * var(--u));
+  box-shadow: 0 0 calc(28 * var(--u)) color-mix(in srgb, var(--c) 35%, transparent);
+}
+
+.chain kbd {
+  min-width: calc(62 * var(--u));
+  height: calc(62 * var(--u));
+  margin-top: calc(-40 * var(--u));
+  font-size: calc(32 * var(--u));
+}
+
+.chain span {
+  font-size: calc(28 * var(--u));
+  font-weight: 600;
+  line-height: 1.15;
+}
+
+/* Five steps: smaller icons, so the arrows keep their room. */
+.chain:has(li:nth-child(5)) img {
+  width: calc(128 * var(--u));
+  height: calc(128 * var(--u));
+}
+
+.chain:has(li:nth-child(5)) li + li::before {
+  top: calc(40 * var(--u));
+}
+
+/* The last step comes later in the fight, when it is ready or when it is needed. */
+.chain li.then img {
+  border-style: dashed;
+}
+
+.why {
+  font-size: calc(37 * var(--u));
+  line-height: 1.35;
+}
+
+.plays {
+  display: grid;
+  gap: calc(14 * var(--u));
+  margin: auto 0 0;
+  padding-top: calc(32 * var(--u));
+  padding: 0;
+  list-style: none;
+}
+
+.plays li {
+  padding: calc(22 * var(--u)) calc(28 * var(--u));
+  border-left: calc(6 * var(--u)) solid var(--gold);
+  background: rgb(255 209 0 / 7%);
+  font-size: calc(32 * var(--u));
+  line-height: 1.32;
+}
+
+.plays li + li {
+  border-left-color: #ff3b3b;
+  background: rgb(255 59 59 / 7%);
+}
+
+.plays b {
+  color: var(--gold);
+}
+
+.plays li + li b {
+  color: #ff5a5a;
+}
+
+.finisher {
+  display: flex;
+  align-items: center;
+  gap: calc(12 * var(--u));
+  padding-top: calc(36 * var(--u));
+}
+
+.finisher span {
+  margin-right: calc(8 * var(--u));
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: calc(24 * var(--u));
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.finisher kbd {
+  min-width: calc(72 * var(--u));
+  height: calc(72 * var(--u));
+  font-size: calc(34 * var(--u));
+}
+
+.finisher .lc {
+  margin-left: calc(12 * var(--u));
+  color: #ff3b3b;
+  font-size: calc(56 * var(--u));
+  line-height: 1;
+}
