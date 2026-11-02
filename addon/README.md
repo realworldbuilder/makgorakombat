@@ -10,7 +10,7 @@ the internet, so it comes in two halves:
   reaches the guild, the group, Battle.net friends playing WoW (any realm, either faction) and
   everyone on the same realm through a hidden channel, `MakgoraKombat`.
 - **The watcher** (`watch.ts`), outside the game: it watches the game's own queue on the relay
-  and puts a macOS banner over WoW when somebody starts waiting there.
+  and, when somebody starts waiting there, puts a macOS banner over WoW and says their name.
 
 ## The add-on
 
@@ -40,8 +40,10 @@ node addon/watch.ts --name <your name on the site>
 ```
 
 It asks the relay's `/lobby/stats` every 15 seconds (it is not in the lobby, so nobody sees it)
-and shows a banner with the names of those newly waiting, never yours. `--test` shows one banner
-and stops; `--relay <url>` watches another relay. It needs Node 22.18 or later.
+and shows a banner with the names of those newly waiting, never yours. On a Mac it also chimes
+and says the names out loud, which gets through a Focus (Sleep, Do Not Disturb) that holds the
+banner back; `--quiet` leaves the sound out. `--test` shows one banner and stops; `--relay <url>`
+watches another relay. It needs Node 22.18 or later.
 
 To have it always running on a Mac, a LaunchAgent at
 `~/Library/LaunchAgents/com.makgora.watch.plist`:

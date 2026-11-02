@@ -3,12 +3,14 @@
  * watches the game's own queue on the relay and puts a banner on the screen, over WoW, when
  * somebody starts waiting there for a fight.
  *
- *   node addon/watch.ts [--name <your name on the site>] [--relay <url>] [--every <seconds>]
+ *   node addon/watch.ts [--name <your name on the site>] [--relay <url>] [--every <seconds>] [--quiet]
  *   node addon/watch.ts --test      one banner to see what it looks like, and stop
  *
  * It asks GET /lobby/stats (relay/README.md) every 15 seconds and is not in the lobby itself, so
  * nobody sees it there. With --name it says nothing of you. A banner is macOS's notification, or
- * notify-send's on Linux; anywhere else it is the line it prints.
+ * notify-send's on Linux; anywhere else it is the line it prints. On a Mac it also chimes and says
+ * the names out loud, which a Focus (Sleep, Do Not Disturb) does not hold back as it does the
+ * banner; --quiet leaves that out.
  */
 import { execFile } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
@@ -43,11 +45,14 @@ export function words(names: string[]): string {
   return `${names.slice(0, -1).join(', ')} and ${names.at(-1)} are waiting for a fight.`;
 }
 
-function banner(text: string): void {
+function banner(text: string, spoken = text): void {
   console.log(`${new Date().toLocaleTimeString()}  ${text}`);
   if (process.platform === 'darwin') {
-    const script = ['on run argv', `display notification (item 1 of argv) with title "${TITLE}" sound name "Glass"`, 'end run'];
+    const script = ['on run argv', `display notification (item 1 of argv) with title "${TITLE}"`, 'end run'];
     execFile('osascript', [...script.flatMap((line) => ['-e', line]), text], () => undefined);
+    if (!process.argv.includes('--quiet')) {
+      execFile('afplay', ['/System/Library/Sounds/Glass.aiff'], () => execFile('say', [spoken], () => undefined));
+    }
   } else if (process.platform === 'linux') {
     execFile('notify-send', [TITLE, text], () => undefined);
   }
@@ -60,7 +65,7 @@ function option(name: string): string | undefined {
 
 async function main(): Promise<void> {
   if (process.argv.includes('--test')) {
-    banner(`${words(['Testgrom'])} ${SITE}`);
+    banner(`${words(['Testgrom'])} ${SITE}`, words(['Testgrom']));
     return;
   }
   const relay = (option('relay') ?? RELAY).replace(/\/$/, '');
