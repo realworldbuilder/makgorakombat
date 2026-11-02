@@ -18,15 +18,16 @@ and tells each of them its code and whether they host. Nobody reads a code out.
   and keeps, so a reload or a second tab takes the old place instead of making a second player.
   `&busy=1` is a page in an online match coming back between fights; `&busy=0&requeue=1` a page
   back from one that wants the next opponent, and goes straight into the queue.
-- Everyone hears `{"t":"here","players":[{"id","name","status":"free"|"busy","night"?:[wins,losses]}],"online","waiting","fighting"}`
+- Everyone hears `{"t":"here","players":[{"id","name","status":"free"|"busy","night"?:[wins,losses]}],"online","waiting","fighting","queue"}`
   whenever somebody comes, goes, joins or leaves the queue or starts a match, and every 20
   seconds besides. `online` is the players here, `waiting` those in the queue, `fighting` the
   players in a room with their opponent (the pages leave the lobby for the fight itself, so the
-  rooms tell the lobby how many are in them). With them comes `"fights":[{"code","names":[host,guest],"ids":[host,guest],"since"}]`,
+  rooms tell the lobby how many are in them), and `queue` the names of those waiting, longest
+  first. With them comes `"fights":[{"code","names":[host,guest],"ids":[host,guest],"since"}]`,
   the rooms the lobby made that have both players in, longest going first, for anyone who wants
   to watch one. A room made with a code is not the lobby's and is not listed.
-- `GET /lobby/stats` answers the same, `{"online","waiting","fighting","fights"}`, for a
-  page that is not in the lobby (the game's title) or a bot.
+- `GET /lobby/stats` answers the same, `{"online","waiting","fighting","queue","fights"}`, for a
+  page that is not in the lobby (the game's title) or a bot (the WoW add-on's watcher, `addon/watch.ts`).
 - `{"t":"challenge","to":id}`: the other player hears `{"t":"challenged","from":{id,name},"ttl":30000}`
   and the challenger `{"t":"challenging","to":{id,name},"ttl":30000}`. One open challenge at a
   time each way; challenging somebody busy, or somebody already answering one, is an

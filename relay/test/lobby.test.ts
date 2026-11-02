@@ -297,7 +297,7 @@ describe('lobby', () => {
     send(third, { t: 'quick' });
     expect(await third.next('queued')).toMatchObject({ queued: true });
     await hereCounting(chris, { online: 3, waiting: 1, fighting: 0 });
-    expect(await stub.stats()).toEqual({ online: 3, waiting: 1, fighting: 0, fights: [] });
+    expect(await stub.stats()).toEqual({ online: 3, waiting: 1, fighting: 0, queue: ['Thrall'], fights: [] });
 
     // Chris and Will fight: once both are in their room the lobby counts them, socket here or not.
     send(chris, { t: 'challenge', to: ids.will });
@@ -313,7 +313,7 @@ describe('lobby', () => {
     // The fight is listed for watching, under both names and its code.
     const fight = { code, names: ['Chris', 'Will'], ids: [ids.chris, ids.will], since: expect.any(Number) };
     expect(listed.fights).toEqual([fight]);
-    expect(await stub.stats()).toEqual({ online: 1, waiting: 1, fighting: 2, fights: [fight] });
+    expect(await stub.stats()).toEqual({ online: 1, waiting: 1, fighting: 2, queue: ['Thrall'], fights: [fight] });
 
     // One goes: the room is no longer a fight.
     host.ws.close(1000, 'bye');
@@ -325,7 +325,7 @@ describe('lobby', () => {
     const stats = await SELF.fetch('https://relay.test/lobby/stats', { headers: { Origin: 'https://realworldbuilder.github.io' } });
     expect(stats.status).toBe(200);
     expect(stats.headers.get('Access-Control-Allow-Origin')).toBe('https://realworldbuilder.github.io');
-    expect(Object.keys((await stats.json()) as Counts).sort()).toEqual(['fighting', 'fights', 'online', 'waiting']);
+    expect(Object.keys((await stats.json()) as Counts).sort()).toEqual(['fighting', 'fights', 'online', 'queue', 'waiting']);
   });
 
   it('puts a page back from a match straight into the queue when it asks for the next opponent', async () => {
@@ -388,7 +388,7 @@ describe('lobby', () => {
     expect(await runDurableObjectAlarm(stub)).toBe(true);
     expect(await chris.next('unqueued', seen)).toMatchObject({ queued: false, reason: 'idle' });
     await hereCounting(chris, { online: 1, waiting: 0, fighting: 0 }, seen);
-    expect(await stub.stats()).toEqual({ online: 1, waiting: 0, fighting: 0, fights: [] });
+    expect(await stub.stats()).toEqual({ online: 1, waiting: 0, fighting: 0, queue: [], fights: [] });
     chris.ws.close(1000, 'bye');
   });
 });

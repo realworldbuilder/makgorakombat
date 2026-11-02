@@ -104,6 +104,8 @@ export interface Counts {
 }
 /** The numbers and the fights on now, as every list of who is here and GET /lobby/stats give them. */
 export interface Stats extends Counts {
+  /** The names of those waiting, longest first, for a page or a bot that tells somebody a fight is on offer. */
+  queue: string[];
   /** The lobby's rooms with both players in, longest going first. */
   fights: FightNow[];
 }
@@ -443,10 +445,10 @@ export class Lobby extends DurableObject<Env> {
   }
 
   private async counts(seats: Seat[]): Promise<Stats> {
-    const free = new Set(seats.filter((seat) => !seat.busy).map((seat) => seat.id));
-    const waiting = (await this.queue()).filter((w) => free.has(w.id)).length;
+    const free = new Map(seats.filter((seat) => !seat.busy).map((seat) => [seat.id, seat.name]));
+    const queue = (await this.queue()).flatMap((w) => free.get(w.id) ?? []);
     const rooms = await this.rooms();
-    return { online: seats.length, waiting, fighting: this.fighting(rooms), fights: this.fights(rooms) };
+    return { online: seats.length, waiting: queue.length, fighting: this.fighting(rooms), queue, fights: this.fights(rooms) };
   }
 
   /** The lobby's rooms with both players in, longest going first. */
