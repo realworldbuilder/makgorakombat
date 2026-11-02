@@ -1,0 +1,11 @@
+## Interface: 120105, 16001
+## Title: Mak'gora Kombat
+## Notes: Who else wants a Mak'gora Kombat fight. Say you are looking, and see everyone with the add-on who is. Type /mk.
+## Author: William Hussey
+## Version: 1.0.0
+## IconTexture: Interface\Icons\Ability_Warrior_BattleShout
+## SavedVariables: MakgoraKombatDB
+## AddonCompartmentFunc: MakgoraKombat_OnAddonCompartmentClick
+## X-Website: https://realworldbuilder.github.io/makgorakombat/
+
+MakgoraKombat.lua

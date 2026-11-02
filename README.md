@@ -136,6 +136,8 @@ The engine (CASC reader, model and animation parsers, skinning, WebGL renderer, 
 
 To put up a relay of your own on a Cloudflare account (the free plan is enough), with wrangler logged in (`cd relay && pnpm install && pnpm exec wrangler login`), run `cd relay && pnpm run deploy`. It prints `https://makgora-relay.<your-subdomain>.workers.dev`; set `RELAY_URL` in `src/game/net/relay.ts` to it (or name it in SETTINGS). A relay of your own is a lobby of its own: players on it do not see the players on the game's relay.
 
+In World of Warcraft, the add-on in [addon/](addon/README.md) shows who else is looking for a fight: players with it say so with `/mk look`, and the others hear it live through the guild, Battle.net friends and a shared channel. Its watcher, `node addon/watch.ts`, puts a banner over the game when somebody starts waiting in the queue here.
+
 ### Stages
 
 A stage is a spot in the world in `src/game/stages.ts`: the map, the coordinates the game's `/mogshot spot` prints (x north, y west, in yards), a `facing` in degrees anticlockwise from north, and the `reach` in yards the world is drawn to. The fighters stand along the line through the spot that runs the way `facing` points, and the camera looks across it, toward `facing` + 90°, so the backdrop is whatever lies that way: pick the facing so the best view is across the line, not along it. The fight itself is flat; the floor along the line is read from the place once (`src/game/ground.ts`) and each fighter and their shadow is drawn that much higher or lower, so a leaning lawn still works, but a staircase does not. A `z` picks a storey where the highest surface is the wrong one (a city's streets over its sewers, say).

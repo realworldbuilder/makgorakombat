@@ -20,5 +20,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Lua for the WoW add-on's tests (test/addon.test.ts), which are skipped without it.
+      - run: sudo apt-get update -q && sudo apt-get install -y -q lua5.4
       - run: pnpm test
       - run: pnpm build
